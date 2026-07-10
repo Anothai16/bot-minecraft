@@ -2,6 +2,9 @@ const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 
+// 🎯 เรียกใช้งานโมดูลล็อกอินออโต้ ฝ่าด่านสมุด-หน้าต่าง จากไฟล์ร่วม login.js
+const { setupAmoryLogin } = require('./login');
+
 const { GoalBlock } = goals;
 let bot;
 let miningActive = false;
@@ -23,85 +26,10 @@ function startBot() {
         });
     }
 
+    // 🎯 สั่งผูกระบบล็อกอิน ฝ่าด่านสมุด และเข้าเซิร์ฟอัตโนมัติจากไฟล์ส่วนกลาง
+    setupAmoryLogin(bot);
+
     bot.loadPlugin(pathfinder);
-
-    bot.once('spawn', () => {
-        console.log('🛰️ บอท [cobblequast] ออนไลน์เหยียบพื้นผิวสำเร็จ! เริ่มระบบออโต้ล็อกอิน...');
-        
-        setTimeout(() => {
-            if (bot) {
-                console.log(`✍️ [Auto Login]: พิมพ์รหัสผ่านทางแชทเซฟตี้ -> /login 112233`);
-                bot.chat('/login 112233');
-            }
-        }, 1500);
-
-        setTimeout(async () => {
-            if (!bot) return;
-            console.log(`📡 [AI Watchdog]: บอทเริ่มกลไกคว้าเข็มทิศฟ้าคัดท้ายเข้าเกม...`);
-            triggerCompassSelectorMacro(bot);
-        }, 5000);
-    });
-
-    bot.on('death', () => {
-        miningActive = false;
-        setTimeout(() => { try { bot.respawn(); } catch(e){} }, 2000);
-    });
-
-    bot.on('windowOpen', async (window) => {
-        let windowTitle = 'ไม่ระบุชื่อเมนู';
-        try {
-            if (window.title) {
-                if (typeof window.title === 'string') {
-                    windowTitle = window.title.includes('{') ? JSON.parse(window.title).text || window.title : window.title;
-                } else if (typeof window.title === 'object') {
-                    windowTitle = window.title.text || (window.title.value && window.title.value.text && window.title.value.text.value) || JSON.stringify(window.title);
-                }
-            }
-        } catch (e) { windowTitle = ''; }
-
-        const titleClean = windowTitle.toLowerCase();
-        console.log(`🚨 [WINDOW OPEN]: หน้าต่างเมนูเด้งขึ้นมาสำเร็จ! ชื่อเมนู: "${windowTitle}"`);
-
-        if (titleClean.includes('login') || titleClean.includes('password') || titleClean.includes('กรอกรหัส') || titleClean.includes('รหัสผ่าน')) {
-            const pinCode = [1, 1, 2, 2, 3, 3];
-            for (let digit of pinCode) {
-                if (!bot) return;
-                let targetSlot = window.slots.findIndex(slot => slot && slot.displayName && slot.displayName.includes(digit.toString()));
-                if (targetSlot === -1) { targetSlot = digit; }
-                try {
-                    await bot.clickWindow(targetSlot, 0, 0);
-                    await new Promise(res => setTimeout(res, 600));
-                } catch (err) {}
-            }
-            let confirmSlot = window.slots.findIndex(slot => slot && (slot.name.includes('green') || slot.name.includes('emerald') || slot.displayName.includes('ยืนยัน') || slot.displayName.includes('submit')));
-            if (confirmSlot === -1) confirmSlot = window.slots.length - 1 - 9;
-            try { await bot.clickWindow(confirmSlot, 0, 0); } catch (err) {}
-            return;
-        }
-
-        await new Promise(res => setTimeout(res, 1500));
-        const targetSlotID = 10; 
-        const targetItem = window.slots[targetSlotID];
-
-        if (targetItem) {
-            try {
-                await bot.clickWindow(targetSlotID, 0, 0);
-                console.log(`🚀 [Success]: ส่งคำสั่งคลิกซ้ายสล็อตบล็อกหญ้าเรียบร้อย!`);
-                
-                setTimeout(() => {
-                    if (bot) {
-                        console.log(`✍️ [Auto Action]: เข้าสู่ Spawn Server สมบูรณ์! บังคับยิงคำสั่งกลับพิกัดบ้าน -> /home home`);
-                        bot.chat('/home home');
-                    }
-                }, 2500);
-            } catch (clickErr) {}
-        } else {
-            try {
-                await bot.clickWindow(targetSlotID, 0, 0);
-                setTimeout(() => { if (bot) bot.chat('/home home'); }, 2500);
-            } catch (fErr) {}
-        }
-    });
 
     bot.on('chat', async (username, message) => {
         if (username === bot.username) return;
@@ -110,7 +38,6 @@ function startBot() {
         }
     });
 
-    bot.on('message', () => {}); 
     bot.on('end', () => { miningActive = false; setTimeout(startBot, 10000); });
 }
 
@@ -123,19 +50,6 @@ function setupMiningMovements(botInstance) {
     movements.allow1by1towers = false;
     movements.maxDropDown = 1; 
     botInstance.pathfinder.setMovements(movements);
-}
-
-async function triggerCompassSelectorMacro(botInstance) {
-    if (!botInstance || !botInstance.inventory) return;
-    const blueCompass = botInstance.inventory.items().find(i => i.name === 'recovery_compass');
-    if (blueCompass) {
-        try {
-            await botInstance.equip(blueCompass, 'hand');
-            await new Promise(res => setTimeout(res, 800)); 
-            await botInstance.activateItem();
-            console.log(`✅ คลิกขวาเข็มทิศสำเร็จ รอกล่องเมนูตอบรับเด้งขึ้นหน้าจอ...`);
-        } catch (equipErr) {}
-    }
 }
 
 // 🧱 ENGINE V15: ระบบขุดหินล็อกพิกัดทิศ East ขุดลึกเจาะทะลวงแนวหน้าแกน X
@@ -151,8 +65,9 @@ async function startStationMining() {
     miningActive = true;
     console.log('\n🚀 [East-Axis Multi-Block Mining Engine Active]');
     
-    const targetStandPos = new Vec3(-2697, 69, 14550);
-    console.log(`runs กำลังเดินทางไปตั้งหลักพิกัดสถานีขุด: X:-2697 Y:69 Z:14550 ...`);
+    // 🎯 [ปรับตามสั่งพี่]: ลดแกน X ลงมา 1 แต้ม -> -2742 69 14524
+    const targetStandPos = new Vec3(-2742, 69, 14524);
+    console.log(`runs กำลังเดินทางไปตั้งหลักพิกัดสถานีขุดใหม่: X:-2742 Y:69 Z:14524 ...`);
     
     setupMiningMovements(bot);
     try {
@@ -163,17 +78,19 @@ async function startStationMining() {
     bot.clearControlStates();
     console.log(`... ประจำสถานีเรียบร้อย!`);
 
-    const exactLookTarget = new Vec3(-264.5, 69.5, 14550); 
+    // 🎯 [ปรับตามสั่งพี่]: หน้ากล้องขยับลด X ลง 1 แต้ม ล็อกสายตามองตรงไปทิศ EAST ล็อกนิ่ง
+    const exactLookTarget = new Vec3(-2739.5, 69.5, 14524.5); 
     await bot.lookAt(exactLookTarget, true);
     await new Promise(res => setTimeout(res, 400)); 
 
     console.log(`🧭 ล็อกหน้ากล้องไปทางทิศ EAST สำเร็จ! เริ่มต้นมาโครส่งแพ็คเก็ตสับบล็อก...`);
 
-    const targetBlocksQueue = [
-        new Vec3(-2696, 70, 14550), 
-        new Vec3(-2695, 70, 14550), 
-        new Vec3(-2694, 70, 14550), 
-        new Vec3(-2693, 70, 14550)  
+    // 🎯 [ปรับตามสั่งพี่]: คิวบล็อกขุดใหม่ 4 บล็อก ขยับลด X ลงมาบล็อกละ 1 แต้มพอดีเป๊ะครับ
+    const cleanBlocksQueue = [
+        new Vec3(-2740, 70, 14524),
+        new Vec3(-2739, 70, 14524),
+        new Vec3(-2738, 70, 14524),
+        new Vec3(-2737, 70, 14524)
     ];
 
     while (miningActive) {
@@ -185,7 +102,8 @@ async function startStationMining() {
 
             await bot.lookAt(exactLookTarget, true);
 
-            for (const blockPos of targetBlocksQueue) {
+            for (const blockPos of cleanBlocksQueue) {
+                // ระบบเซฟตี้ดักความทนทานรายบล็อก ล็อกหนาแน่นพิเศษ ป้องกันของแตก
                 const pickaxeCheck = await checkAndTossPickaxe();
                 if (!pickaxeCheck || !miningActive) {
                     console.log('🛑 [Safety Lock Triggered]: ดักเจอที่ขุดใกล้พังคาลูป สั่งยกเลิกทำงานด่วน!');
@@ -229,6 +147,7 @@ async function checkAndTossPickaxe() {
         const durabilityPercent = Math.floor((remaining / maxDur) * 100);
         console.log(`👉 PICKAXE_DURABILITY: ${durabilityPercent}`);
 
+        // ดักคัตเอาต์ความทนทานเหลือต่ำกว่า 40 สั่งหยุดขุดและดีดโยนที่ขุดออกจากตัวลงพื้นทันทีเพื่อเซฟของพัง
         if (remaining <= 40 || durabilityPercent <= 2) {
             console.log(`⚠️ [Durability Buffer Alert] ที่ขุดเหลือแต้มขุด: ${remaining} กำลังปิดมาโครและโยนของเซฟชีวิตด่วน!`);
             
@@ -266,13 +185,8 @@ async function handleAutoEatEngine() {
     }
 }
 
-// 🎯 สตาร์ทเปิดฟังก์ชันหลักของระบบ
 startBot();
 
-// =========================================================================
-// 🎯 [ขุมพลังปลดล็อกกระบอกเสียงดักคอมมานด์ดิบ - Readline Interface]
-// ใส่ท่อนนี้ลงไป ช่อง Terminal จะพิมพ์ได้ทันที และแอป Python ยิงสั่ง 'mine' ติด 100%!
-// =========================================================================
 const readline = require('readline');
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
