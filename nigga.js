@@ -17,6 +17,12 @@ let forceSneakLocked = false;
 // พิกัดจุดเซฟความจำบอทป้องกันการเอ๋อ
 const progressFilePath = path.join(__dirname, 'progress.txt');
 
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 8080;
+app.get('/', (req, res) => res.send('Bot is running 24/7!'));
+app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
+
 // ฟังก์ชันหาค่าความถึกสูงสุดของจอบแต่ละประเภทในเกม Minecraft
 function getMaxDurability(itemName) {
     if (itemName.startsWith('netherite_')) return 2031;
