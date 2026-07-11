@@ -58,7 +58,7 @@ function startBot() {
     console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
-        username: 'dpumpkind',
+        username: 'Nigga58',
         version: '1.21.11'
     });
 
@@ -151,7 +151,7 @@ function setupMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
-// 🧱 ฟังก์ชันหลักคุมขบวนสลับชุด ล็อกแกนเดินเท้าเดี่ยวประจำชุดคู่คี่ร้อยเปอร์เซ็นต์
+// 🧱 ฟังก์ชันหลักคุมขบวนสลับชุด ล็อกแกนเดินเท้าเลขคี่ตั้งแต่ชุดที่ 2 เป็นต้นไป
 async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
     buildActive = true;
     setupMovements(bot);
@@ -172,31 +172,26 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
             break;
         }
 
-        // สูตรคำนวณฐานระยะห่างชุดละ 4 บล็อกโลกจริงแม่นยำเป๊ะ
+        // สมการคณิตศาสตร์ล็อกระยะฉากฟาร์มจริงชุดละ 4 บล็อกโลกจริง
         let currentBaseZ = startZ + ((round - 1) * 4);
 
-        const zCandidate1 = currentBaseZ;      // เลนล่างของคู่ล็อก (ปกติเป็นเลขคี่)
-        const zCandidate2 = currentBaseZ + 1;  // เลนบนของคู่ล็อก (ปกติเป็นเลขคู่)
+        const zCandidate1 = currentBaseZ;      
+        const zCandidate2 = currentBaseZ + 1;  
 
         let walkZ;         // แกน Z ที่เท้าบอทจะเหยียบเดินไปกลับตลอดทั้งชุด
         let parallelZ;     // แกน Z เลนคู่ขนานที่บอทจะเอื้อมมือสะบัดหน้าไปทำงานแทน
 
-        // 🎯 [ปรับตามใบสั่งพี่เป๊ะๆ]: ล็อกแกนที่เท้าบอทจะยืนเดินตามเงื่อนไขเลขชุด Round
+        // 🎯 [ปรับตามใบสั่งใหม่ของพี่เป๊ะๆ]: 
+        // ชุดที่ 1 เดินตามพิกัดเริ่มต้นปกติ แต่ถ้าเป็นชุดที่ 2 และ 3 (หรือชุดต่อๆ ไป) บังคับเท้าล็อกเดินเฉพาะ "แกน Z เลขคี่" เสมอ!
         if (round === 1) {
-            // ชุดที่ 1: เดินแนวเริ่มต้นปกติ (เท้าเดินบน zCandidate1 เสมอ)
             walkZ = zCandidate1;
             parallelZ = zCandidate2;
             console.log(`\n🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
-        } else if (round % 2 === 0) {
-            // ชุดที่ 2, 4, 6... (ชุดเลขคู่): เท้าบอทต้องเหยียบเดินบน "แกน Z เลขคี่" ไปกลับเท่านั้น!
+        } else {
+            // ชุดที่ 2, 3, 4... บังคับใช้เงื่อนไขเดียวกันเลยคือ เท้าล็อกเดินบนแกน Z เลขคี่ เท่านั้น
             walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
             parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
-        } else {
-            // ชุดที่ 3, 5, 7... (ชุดเลขคี่ถัดมา): เท้าบอทต้องเหยียบเดินบน "แกน Z เลขคู่" ไปกลับเท่านั้น!
-            walkZ = (zCandidate1 % 2 === 0) ? zCandidate1 : zCandidate2;
-            parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คู่] -> ขาไปขากลับเดินบนแกน Z คู่: ${walkZ} | หันไปทำงานแกน Z คี่: ${parallelZ}`);
+            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่ร่วม] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
         }
 
         // ====================================================================
@@ -209,7 +204,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
         
         if (!buildActive) break;
 
-        console.log(`🌱 พรวนดินเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} แต่หันไปพรวนแนว Z: ${parallelZ}`);
+        console.log(`🌱 พรวนดินเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} But หันไปพรวนแนว Z: ${parallelZ}`);
         await runTurboTillEngine(targetEndX, startX, targetY, walkZ, parallelZ);
 
         if (!buildActive) break;
@@ -225,7 +220,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
             
             if (!buildActive) break;
 
-            console.log(`เมล็ดปักเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} แต่หันไปปลูกแนว Z: ${parallelZ}`);
+            console.log(`เมล็ดปักเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} But หันไปปลูกแนว Z: ${parallelZ}`);
             await runTurboPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
         } else {
             console.log('⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน');
@@ -239,7 +234,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
         }
     }
 
-    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวเสร็จสมบูรณ์เรียบร้อยครับพี่!`);
+    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวแกนคี่เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
     buildActive = false;
 }
 
@@ -301,7 +296,6 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
             bot.setQuickBarSlot(hotbarHoeSlot);
         }
 
-        // 🎯 แยกพิกัดชัดเจน: พิกัดยืนของเท้า (walkZ) และพิกัดงานของบล็อกจอบสับ (workZ)
         const blockPos = new Vec3(currentX, targetY, workZ);
         const standPos = new Vec3(currentX, targetY + 1, walkZ);
 
@@ -310,7 +304,6 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
         if (bot && bot.entity) {
             const distance = bot.entity.position.distanceTo(standPos);
             if (distance > 0.8) {
-                // สายตาหันล็อกเป้าหมายไปแกนเท้าเดินเพื่อเล็งทิศทางวิ่งตรงยาวไม่ส่ายหัว
                 await bot.lookAt(standPos.offset(0.5, 0, 0.5), true);
                 bot.setControlState('forward', true);
                 while (bot.entity.position.distanceTo(standPos) > 1.2 && buildActive) {
@@ -321,7 +314,6 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
 
         if (currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block')) {
             try {
-                // จังหวะสับจอบ: สะบัดหน้าไปเล็งที่บล็อกเป้าหมายแกนงาน (workZ) ทันที 40ms สับเสร็จวิ่งหน้าตั้งต่อ
                 await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
                 await bot.activateBlock(currentBlockState);
                 await new Promise(res => setTimeout(res, 40));
@@ -368,7 +360,6 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
             await new Promise(res => setTimeout(res, 30)); 
         }
 
-        // 🎯 แยกพิกัดชัดเจน: พิกัดเท้าเหยียบเดิน (walkZ) และพิกัดเป้าหมายปักเมล็ด (workZ)
         const blockPos = new Vec3(currentX, targetY, workZ);
         const standPos = new Vec3(currentX, targetY + 1, walkZ);
 
@@ -415,7 +406,6 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
                 forceSneakLocked = true;
                 if (bot) bot.setControlState('sneak', true);
                 
-                // หันสายตาไปเล็งล็อกที่เป้าหมายแกนงานข้าง ๆ ตัวเพื่อคลิกปักเมล็ด
                 await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
                 await bot.placeBlock(currentBlockState, new Vec3(0, 1, 0));
                 await new Promise(resolve => setTimeout(resolve, 50));
