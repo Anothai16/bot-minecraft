@@ -58,7 +58,7 @@ function startBot() {
     console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
-        username: 'dpumpkind',
+        username: 'Kaitom_4',
         version: '1.21.11'
     });
 

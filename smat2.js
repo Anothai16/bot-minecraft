@@ -17,6 +17,12 @@ let forceSneakLocked = false;
 // พิกัดจุดเซฟความจำบอทป้องกันการเอ๋อ
 const progressFilePath = path.join(__dirname, 'progress.txt');
 
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 8080;
+app.get('/', (req, res) => res.send('Bot is running 24/7!'));
+app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
+
 // ฟังก์ชันหาค่าความถึกสูงสุดของจอบแต่ละประเภทในเกม Minecraft
 function getMaxDurability(itemName) {
     if (itemName.startsWith('netherite_')) return 2031;
@@ -58,7 +64,7 @@ function startBot() {
     console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
-        username: 'dpumpkind',
+        username: 'Kaitom_4',
         version: '1.21.11'
     });
 
@@ -118,7 +124,16 @@ function startBot() {
         if (username === bot.username) return;
 
         if (message.startsWith('farm')) {
-            await parseAndExecuteFarm(message);
+            const args = message.split(' ');
+            let startX = parseInt(args[1]);
+            const startY = parseInt(args[2]);
+            const startZ = parseInt(args[3]);
+            const selectSet = args[4] ? parseInt(args[4]) : null;
+
+            if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
+            if (startX === -2718) startX = -2719;
+            
+            await startCustomPlatformBuilder(startX, startY, startZ, selectSet);
         }
     });
 
@@ -142,58 +157,17 @@ function setupMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
-// 🧭 ฟังก์ชันวิเคราะห์อาร์กิวเมนต์ คาดเดาระบบกริดคี่คู่จากพิกัด Z เริ่มต้นอัตโนมัติ
-async function parseAndExecuteFarm(inputStr) {
-    const args = inputStr.split(' ');
-    let startX = parseInt(args[1]);
-    const startY = parseInt(args[2]);
-    const startZ = parseInt(args[3]);
-
-    if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
-    if (startX === -2718) startX = -2719;
-
-    let config = {
-        selectSet: null,
-        round2Mode: 'koo', // ค่าเริ่มต้นชั่วคราว
-        round3Mode: 'kee'  // ค่าเริ่มต้นชั่วคราว
-    };
-
-    // 🎯 [หัวใจหลัก]: เช็คว่าพิกัด Z ที่ส่งมาเป็นเลขคี่หรือเลขคู่
-    const isStartZOdd = (startZ % 2 !== 0);
-
-    if (isStartZOdd) {
-        // Z เริ่มต้นเป็นเลขคี่ (เช่น 14543) -> ชุด 2 วิ่งคู่ / ชุด 3 วิ่งคี่
-        config.round2Mode = 'koo';
-        config.round3Mode = 'kee';
-    } else {
-        // Z เริ่มต้นเป็นเลขคู่ (เช่น 14556) -> ชุด 2 วิ่งคี่ / ชุด 3 วิ่งคู่
-        config.round2Mode = 'kee';
-        config.round3Mode = 'koo';
-    }
-
-    // ดักจับเคสการสั่งแยกชุดเดี่ยวๆ เช่น farm -2718 63 14556 2 หรือ farm -2718 63 14543 3
-    if (args[4] && !isNaN(parseInt(args[4]))) {
-        config.selectSet = parseInt(args[4]);
-    }
-
-    if (bot) {
-        await startCustomPlatformBuilder(startX, startY, startZ, config);
-    }
-}
-
-// 🧱 ฟังก์ชันหลักคุมขบวนสลับชุด รันแปลงล็อกแกน Z อัตโนมัติตามสเต็ปคำนวณพิกัด
-async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
+// 🧱 ฟังก์ชันหลักคุมขบวนสลับชุด ล็อกแกนเดินเท้าเลขคี่ตั้งแต่ชุดที่ 2 เป็นต้นไป
+async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
     buildActive = true;
     setupMovements(bot);
 
     const targetEndX = -2638;
     
-    let startRound = config.selectSet ? config.selectSet : 1;
-    let endRound = config.selectSet ? config.selectSet : 3;
+    let startRound = selectSet ? selectSet : 1;
+    let endRound = selectSet ? selectSet : 3;
 
-    console.log(`\n============================ [ ระบบออโต้ล็อกเลนฟาร์มความเร็วสูง ] ============================`);
-    console.log(`📊 ตรวจพบพิกัด Z ตั้งต้น: ${startZ} (${startZ % 2 !== 0 ? 'เลขคี่' : 'เลขคู่'})`);
-    console.log(`🤖 แผนการวิ่งอัตโนมัติ -> ชุดที่ 2 ล็อกแกน: [${config.round2Mode.toUpperCase()}] | ชุดที่ 3 ล็อกแกน: [${config.round3Mode.toUpperCase()}]`);
+    console.log(`\n============================ [ ระบบฟาร์มล็อกเลนเดินความเร็วสูง ] ============================`);
 
     for (let round = startRound; round <= endRound; round++) {
         if (!buildActive) break;
@@ -204,48 +178,39 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
             break;
         }
 
+        // สมการคณิตศาสตร์ล็อกระยะฉากฟาร์มจริงชุดละ 4 บล็อกโลกจริง
         let currentBaseZ = startZ + ((round - 1) * 4);
+
         const zCandidate1 = currentBaseZ;      
         const zCandidate2 = currentBaseZ + 1;  
 
-        let walkZ;         
-        let parallelZ;     
+        let walkZ;         // แกน Z ที่เท้าบอทจะเหยียบเดินไปกลับตลอดทั้งชุด
+        let parallelZ;     // แกน Z เลนคู่ขนานที่บอทจะเอื้อมมือสะบัดหน้าไปทำงานแทน
 
+        // 🎯 [ปรับตามใบสั่งใหม่ของพี่เป๊ะๆ]: 
+        // ชุดที่ 1 เดินตามพิกัดเริ่มต้นปกติ แต่ถ้าเป็นชุดที่ 2 และ 3 (หรือชุดต่อๆ ไป) บังคับเท้าล็อกเดินเฉพาะ "แกน Z เลขคี่" เสมอ!
         if (round === 1) {
-            // ชุดที่ 1: เดินแนวเริ่มต้นปกติ
             walkZ = zCandidate1;
             parallelZ = zCandidate2;
             console.log(`\n🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
-        } 
-        else if (round === 2) {
-            // ทำงานตามโหมดที่ Auto-Detect ได้ของชุดที่ 2
-            if (config.round2Mode === 'koo') {
-                walkZ = (zCandidate1 % 2 === 0) ? zCandidate1 : zCandidate2;
-            } else {
-                walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
-            }
+        } else {
+            // ชุดที่ 2, 3, 4... บังคับใช้เงื่อนไขเดียวกันเลยคือ เท้าล็อกเดินบนแกน Z เลขคี่ เท่านั้น
+            walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
             parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ 2 / 3 - ระบบเลือก Z ${config.round2Mode.toUpperCase()}] -> เดินบน Z: ${walkZ} | ทำงานแนว Z: ${parallelZ}`);
-        } 
-        else if (round === 3) {
-            // ทำงานตามโหมดที่ Auto-Detect ได้ของชุดที่ 3
-            if (config.round3Mode === 'koo') {
-                walkZ = (zCandidate1 % 2 === 0) ? zCandidate1 : zCandidate2;
-            } else {
-                walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
-            }
-            parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ 3 / 3 - ระบบเลือก Z ${config.round3Mode.toUpperCase()}] -> เดินบน Z: ${walkZ} | ทำงานแนว Z: ${parallelZ}`);
+            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่ร่วม] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
         }
 
         // ====================================================================
         // ⚡ [สเต็ปที่ 1]: สับสายพานพรวนดินความเร็วสูง (ไปกลับบนเลน walkZ ช่องเดียว)
         // ====================================================================
         console.log(`🚜 เริ่มสเต็ป 1: วิ่งสับพรวนดินเลนคู่ขนาน [เท้าล็อกเหยียบ Z: ${walkZ}]`);
+        
+        console.log(`🌱 พรวนดินเลนตัวเอง (ขาไป X) -> พรวนที่แนว Z: ${walkZ}`);
         await runTurboTillEngine(startX, targetEndX, targetY, walkZ, walkZ);
         
         if (!buildActive) break;
 
+        console.log(`🌱 พรวนดินเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} But หันไปพรวนแนว Z: ${parallelZ}`);
         await runTurboTillEngine(targetEndX, startX, targetY, walkZ, parallelZ);
 
         if (!buildActive) break;
@@ -255,10 +220,13 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
         // ====================================================================
         if (getTotalSeedCount() > 0) {
             console.log(`\n🌾 เริ่มสเต็ป 2: วิ่งสับเกียร์ไล่ปลูกเมล็ดฟักทองเลนคู่ [เท้าล็อกเหยียบ Z: ${walkZ}]`);
+            
+            console.log(`เมล็ดปักเลนตัวเอง (ขาไป X) -> ปลูกที่แนว Z: ${walkZ}`);
             await runTurboPlantEngine(startX, targetEndX, targetY, walkZ, walkZ);
             
             if (!buildActive) break;
 
+            console.log(`เมล็ดปักเลนคู่ขนาน (ขากลับ X) -> บอทเดินเลน Z:${walkZ} But หันไปปลูกแนว Z: ${parallelZ}`);
             await runTurboPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
         } else {
             console.log('⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน');
@@ -272,7 +240,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
         }
     }
 
-    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้า Auto-Z Detection เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
+    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวแกนคี่เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
     buildActive = false;
 }
 
@@ -300,7 +268,10 @@ async function autoRefillSeedsFromInventory() {
             try {
                 await bot.moveSlotItem(backupItem.slot, 36); 
                 await new Promise(res => setTimeout(res, 350)); 
-            } catch (err) {}
+                console.log(`✅ [Refill Success] เติมเมล็ดฟักทองลง Hotbar เรียบร้อย! ลุยงานต่อครับพี่\n`);
+            } catch (err) {
+                console.log(`❌ ย้ายเมล็ดผิดพลาด: ${err.message}`);
+            }
         }
     }
 }
@@ -314,7 +285,10 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
 
     while (buildActive) {
         const hoePercent = getHoeDurabilityPercent();
-        if (hoePercent <= 1) break;
+        if (hoePercent <= 1) {
+            console.log(`⚠️ [🚨 HOE CRITICAL]: ความทนทานจอบวิกฤตต่ำกว่า 1% สั่งระงับตัวเครื่องเฟส 1 ด่วน!`);
+            break;
+        }
 
         let hotbarHoeSlot = -1;
         for (let slot = 0; slot < 9; slot++) {
@@ -330,6 +304,7 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
 
         const blockPos = new Vec3(currentX, targetY, workZ);
         const standPos = new Vec3(currentX, targetY + 1, walkZ);
+
         let currentBlockState = bot.blockAt(blockPos, true);
 
         if (bot && bot.entity) {
@@ -351,7 +326,10 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
             } catch (e) {}
         }
 
-        if (currentX === toX) break;
+        if (currentX === toX) {
+            if (bot) bot.clearControlStates();
+            break;
+        }
         currentX += stepX;
     }
     if (bot) bot.clearControlStates();
@@ -365,7 +343,10 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
     if (bot) bot.clearControlStates();
 
     while (buildActive) {
-        if (getTotalSeedCount() <= 0) break;
+        if (getTotalSeedCount() <= 0) {
+            console.log('🚨 [SEED EMPTY]: เมล็ดฟักทองหมดคลังคลังเบ็ดเสร็จ! ปิดระบบเฟส 2 ทันที');
+            break;
+        }
 
         await autoRefillSeedsFromInventory();
 
@@ -387,6 +368,7 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
 
         const blockPos = new Vec3(currentX, targetY, workZ);
         const standPos = new Vec3(currentX, targetY + 1, walkZ);
+
         let currentBlockState = bot.blockAt(blockPos, true);
         const blockName = currentBlockState ? currentBlockState.name : 'null';
 
@@ -394,7 +376,7 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
             const botEyePos = bot.entity.position.offset(0, bot.entity.height, 0);
             const dist = botEyePos.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5))).toFixed(2);
             const heldItemName = bot.heldItem ? `${bot.heldItem.name} (${bot.heldItem.count} เมล็ด)` : 'empty-hand';
-            console.log(`[RADAR DEBUGGER] พิกัดเดิน X:${currentX} Z:${walkZ} | บล็อกงานแกน Z:${workZ}: ${blockName} | ระยะ: ${dist}ม.`);
+            console.log(`[RADAR DEBUGGER] พิกัดเดิน X:${currentX} Z:${walkZ} | บล็อกงานแกน Z:${workZ}: ${blockName} | ถืออยู่: ${heldItemName} | ระยะ: ${dist}ม.`);
         }
 
         if (bot && bot.entity) {
@@ -408,6 +390,7 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
             }
         }
 
+        // ดักซ่อมดินดิบคืนสภาพบนแกนงาน (workZ)
         if (currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block')) {
             if (hotbarHoeSlot !== -1) {
                 bot.setQuickBarSlot(hotbarHoeSlot);
@@ -419,13 +402,16 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
             }
         }
 
+        // จังหวะปักเมล็ดฟักทองลงล็อก Farmland บนแกนงาน (workZ)
         if (currentBlockState && currentBlockState.name === 'farmland') {
             try {
                 if (hotbarSeedSlot !== -1 && bot.quickBarSlot !== hotbarSeedSlot) {
                     bot.setQuickBarSlot(hotbarSeedSlot);
                 }
+                
                 forceSneakLocked = true;
                 if (bot) bot.setControlState('sneak', true);
+                
                 await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
                 await bot.placeBlock(currentBlockState, new Vec3(0, 1, 0));
                 await new Promise(resolve => setTimeout(resolve, 50));
@@ -435,7 +421,10 @@ async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
         forceSneakLocked = false;
         if (bot) bot.setControlState('sneak', false);
 
-        if (currentX === toX) break;
+        if (currentX === toX) {
+            if (bot) bot.clearControlStates();
+            break;
+        }
         currentX += stepX;
     }
     if (bot) bot.clearControlStates();
@@ -451,6 +440,7 @@ rl.on('line', async (line) => {
     
     if (input === 'tpa') {
         if (bot && bot.entity) {
+            console.log('✍️ [Terminal Action] ยิงคำสั่งด่วน -> /tpa DukDikauai');
             bot.chat('/tpa DukDikauai');
         }
         return;
@@ -470,6 +460,17 @@ rl.on('line', async (line) => {
     }
 
     if (input.startsWith('farm')) {
-        await parseAndExecuteFarm(input);
+        const args = input.split(' ');
+        let startX = parseInt(args[1]);
+        const startY = parseInt(args[2]);
+        const startZ = parseInt(args[3]);
+        const selectSet = args[4] ? parseInt(args[4]) : null;
+
+        if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
+        if (startX === -2718) startX = -2719;
+
+        if (bot) {
+            await startCustomPlatformBuilder(startX, startY, startZ, selectSet);
+        }
     }
 });
