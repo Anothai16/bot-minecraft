@@ -9,8 +9,6 @@ let bot;
 let buildActive = false;
 let progressFilePath = '';
 
-let lastPlacedBlockX = null; 
-
 function saveProgress(startX, targetY, startZ, currentX, forwardZ) {
     if (!progressFilePath) return;
     try {
@@ -47,13 +45,6 @@ function getTotalDirtCount() {
     const held = bot.heldItem;
     const heldCount = (held && (held.name === 'dirt' || held.name === 'grass_block' || held.name === 'coarse_dirt')) ? held.count : 0;
     return dirtTotal + heldCount;
-}
-
-function getTotalPorkchopCount() {
-    if (!bot || !bot.inventory) return 0;
-    return bot.inventory.items()
-        .filter(item => item.name === 'cooked_porkchop')
-        .reduce((sum, item) => sum + item.count, 0);
 }
 
 async function autoRefillDirtFromInventory() {
@@ -147,10 +138,6 @@ function startBot() {
     });
 }
 
-async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryData = null) {
-    await startCustomPlatformBuilder(startX, targetY, startZ, recoveryData);
-}
-
 async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData = null) {
     buildActive = true;
     
@@ -169,7 +156,10 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
         forwardZ = recoveryData.forwardZ;
     }
 
-    console.log(`\n⚡⚡⚡ [ ENGINE MODE: CLOSE-CONTACT TIGHT-3 PLACER ] ⚡⚡⚡`);
+    console.log(`\n⚡⚡⚡ [ ENGINE MODE: HYPERSPEED ZERO-TURN PACKET ENGINE ] ⚡⚡⚡`);
+    if (recoveryData) {
+        console.log(`🎯 [RESUME ACTIVE]: ทำงานต่อจาก X:${currentX} | ทิศทางเลื้อย Z: ${forwardZ ? 'วิ่งขึ้น (Z+)' : 'วิ่งกลับ (Z-)'}`);
+    }
 
     const realWorldStartX = recoveryData ? recoveryData.startX : startX;
 
@@ -190,9 +180,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
         saveProgress(realWorldStartX, targetY, startZ, currentX, forwardZ);
 
         const targetEndZ = forwardZ ? (startZ + 64) : startZ;
-
-        // บังคับให้ขาบอทเดินสไลด์จิกตรงพิกัดแกนบดเนื้อดินเลนหลัก ไม่ปล่อยให้ตัวลอยห่าง
-        const safeWalkDestination = new Vec3(currentX, targetY + 1, targetEndZ);
+        const safeWalkDestination = new Vec3(currentX - stepX, targetY + 1, targetEndZ);
 
         await autoRefillDirtFromInventory();
         let initSlot = -1;
@@ -208,11 +196,10 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
             await new Promise(res => setTimeout(res, 35));
         }
 
+        // 🎯 สั่งล็อกหน้ากล้องมองดิ่งไปข้างหน้าทางจุดหมายเลนถาวร (หน้าไม่สะบัดสั่นหลอนอีกต่อไป)
         bot.clearControlStates();
         await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
-        
         bot.setControlState('forward', true); 
-        bot.setControlState('sprint', true);
 
         // [BURST ENGINE LOOP]
         while (buildActive && bot && bot.entity) {
@@ -222,51 +209,25 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
                 break; 
             }
 
-            const foodLevel = bot.food;
-            const porkCount = getTotalPorkchopCount();
-
-            if (foodLevel <= 12 && porkCount > 0) {
-                await executionEaterSequence(safeWalkDestination, initSlot);
-            } 
-            else if (foodLevel <= 3 && porkCount === 0) {
-                if (bot.controlState.sprint) {
-                    console.log(`⚠️ [WARNING]: เสบียงเนื้อหมูหมดคลัง! บังคับตัดความเร็วกลับเข้าสู่ "โหมดเดินปกติ"`);
-                    bot.setControlState('sprint', false); 
-                }
-            } else {
-                if (buildActive && !bot.controlState.sprint && foodLevel > 3) {
-                    bot.setControlState('sprint', true);
-                }
-            }
-
             await autoRefillDirtFromInventory();
 
-            // ⚡ [🎯 CRITICAL FIX - TIGHT 3-ROW POCKET MATRIX]:
-            // หักล้างการยิงล่วงหน้าลอยฟ้าทิ้ง เปลี่ยนมาล็อกพิกัด 3 ช่องโอบล้อมรอบตัวละครพอดีเอื้อมมือ
-            // [ บล็อกซ้ายมือตัวละคร (เลนเก่า), บล็อกตรงพิกัดเท้าเหยียบ, บล็อกขวามือตัวละคร (เลนขยับใหม่) ]
-            let xTargets = [currentX - stepX, currentX, currentX + stepX];
-
-            for (let targetXCoord of xTargets) {
-                if (stepX === 1 && targetXCoord > endX) continue;
-                if (stepX === -1 && targetXCoord < endX) continue;
-
-                for (let currentZ of zQueue) {
-                    const blockPos = new Vec3(targetXCoord, targetY, currentZ);
-                    const distToBlock = bot.entity.position.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5)));
+            for (let currentZ of zQueue) {
+                const blockPos = new Vec3(currentX, targetY, currentZ);
+                const distToBlock = bot.entity.position.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5)));
+                
+                if (distToBlock <= 4.5) { // ขยายระบายสอยบล็อกข้ามช่องได้กว้างขึ้น
+                    let currentBlockState = bot.blockAt(blockPos, true);
+                    const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt');
                     
-                    // บีบระยะเอื้อมมือให้กระชับเข้าหาลำตัวไม่เกิน 4.0 บล็อก เพื่อดึงตัวบอทให้เดินมาชิด ๆ เลนจริง
-                    if (distToBlock <= 4.0) { 
-                        let currentBlockState = bot.blockAt(blockPos, true);
-                        const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt');
-                        
-                        if (!isAlreadyPaved) {
-                            await injectPlaceDirtNetworkRaw(blockPos, stepX);
-                        }
+                    if (!isAlreadyPaved) {
+                        // 🔥 เปลี่ยนมาใช้การยิงระดับโครงข่าย Socket ดิบ ๆ ไม่หันบิดมองหน้าบล็อก
+                        await injectPlaceDirtNetworkRaw(blockPos, stepX);
                     }
                 }
             }
 
-            await new Promise(res => setTimeout(res, 6)); 
+            // ⚡ ซอยช่องไฟสับขาให้กระชับความเร็วสูงสุดขึ้นเป็น 10ms รูดยาวสปีดนรกชัวร์
+            await new Promise(res => setTimeout(res, 10));
             
             if (buildActive && !bot.controlState.forward) {
                 await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
@@ -280,56 +241,15 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
             break;
         }
         currentX += stepX;
-        forwardZ = !forwardZ; 
+        forwardZ = !forwardZ; // สลับทิศฟันปลา
     }
 
     if (bot) bot.clearControlStates();
     buildActive = false;
 }
 
-async function executionEaterSequence(safeWalkDestination, initSlot) {
-    console.log(` └─🍖 [AUTO FEEDING]: หลอดอาหารเหลือ ${bot.food} เริ่มกระบวนการล็อกคอกินหมูสุกจนอิ่ม...`);
-    bot.setControlState('sprint', false);
-    bot.clearControlStates();
-    await new Promise(res => setTimeout(res, 40));
-
-    while (buildActive && bot.food < 18 && getTotalPorkchopCount() > 0) {
-        let porkSlot = -1;
-        for (let slot = 0; slot < 9; slot++) {
-            const item = bot.inventory.slots[36 + slot];
-            if (item && item.name === 'cooked_porkchop') {
-                porkSlot = slot;
-                break;
-            }
-        }
-
-        if (porkSlot === -1) {
-            const invPork = bot.inventory.items().find(i => i.name === 'cooked_porkchop' && i.slot >= 9 && i.slot <= 35);
-            if (invPork) {
-                await bot.moveSlotItem(invPork.slot, 36);
-                await new Promise(res => setTimeout(res, 80));
-                porkSlot = 0;
-            }
-        }
-
-        if (porkSlot !== -1) {
-            bot.setQuickBarSlot(porkSlot);
-            await new Promise(res => setTimeout(res, 30));
-            
-            bot.activateItem();
-            await new Promise(res => setTimeout(res, 1650)); 
-            bot.deactivateItem();
-            await new Promise(res => setTimeout(res, 100)); 
-            console.log(`   └─📊 [FEEDING PROGRESS]: เคี้ยวเสร็จ 1 ชิ้น หลอดอาหารปัจจุบันเพิ่มขึ้นเป็น: ${bot.food}`);
-        }
-    }
-
-    console.log(` ✅ [FEEDING SUCCESS]: บอทกินอิ่มเรียบร้อย (หลอดอาหาร: ${bot.food}) สลับถือบล็อกดินมุ่งหน้าลุยงานต่อ!`);
-    if (initSlot !== -1) bot.setQuickBarSlot(initSlot);
-    await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
-    bot.setControlState('forward', true);
-}
-
+// 🎯 [🎯 NEW OVERHAUL ENGINE - ZERO-TURN NETWORK SOCKET INJECTOR]:
+// หักดิบระบบสับกล้องเล็ง แก้ทางปัญหาตัวละครหันเอ๋อหลุดระนาบจนตกตาย ป้อนแพ็คเกจคลิกขวาดิ่งเข้าบล็อกข้างเคียงทันที
 async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
     if (!bot || !bot._client) return;
 
@@ -344,27 +264,29 @@ async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
         }
 
         if (hotbarDirtSlot === -1) return;
-        if (bot.food <= 12 && getTotalPorkchopCount() > 0) return;
         if (bot.quickBarSlot !== hotbarDirtSlot) bot.setQuickBarSlot(hotbarDirtSlot);
 
+        // คำนวณหาเหลี่ยมบล็อกดินเก่าขนานข้างตัว (currentX - stepX) ที่เท้ากำลังยืนเหยียบสไลด์อยู่จริงเพื่อใช้เป็นจุดเกาะ
         let referencePos = targetPos.offset(-stepX, 0, 0);
-        let directionFace = stepX === 1 ? 5 : 4; 
+        let directionFace = stepX === 1 ? 5 : 4; // Face 5 = East (+X), Face 4 = West (-X)
 
         let refBlock = bot.blockAt(referencePos, true);
         
+        // ถ้าหากแผ่นดินด้านข้างหลุดโหลด Chunk ไม่ทัน ให้หันไปดึงเหลี่ยมบล็อกแกน Z ก่อนหน้าหรือด้านหลังมาเกาะคานแทน
         if (!refBlock || refBlock.name === 'air') {
             referencePos = targetPos.offset(0, 0, -1);
-            directionFace = 3; 
+            directionFace = 3; // Face 3 = South (+Z)
             refBlock = bot.blockAt(referencePos, true);
         }
         if (!refBlock || refBlock.name === 'air') {
             referencePos = targetPos.offset(0, 0, 1);
-            directionFace = 2; 
+            directionFace = 2; // Face 2 = North (-Z)
             refBlock = bot.blockAt(referencePos, true);
         }
 
+        // ⚡ ยิงแพ็คเกจระดับรากแกนเน็ตเวิร์กอัดเข้า Socket ตรง ๆ หน้าบอทจะล็อกนิ่งดิ่งไปข้างหน้า ไม่วืดส่ายคอหลอนแน่นอน
         bot._client.write('block_place', {
-            hand: 0, 
+            hand: 0, // มือหลัก Main Hand
             location: referencePos,
             direction: directionFace,
             cursorX: 0.5,
@@ -373,8 +295,9 @@ async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
             insideBlock: false
         });
 
+        // สวิงซอยสับจังหวะแขน 8ms หลบการจับตา Anti-Cheat
         await bot.swingArm('mainhand');
-        await new Promise(resolve => setTimeout(resolve, 5)); 
+        await new Promise(resolve => setTimeout(resolve, 8));
     } catch (err) {}
 }
 

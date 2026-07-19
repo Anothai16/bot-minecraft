@@ -3,21 +3,17 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
 const path = require('path');
-
-// 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
 const { setupAmoryLogin } = require('./login');
 
 const { GoalBlock } = goals;
 let bot;
 let buildActive = false;
-
-// ตัวแปรสถานะควบคุมการย่องค้างระดับ Hardware System
 let forceSneakLocked = false;
-
-// พิกัดจุดเซฟความจำบอทป้องกันการเอ๋อ
 const progressFilePath = path.join(__dirname, 'progress.txt');
 
-// ฟังก์ชันหาค่าความถึกสูงสุดของจอบแต่ละประเภทในเกม Minecraft
+// ⏳ ฟังก์ชันดีเลย์อิสระ ป้องกัน ReferenceError บึ้มสคริปต์
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 function getMaxDurability(itemName) {
     if (itemName.startsWith('netherite_')) return 2031;
     if (itemName.startsWith('diamond_')) return 1561;
@@ -27,17 +23,15 @@ function getMaxDurability(itemName) {
     return 59; 
 }
 
-// ฟังก์ชันคำนวณหาเปอร์เซ็นต์ความคงทนของจอบในตัวปัจจุบัน
 function getHoeDurabilityPercent() {
     if (!bot || !bot.inventory) return 0;
     const hoe = bot.inventory.items().find(i => i.name.endsWith('_hoe'));
-    if (!hoe) return 0;
+    if (!hoe) return 0; 
     const maxDur = getMaxDurability(hoe.name);
     const usedDur = hoe.durabilityUsed || 0;
     return Math.max(0, Math.floor(((maxDur - usedDur) / maxDur) * 100));
 }
 
-// ฟังก์ชันเช็คจำนวนเมล็ดฟักทองทั้งหมดในตัวบอท (รวมทั้งตัว)
 function getTotalSeedCount() {
     if (!bot || !bot.inventory) return 0;
     return bot.inventory.items()
@@ -45,11 +39,17 @@ function getTotalSeedCount() {
         .reduce((sum, item) => sum + item.count, 0);
 }
 
-// 📊 ฟังก์ชันรายงานข้อมูลจอบและเมล็ดลง Terminal GUI
+function getTotalPumpkinCount() {
+    if (!bot || !bot.inventory) return 0;
+    return bot.inventory.items()
+        .filter(item => item.name === 'pumpkin')
+        .reduce((sum, item) => sum + item.count, 0);
+}
+
 function checkSeedCount() {
     const totalSeeds = getTotalSeedCount();
-    console.log(`👉 SEED_COUNT: ${totalSeeds}`);
-
+    const totalPumpkins = getTotalPumpkinCount();
+    console.log(`👉 SEED_COUNT: ${totalSeeds} | PUMPKIN_COUNT: ${totalPumpkins}`);
     const hoePercent = getHoeDurabilityPercent();
     console.log(`👉 HOE_DURABILITY: ${hoePercent}`);
 }
@@ -59,7 +59,7 @@ function startBot() {
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
         username: 'dpumpkind',
-        version: '1.21.11'
+        version: '1.21.1'
     });
 
     if (bot._client) {
@@ -75,7 +75,7 @@ function startBot() {
     bot.loadPlugin(pathfinder);
 
     bot.once('spawn', () => {
-        console.log('🛰️ บอท [dpumpkind] ออนไลน์สำเร็จ! รอรับคำสั่งพิมพ์ farm จากพี่ครับ...');
+        console.log('🛰️ บอท [dpumpkind] ออนไลน์สำเร็จ! เพิ่มระบบกู้จอบกลับเข้า Hotbar ตลอดเวลาแล้วครับพี่');
         setTimeout(() => {
             checkSeedCount();
             if (bot.inventory) {
@@ -94,9 +94,7 @@ function startBot() {
     bot.on('physicsTick', () => {
         if (buildActive && forceSneakLocked) {
             bot.setControlState('sneak', true);
-            if (bot.controlState.forward) {
-                bot.setControlState('sprint', false); 
-            }
+            if (bot.controlState.forward) bot.setControlState('sprint', false); 
         } else if (buildActive && !forceSneakLocked) {
             bot.setControlState('sneak', false);
         }
@@ -112,14 +110,6 @@ function startBot() {
         console.log(`\n❌❌❌ [💥 SYSTEM ERROR]: โปรแกรมขัดข้องหลุดการเชื่อมต่อ!`);
         buildActive = false;
         forceSneakLocked = false;
-    });
-
-    bot.on('chat', async (username, message) => {
-        if (username === bot.username) return;
-
-        if (message.startsWith('farm')) {
-            await parseAndExecuteFarm(message);
-        }
     });
 
     bot.on('end', () => { 
@@ -142,7 +132,6 @@ function setupMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
-// 🧭 ฟังก์ชันวิเคราะห์อาร์กิวเมนต์ คาดเดาระบบกริดคี่คู่จากพิกัด Z เริ่มต้นอัตโนมัติ
 async function parseAndExecuteFarm(inputStr) {
     const args = inputStr.split(' ');
     let startX = parseInt(args[1]);
@@ -152,59 +141,73 @@ async function parseAndExecuteFarm(inputStr) {
     if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
     if (startX === -2718) startX = -2719;
 
-    let config = {
-        selectSet: null,
-        round2Mode: 'koo', // ค่าเริ่มต้นชั่วคราว
-        round3Mode: 'kee'  // ค่าเริ่มต้นชั่วคราว
-    };
+    let selectSet = null;
+    let totalRounds = 1;
 
-    // 🎯 [หัวใจหลัก]: เช็คว่าพิกัด Z ที่ส่งมาเป็นเลขคี่หรือเลขคู่
-    const isStartZOdd = (startZ % 2 !== 0);
-
-    if (isStartZOdd) {
-        // Z เริ่มต้นเป็นเลขคี่ (เช่น 14543) -> ชุด 2 วิ่งคู่ / ชุด 3 วิ่งคี่
-        config.round2Mode = 'koo';
-        config.round3Mode = 'kee';
-    } else {
-        // Z เริ่มต้นเป็นเลขคู่ (เช่น 14556) -> ชุด 2 วิ่งคี่ / ชุด 3 วิ่งคู่
-        config.round2Mode = 'kee';
-        config.round3Mode = 'koo';
-    }
-
-    // ดักจับเคสการสั่งแยกชุดเดี่ยวๆ เช่น farm -2718 63 14556 2 หรือ farm -2718 63 14543 3
     if (args[4] && !isNaN(parseInt(args[4]))) {
-        config.selectSet = parseInt(args[4]);
+        totalRounds = parseInt(args[4]);
+    }
+    if (args[5] && !isNaN(parseInt(args[5]))) {
+        selectSet = parseInt(args[4]);
+        totalRounds = parseInt(args[5]);
     }
 
     if (bot) {
-        await startCustomPlatformBuilder(startX, startY, startZ, config);
+        await runMultiRoundFarmManager(startX, startY, startZ, selectSet, totalRounds);
     }
 }
 
-// 🧱 ฟังก์ชันหลักคุมขบวนสลับชุด รันแปลงล็อกแกน Z อัตโนมัติตามสเต็ปคำนวณพิกัด
-async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
+async function runMultiRoundFarmManager(startX, targetY, startZ, selectSet, totalRounds) {
     buildActive = true;
-    setupMovements(bot);
+    
+    for (let currentRound = 1; currentRound <= totalRounds; currentRound++) {
+        if (!buildActive) break;
 
-    const targetEndX = -2638;
+        let activeRoundStartZ = startZ + ((currentRound - 1) * 13);
+
+        console.log(`\n🎰 ==================== [ 🎮 FARM ROUND ${currentRound} / ${totalRounds} ] ==================== 🎰`);
+        console.log(`📐 พิกัดเริ่มต้นแกน Z ประจำรอบนี้: ${activeRoundStartZ}`);
+
+        let config = {
+            selectSet: selectSet,
+            round2Mode: (activeRoundStartZ % 2 !== 0) ? 'koo' : 'kee',
+            round3Mode: (activeRoundStartZ % 2 !== 0) ? 'kee' : 'koo'
+        };
+
+        await startCustomPlatformBuilder(startX, targetY, activeRoundStartZ, config);
+        
+        if (buildActive && currentRound < totalRounds) {
+            console.log(`🛰️ จบลูปแผงรอบที่ ${currentRound} กำลังปรับแท่นขยับขึ้นเลนรอบถัดไป...`);
+            await delay(1000);
+        }
+    }
+    
+    if (buildActive) {
+        console.log(`\n🏆 [Mission Complete] ภารกิจรัน Multi-Round ฟาร์มครบทุกแถวเรียบร้อยครับพี่!`);
+    }
+    buildActive = false;
+}
+
+async function startCustomPlatformBuilder(startX, targetY, activeRoundStartZ, config) {
+    setupMovements(bot);
+    const targetEndX = -2639;
     
     let startRound = config.selectSet ? config.selectSet : 1;
     let endRound = config.selectSet ? config.selectSet : 3;
 
-    console.log(`\n============================ [ ระบบออโต้ล็อกเลนฟาร์มความเร็วสูง ] ============================`);
-    console.log(`📊 ตรวจพบพิกัด Z ตั้งต้น: ${startZ} (${startZ % 2 !== 0 ? 'เลขคี่' : 'เลขคู่'})`);
-    console.log(`🤖 แผนการวิ่งอัตโนมัติ -> ชุดที่ 2 ล็อกแกน: [${config.round2Mode.toUpperCase()}] | ชุดที่ 3 ล็อกแกน: [${config.round3Mode.toUpperCase()}]`);
+    console.log(`🤖 แผนการวิ่งอัตโนมัติรอบนี้ -> ชุดที่ 2: [${config.round2Mode.toUpperCase()}] | ชุดที่ 3: [${config.round3Mode.toUpperCase()}]`);
 
     for (let round = startRound; round <= endRound; round++) {
         if (!buildActive) break;
 
         const checkHoe = bot.inventory.items().find(i => i.name.endsWith('_hoe'));
         if (!checkHoe || getHoeDurabilityPercent() <= 1) {
-            console.log('❌ [⚡ STOP FARMING]: ตรวจไม่พบจอบใช้การได้ หรือจอบพังวิกฤต ระงับคิวงานระบบฟาร์มทันที');
+            console.log('❌ [⚡ STOP FARMING]: จอบหมด/พังวิกฤต ระงับคิวงานระบบฟาร์มทันที');
+            buildActive = false;
             break;
         }
 
-        let currentBaseZ = startZ + ((round - 1) * 4);
+        let currentBaseZ = activeRoundStartZ + ((round - 1) * 4);
         const zCandidate1 = currentBaseZ;      
         const zCandidate2 = currentBaseZ + 1;  
 
@@ -212,71 +215,52 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, config) {
         let parallelZ;     
 
         if (round === 1) {
-            // ชุดที่ 1: เดินแนวเริ่มต้นปกติ
             walkZ = zCandidate1;
             parallelZ = zCandidate2;
-            console.log(`\n🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
         } 
         else if (round === 2) {
-            // ทำงานตามโหมดที่ Auto-Detect ได้ของชุดที่ 2
             if (config.round2Mode === 'koo') {
                 walkZ = (zCandidate1 % 2 === 0) ? zCandidate1 : zCandidate2;
             } else {
                 walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
             }
             parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ 2 / 3 - ระบบเลือก Z ${config.round2Mode.toUpperCase()}] -> เดินบน Z: ${walkZ} | ทำงานแนว Z: ${parallelZ}`);
         } 
         else if (round === 3) {
-            // ทำงานตามโหมดที่ Auto-Detect ได้ของชุดที่ 3
             if (config.round3Mode === 'koo') {
                 walkZ = (zCandidate1 % 2 === 0) ? zCandidate1 : zCandidate2;
             } else {
                 walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
             }
             parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ 3 / 3 - ระบบเลือก Z ${config.round3Mode.toUpperCase()}] -> เดินบน Z: ${walkZ} | ทำงานแนว Z: ${parallelZ}`);
         }
 
-        // ====================================================================
-        // ⚡ [สเต็ปที่ 1]: สับสายพานพรวนดินความเร็วสูง (ไปกลับบนเลน walkZ ช่องเดียว)
-        // ====================================================================
-        console.log(`🚜 เริ่มสเต็ป 1: วิ่งสับพรวนดินเลนคู่ขนาน [เท้าล็อกเหยียบ Z: ${walkZ}]`);
-        await runTurboTillEngine(startX, targetEndX, targetY, walkZ, walkZ);
-        
+        console.log(`\n🎬 [ชุดที่ ${round} / 3] -> สายซิ่งควบรวมระนาบ Z: ${walkZ} และ Z: ${parallelZ}`);
+        console.log(`🔬 [CHECK SUPPLIES]: ตรวจสอบเสบียงก่อนออกตัว...`);
+        await autoRefillSeedsFromInventory();
+
+        if (getTotalSeedCount() <= 0 && getTotalPumpkinCount() <= 0) {
+            console.log('❌ [⚡ STOP FARMING]: ทั้งเมล็ดและฟักทองหมดตัวเกลี้ยง! ระงับการทำงานครับพี่');
+            buildActive = false;
+            break;
+        }
+
+        console.log(`🚜 [TURBO-TILL]: เริ่มรันคิวพรวนดินเลนคู่ขนานพร้อมกัน [Z: ${walkZ} & Z: ${parallelZ}]`);
+        await runDualTillEngine(startX, targetEndX, targetY, walkZ, parallelZ);
         if (!buildActive) break;
 
-        await runTurboTillEngine(targetEndX, startX, targetY, walkZ, parallelZ);
-
-        if (!buildActive) break;
-
-        // ====================================================================
-        // ⚡ [สเต็ปที่ 2]: สับเกียร์ย้อนศรกลับมา "ไล่ปักเมล็ดฟักทองเต็มเลนคู่"
-        // ====================================================================
-        if (getTotalSeedCount() > 0) {
-            console.log(`\n🌾 เริ่มสเต็ป 2: วิ่งสับเกียร์ไล่ปลูกเมล็ดฟักทองเลนคู่ [เท้าล็อกเหยียบ Z: ${walkZ}]`);
-            await runTurboPlantEngine(startX, targetEndX, targetY, walkZ, walkZ);
-            
-            if (!buildActive) break;
-
-            await runTurboPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
+        if (getTotalSeedCount() > 0 || getTotalPumpkinCount() > 0) {
+            console.log(`🌾 [TURBO-PLANT]: เริ่มรันคิวปลูกเมล็ดเลนคู่ขนานขากลับพร้อมกัน [Z: ${walkZ} & Z: ${parallelZ}]`);
+            await runDualPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
         } else {
-            console.log('⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน');
+            console.log('⚠️ [Warning] เมล็ดฟักทองหมดคลัง! ข้ามไปขึ้นชุดถัดไปด่วน');
         }
 
         if (!buildActive) break;
-
-        console.log(`🚀 [CHAINING REPORT] จบกระบวนการชุดที่ ${round} สำเร็จ!`);
-        if (round < endRound) {
-            await new Promise(resolve => setTimeout(resolve, 600));
-        }
+        console.log(`🚀 [REPORT] จบกระบวนการชุดที่ ${round} สำเร็จอย่างรวดเร็ว!`);
     }
-
-    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้า Auto-Z Detection เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
-    buildActive = false;
 }
 
-// 📦 ฟังก์ชันโอนย้ายเมล็ดฟักทองจาก Inventory ข้างบน ลงมาเติมแถว Hotbar ล่างออโต้
 async function autoRefillSeedsFromInventory() {
     if (!bot || !bot.inventory) return;
 
@@ -290,65 +274,171 @@ async function autoRefillSeedsFromInventory() {
     }
 
     if (!hasSeedInHotbar) {
-        const backupItem = bot.inventory.items().find(item => item.name === 'pumpkin_seeds' && item.slot >= 9 && item.slot <= 35);
-        
-        if (backupItem) {
-            console.log(`\n📦 [คลังสแกนเจอเมล็ดค้างกระเป๋า]: ตรวจพบเมล็ดฟักทองช่องที่ ${backupItem.slot} สั่งหยุดเท้าเติมของลง Hotbar ด่วน...`);
+        const backupSeed = bot.inventory.items().find(item => item.name === 'pumpkin_seeds' && item.slot >= 9 && item.slot <= 35);
+        if (backupSeed) {
+            console.log(`📦 พบเมล็ดฟักทองสำรองช่องกระเป๋าที่ ${backupSeed.slot} ดึงลงมาใส่ Hotbar...`);
             bot.clearControlStates();
-            await new Promise(res => setTimeout(res, 150));
+            await delay(150);
+            try {
+                await bot.moveSlotItem(backupSeed.slot, 36); 
+                await delay(350); 
+            } catch (err) {}
+            return;
+        }
+    }
+
+    if (getTotalSeedCount() === 0) {
+        const craftPumpkinStack = bot.inventory.items().find(item => item.name === 'pumpkin');
+        
+        if (craftPumpkinStack) {
+            console.log(`🔨 [CRAFT SYSTEM]: เมล็ดหมดตัว! เริ่มกระบวนการสลับสล็อตคราฟต์สูตร Shift-Click...`);
+            bot.clearControlStates();
+            await delay(200);
+
+            let emptySlots = [];
+            for (let invSlot = 9; invSlot <= 35; invSlot++) {
+                if (!bot.inventory.slots[invSlot]) emptySlots.push(invSlot);
+            }
+
+            if (emptySlots.length < 4) {
+                console.log(`🗑️ [SWAP-GUARD]: โยนฟักทองทิ้งล่วงหน้า 4 Stack เปิดสล็อตจองพื้นที่เมล็ดใหม่...`);
+                let tossedCount = 0;
+                for (let i = 0; i < 6; i++) {
+                    const pumpkinToToss = bot.inventory.items().find(item => item.name === 'pumpkin' && item.slot !== craftPumpkinStack.slot);
+                    if (pumpkinToToss && tossedCount < 4) {
+                        try {
+                            await bot.tossStack(pumpkinToToss);
+                            tossedCount++;
+                            await delay(250);
+                        } catch (err) {}
+                    }
+                }
+                
+                emptySlots = [];
+                for (let invSlot = 9; invSlot <= 35; invSlot++) {
+                    if (!bot.inventory.slots[invSlot]) emptySlots.push(invSlot);
+                }
+            }
 
             try {
-                await bot.moveSlotItem(backupItem.slot, 36); 
-                await new Promise(res => setTimeout(res, 350)); 
-            } catch (err) {}
+                console.log(`✨ [SHIFT-CRAFT]: กำลังนำฟักทอง 64 ลูกวางลงช่องคราฟต์...`);
+                await bot.clickWindow(craftPumpkinStack.slot, 0, 0); await delay(150); 
+                await bot.clickWindow(1, 0, 0); await delay(150); 
+
+                console.log(`✨ [SHIFT-CRAFT]: ส่งแพ็คเก็ต Shift-Click ช่องผลลัพธ์ ดึงเมล็ด 4 Stack รวดเดียวจบ!`);
+                await bot.clickWindow(0, 0, 1); await delay(250);
+
+                if (bot.inventory.selectedItem) {
+                    const emptyInv = bot.inventory.firstEmptyInventorySlot();
+                    if (emptyInv !== null) await bot.clickWindow(emptyInv, 0, 0);
+                    await delay(150);
+                }
+
+                const newSeeds = bot.inventory.items().find(item => item.name === 'pumpkin_seeds');
+                if (newSeeds && newSeeds.slot !== 36) {
+                    await bot.moveSlotItem(newSeeds.slot, 36); await delay(200);
+                }
+            } catch (err) {
+                console.log(`❌ บั๊กระบบเมธอด Shift-Craft: ${err.message}`);
+            }
         }
     }
 }
 
-// ⚡ ENGINE เฟส 1: วิ่งตรงพรวนดินความเร็วสูง (เท้าล็อกอยู่แกน walkZ แขนเอื้อมไปสับแกน workZ)
-async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
+// 🎯 🔥 [THE HOE RESCUE ENGINE]: ฟังก์ชันกู้จอบอัจฉริยะ ลากจอบจากช่องกระเป๋าลึกกลับคืนสู่ Hotbar สล็อต 1 ชัวร์ร้อยเปอร์เซ็นต์
+async function pullHoeToHotbarSafely() {
+    if (!bot || !bot.inventory) return false;
+    
+    // 1. ตรวจสอบว่ามีจอบพร้อมใช้งานใน Hotbar (ช่อง 36 ถึง 44) หรือยัง
+    for (let slot = 0; slot < 9; slot++) {
+        const item = bot.inventory.slots[36 + slot];
+        if (item && item.name.endsWith('_hoe')) {
+            if (bot.quickBarSlot !== slot) {
+                bot.setQuickBarSlot(slot);
+                await delay(50);
+            }
+            return true;
+        }
+    }
+
+    // 2. 🚨 [RESCUE IN ACTION]: ถ้าใน Hotbar ไม่มีเลย แสดงว่าโดนเด้งหลุดไปสล็อตกระเป๋าหลัก (9-35)
+    const deepHoe = bot.inventory.items().find(item => item.name.endsWith('_hoe') && item.slot >= 9 && item.slot <= 35);
+    if (deepHoe) {
+        console.log(`🛡️ [HOE-RESCUE]: ตรวจพบจอบโดนดีดหลุดไปสล็อตลึกที่ ${deepHoe.slot}! กำลังกู้ลากกลับลงมาที่ Hotbar ช่อง 1...`);
+        bot.clearControlStates();
+        await delay(100);
+        try {
+            // ย้ายจอบจากสล็อตที่โดนดีดหลุด กลับลงมานอนประจำการที่ Hotbar ช่อง 1 (สล็อตไอดี 37)
+            await bot.moveSlotItem(deepHoe.slot, 37);
+            await delay(250);
+            bot.setQuickBarSlot(1); // สั่งสับเปลี่ยนไอเทมมาถือช่อง 1 ทันที
+            await delay(50);
+            return true;
+        } catch (err) {
+            console.log(`❌ กู้จอบล้มเหลว: ${err.message}`);
+        }
+    }
+    return false;
+}
+
+// 🚜 [DUAL TILL ENGINE]: พรวนดินคู่ขนานขาไป
+async function runDualTillEngine(fromX, toX, targetY, z1, z2) {
     const stepX = fromX <= toX ? 1 : -1;
     let currentX = fromX;
-
     if (bot) bot.clearControlStates();
 
     while (buildActive) {
-        const hoePercent = getHoeDurabilityPercent();
-        if (hoePercent <= 1) break;
+        if (getHoeDurabilityPercent() <= 1) break;
 
-        let hotbarHoeSlot = -1;
-        for (let slot = 0; slot < 9; slot++) {
-            const itemInSlot = bot.inventory.slots[36 + slot];
-            if (itemInSlot && itemInSlot.name.endsWith('_hoe')) {
-                hotbarHoeSlot = slot;
-                break;
-            }
-        }
-        if (hotbarHoeSlot !== -1 && bot.quickBarSlot !== hotbarHoeSlot) {
-            bot.setQuickBarSlot(hotbarHoeSlot);
-        }
-
-        const blockPos = new Vec3(currentX, targetY, workZ);
-        const standPos = new Vec3(currentX, targetY + 1, walkZ);
-        let currentBlockState = bot.blockAt(blockPos, true);
-
+        const standPos = new Vec3(currentX, targetY + 1, z1);
         if (bot && bot.entity) {
             const distance = bot.entity.position.distanceTo(standPos);
             if (distance > 0.8) {
                 await bot.lookAt(standPos.offset(0.5, 0, 0.5), true);
                 bot.setControlState('forward', true);
                 while (bot.entity.position.distanceTo(standPos) > 1.2 && buildActive) {
-                    await new Promise(res => setTimeout(res, 20));
+                    await delay(20);
                 }
             }
         }
 
-        if (currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block')) {
-            try {
-                await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
-                await bot.activateBlock(currentBlockState);
-                await new Promise(res => setTimeout(res, 40));
-            } catch (e) {}
+        const plantCheckPos1 = new Vec3(currentX, targetY + 1, z1);
+        const plantCheckPos2 = new Vec3(currentX, targetY + 1, z2);
+        let plantBlock1 = bot.blockAt(plantCheckPos1, true);
+        let plantBlock2 = bot.blockAt(plantCheckPos2, true);
+
+        // เลน Z1
+        const blockPos1 = new Vec3(currentX, targetY, z1);
+        let blockState1 = bot.blockAt(blockPos1, true);
+        if (blockState1 && (blockState1.name === 'dirt' || blockState1.name === 'grass_block')) {
+            if (!plantBlock1 || (!plantBlock1.name.includes('stem') && plantBlock1.name !== 'pumpkin_seeds')) {
+                // 🎯 บังคับกู้จอบกลับเข้ามือ Hotbar ทุกครั้งก่อนลงมือสับหน้าดิน
+                const hoeReady = await pullHoeToHotbarSafely();
+                if (hoeReady) {
+                    try {
+                        await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                        await bot.activateBlock(blockState1);
+                        await delay(25);
+                    } catch (e) {}
+                }
+            }
+        }
+
+        // เลน Z2
+        const blockPos2 = new Vec3(currentX, targetY, z2);
+        let blockState2 = bot.blockAt(blockPos2, true);
+        if (blockState2 && (blockState2.name === 'dirt' || blockState2.name === 'grass_block')) {
+            if (!plantBlock2 || (!plantBlock2.name.includes('stem') && plantBlock2.name !== 'pumpkin_seeds')) {
+                // 🎯 บังคับกู้จอบกลับเข้ามือ Hotbar ทุกครั้งก่อนลงมือสับหน้าดิน
+                const hoeReady = await pullHoeToHotbarSafely();
+                if (hoeReady) {
+                    try {
+                        await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                        await bot.activateBlock(blockState2);
+                        await delay(25);
+                    } catch (e) {}
+                }
+            }
         }
 
         if (currentX === toX) break;
@@ -357,79 +447,90 @@ async function runTurboTillEngine(fromX, toX, targetY, walkZ, workZ) {
     if (bot) bot.clearControlStates();
 }
 
-// ⚡ ENGINE เฟส 2: วิ่งตรงไล่ปักเมล็ดความเร็วสูง (เท้าล็อกอยู่แกน walkZ แขนสะบัดไปปลูกแกน workZ)
-async function runTurboPlantEngine(fromX, toX, targetY, walkZ, workZ) {
+// 🌾 [DUAL PLANT ENGINE]: ปลูกเมล็ดคู่ขนานขากลับ
+async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
     const stepX = fromX <= toX ? 1 : -1;
     let currentX = fromX;
-
     if (bot) bot.clearControlStates();
 
     while (buildActive) {
-        if (getTotalSeedCount() <= 0) break;
-
         await autoRefillSeedsFromInventory();
+        if (getTotalSeedCount() <= 0 && getTotalPumpkinCount() <= 0) break;
 
-        let hotbarSeedSlot = -1;
-        let hotbarHoeSlot = -1;
-        
-        for (let slot = 0; slot < 9; slot++) {
-            const item = bot.inventory.slots[36 + slot];
-            if (item) {
-                if (item.name === 'pumpkin_seeds' && item.count > 0) hotbarSeedSlot = slot;
-                if (item.name.endsWith('_hoe')) hotbarHoeSlot = slot;
-            }
-        }
-
-        if (hotbarSeedSlot !== -1 && bot.quickBarSlot !== hotbarSeedSlot) {
-            bot.setQuickBarSlot(hotbarSeedSlot);
-            await new Promise(res => setTimeout(res, 30)); 
-        }
-
-        const blockPos = new Vec3(currentX, targetY, workZ);
-        const standPos = new Vec3(currentX, targetY + 1, walkZ);
-        let currentBlockState = bot.blockAt(blockPos, true);
-        const blockName = currentBlockState ? currentBlockState.name : 'null';
-
-        if (bot && bot.entity) {
-            const botEyePos = bot.entity.position.offset(0, bot.entity.height, 0);
-            const dist = botEyePos.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5))).toFixed(2);
-            const heldItemName = bot.heldItem ? `${bot.heldItem.name} (${bot.heldItem.count} เมล็ด)` : 'empty-hand';
-            console.log(`[RADAR DEBUGGER] พิกัดเดิน X:${currentX} Z:${walkZ} | บล็อกงานแกน Z:${workZ}: ${blockName} | ระยะ: ${dist}ม.`);
-        }
-
+        const standPos = new Vec3(currentX, targetY + 1, z1);
         if (bot && bot.entity) {
             const distance = bot.entity.position.distanceTo(standPos);
             if (distance > 0.8) {
                 await bot.lookAt(standPos.offset(0.5, 0, 0.5), true);
                 bot.setControlState('forward', true);
                 while (bot.entity.position.distanceTo(standPos) > 1.2 && buildActive) {
-                    await new Promise(res => setTimeout(res, 20));
+                    await delay(20);
                 }
             }
         }
 
-        if (currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block')) {
-            if (hotbarHoeSlot !== -1) {
-                bot.setQuickBarSlot(hotbarHoeSlot);
-                await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
-                await bot.activateBlock(currentBlockState);
-                await new Promise(res => setTimeout(res, 50));
-                currentBlockState = bot.blockAt(blockPos, true);
-                if (hotbarSeedSlot !== -1) bot.setQuickBarSlot(hotbarSeedSlot);
+        let hotbarSeedSlot = -1;
+        for (let slot = 0; slot < 9; slot++) {
+            const item = bot.inventory.slots[36 + slot];
+            if (item && item.name === 'pumpkin_seeds' && item.count > 0) { hotbarSeedSlot = slot; break; }
+        }
+
+        // ==================== เลน Z1 ====================
+        const blockPos1 = new Vec3(currentX, targetY, z1);
+        const topPos1 = new Vec3(currentX, targetY + 1, z1);
+        let blockState1 = bot.blockAt(blockPos1, true);
+        let topState1 = bot.blockAt(topPos1, true);
+
+        if (topState1 && (topState1.name.includes('stem') || topState1.name === 'pumpkin_seeds')) {
+            // มีเมล็ดแล้ว ข้าม
+        } else {
+            if (blockState1 && (blockState1.name === 'dirt' || blockState1.name === 'grass_block')) {
+                // 🎯 ดักกู้จอบเข้าสล็อต Hotbar ชัวร์ ๆ
+                const hoeReady = await pullHoeToHotbarSafely();
+                if (hoeReady) {
+                    await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                    await bot.activateBlock(blockState1); await delay(30);
+                    blockState1 = bot.blockAt(blockPos1, true);
+                }
+            }
+            if (blockState1 && blockState1.name === 'farmland') {
+                try {
+                    if (hotbarSeedSlot !== -1) bot.setQuickBarSlot(hotbarSeedSlot);
+                    forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
+                    await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                    await bot.placeBlock(blockState1, new Vec3(0, 1, 0));
+                    await delay(35);
+                } catch (err) {}
             }
         }
 
-        if (currentBlockState && currentBlockState.name === 'farmland') {
-            try {
-                if (hotbarSeedSlot !== -1 && bot.quickBarSlot !== hotbarSeedSlot) {
-                    bot.setQuickBarSlot(hotbarSeedSlot);
+        // ==================== เลน Z2 ====================
+        const blockPos2 = new Vec3(currentX, targetY, z2);
+        const topPos2 = new Vec3(currentX, targetY + 1, z2);
+        let blockState2 = bot.blockAt(blockPos2, true);
+        let topState2 = bot.blockAt(topPos2, true);
+
+        if (topState2 && (topState2.name.includes('stem') || topState2.name === 'pumpkin_seeds')) {
+            // มีเมล็ดแล้ว ข้าม
+        } else {
+            if (blockState2 && (blockState2.name === 'dirt' || blockState2.name === 'grass_block')) {
+                // 🎯 ดักกู้จอบเข้าสล็อต Hotbar ชัวร์ ๆ
+                const hoeReady = await pullHoeToHotbarSafely();
+                if (hoeReady) {
+                    await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                    await bot.activateBlock(blockState2); await delay(30);
+                    blockState2 = bot.blockAt(blockPos2, true);
                 }
-                forceSneakLocked = true;
-                if (bot) bot.setControlState('sneak', true);
-                await bot.lookAt(blockPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
-                await bot.placeBlock(currentBlockState, new Vec3(0, 1, 0));
-                await new Promise(resolve => setTimeout(resolve, 50));
-            } catch (err) {}
+            }
+            if (blockState2 && blockState2.name === 'farmland') {
+                try {
+                    if (hotbarSeedSlot !== -1) bot.setQuickBarSlot(hotbarSeedSlot);
+                    forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
+                    await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                    await bot.placeBlock(blockState2, new Vec3(0, 1, 0));
+                    await delay(35);
+                } catch (err) {}
+            }
         }
 
         forceSneakLocked = false;
@@ -448,27 +549,25 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 
 rl.on('line', async (line) => {
     const input = line.trim();
-    
-    if (input === 'tpa') {
-        if (bot && bot.entity) {
-            bot.chat('/tpa DukDikauai');
-        }
-        return;
+    if (input === 'c') {
+        buildActive = false; forceSneakLocked = false;
+        if (bot) bot.clearControlStates();
+        console.log('🛑 สั่งหยุดกระบวนการฟาร์มชั่วคราว!'); return;
     }
-
+    if (input === 'tpa') {
+        if (bot && bot.entity) bot.chat('/tpa DukDikauai'); return;
+    }
     if (input === 'drop') {
         if (!bot || !bot.inventory) return;
         const currentHoe = bot.inventory.items().find(i => i.name.endsWith('_hoe'));
         if (currentHoe) {
             try {
-                await bot.equip(currentHoe, 'hand');
-                await new Promise(r => setTimeout(r, 200));
+                await bot.equip(currentHoe, 'hand'); await new Promise(r => setTimeout(r, 200));
                 await bot.tossStack(currentHoe);
             } catch (err) {}
         }
         return;
     }
-
     if (input.startsWith('farm')) {
         await parseAndExecuteFarm(input);
     }

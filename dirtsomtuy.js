@@ -3,21 +3,14 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
 const path = require('path');
-
-// 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
 const { setupAmoryLogin } = require('./login');
 
-const { GoalBlock } = goals;
 let bot;
 let buildActive = false;
-
-// ตัวแปรสถานะควบคุมการย่องค้างระดับ Hardware System
-let forceSneakLocked = false;
-
-// ตัวแปรพิกัดไฟล์ความจำเฉพาะตัวบอท
 let progressFilePath = '';
 
-// 💾 ฟังก์ชันบันทึกพิกัดลงไฟล์ TXT ประจำตัวบอท
+let lastPlacedBlockX = null; 
+
 function saveProgress(startX, targetY, startZ, currentX, forwardZ) {
     if (!progressFilePath) return;
     try {
@@ -26,7 +19,6 @@ function saveProgress(startX, targetY, startZ, currentX, forwardZ) {
     } catch (e) {}
 }
 
-// 📖 ฟังก์ชันอ่านพิกัดจากไฟล์ TXT ประจำตัวบอท
 function loadProgress() {
     if (!progressFilePath || !fs.existsSync(progressFilePath)) return null;
     try {
@@ -40,30 +32,59 @@ function loadProgress() {
             currentX: parseInt(currentX),
             forwardZ: parseInt(forwardZStr) === 1
         };
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
-// 🧹 ฟังก์ชันล้างประวัติเมื่อบอททำงานเสร็จสิ้นสมบูรณ์
 function clearProgress() {
-    try {
-        if (progressFilePath && fs.existsSync(progressFilePath)) {
-            fs.unlinkSync(progressFilePath);
-        }
-    } catch (e) {}
+    try { if (progressFilePath && fs.existsSync(progressFilePath)) fs.unlinkSync(progressFilePath); } catch (e) {}
 }
 
-// ฟังก์ชันคำนวณดินทั้งหมดในตัวส่งกลับเป็นตัวเลข
 function getTotalDirtCount() {
     if (!bot || !bot.inventory) return 0;
     const dirtTotal = bot.inventory.items()
         .filter(item => item.name === 'dirt' || item.name === 'grass_block' || item.name === 'coarse_dirt')
         .reduce((sum, item) => sum + item.count, 0);
-    
     const held = bot.heldItem;
     const heldCount = (held && (held.name === 'dirt' || held.name === 'grass_block' || held.name === 'coarse_dirt')) ? held.count : 0;
     return dirtTotal + heldCount;
+}
+
+function getTotalPorkchopCount() {
+    if (!bot || !bot.inventory) return 0;
+    return bot.inventory.items()
+        .filter(item => item.name === 'cooked_porkchop')
+        .reduce((sum, item) => sum + item.count, 0);
+}
+
+async function autoRefillDirtFromInventory() {
+    if (!bot || !bot.inventory) return;
+
+    let hasDirtInHotbar = false;
+    for (let slot = 0; slot < 9; slot++) {
+        const item = bot.inventory.slots[36 + slot];
+        if (item && (item.name === 'dirt' || item.name === 'grass_block' || item.name === 'coarse_dirt') && item.count > 0) {
+            hasDirtInHotbar = true;
+            break;
+        }
+    }
+
+    if (!hasDirtInHotbar) {
+        const backupDirt = bot.inventory.items().find(item => 
+            (item.name === 'dirt' || item.name === 'grass_block' || item.name === 'coarse_dirt') && 
+            item.slot >= 9 && item.slot <= 35
+        );
+        
+        if (backupDirt) {
+            console.log(`📦 ดินใน Hotbar หมด ดึงดินช่องที่ ${backupDirt.slot} เติมลงช่องแรก...`);
+            bot.clearControlStates();
+            await new Promise(res => setTimeout(res, 50));
+
+            try {
+                await bot.moveSlotItem(backupDirt.slot, 36); 
+                await new Promise(res => setTimeout(res, 150)); 
+            } catch (err) {}
+        }
+    }
 }
 
 function startBot() {
@@ -72,7 +93,7 @@ function startBot() {
         host: 'play.amorycraft.com',
         username: 'dirtsomtuy',
         version: '1.21.11',
-        viewDistance: 'tiny' // ⚡ จำกัดระยะสายตาบอทประชิดตัวเพื่อลด CPU คอมพี่ลงฮวบๆ
+        viewDistance: 'tiny'
     });
 
     if (bot._client) {
@@ -89,40 +110,22 @@ function startBot() {
 
     bot.once('spawn', () => {
         progressFilePath = path.join(__dirname, `progress_${bot.username}.txt`);
-        console.log(`🛰️ บอท [${bot.username}] ออนไลน์สำเร็จ! แยกไฟล์เซฟแต้มไปที่: progress_${bot.username}.txt`);
+        console.log(`🛰️ บอท [${bot.username}] ออนไลน์สำเร็จ!`);
+        console.log(`👉 พิมพ์ 'build พิกัด' หรือ 'tpa' ใน Terminal ด้านล่างได้เลยครับพี่`);
     });
 
     let hasRecovered = false;
     bot.on('windowOpen', async (window) => {
         if (hasRecovered) return;
         hasRecovered = true;
-
         setTimeout(async () => {
             if (!progressFilePath) progressFilePath = path.join(__dirname, `progress_${bot.username}.txt`);
-            
             const savedData = loadProgress();
-            if (savedData) {
-                const currentDirt = getTotalDirtCount();
-                if (currentDirt <= 0) {
-                    clearProgress();
-                    buildActive = false;
-                    return;
-                }
+            if (savedData && getTotalDirtCount() > 0) {
+                console.log('🔄 [AUTO RECOVERY]: ตรวจพบจังหวะหลุดออโต้ สั่งรันต่อจากไฟล์เซฟความจำเดิมทันที...');
                 await startCustomPlatformBuilder(savedData.startX, savedData.targetY, savedData.startZ, savedData);
             }
         }, 12000);
-    });
-
-    bot.on('physicsTick', () => {
-        if (!bot || !bot.entity) return;
-        if (buildActive && forceSneakLocked) {
-            bot.setControlState('sneak', true);
-            if (bot.controlState.forward) {
-                bot.setControlState('sprint', false);
-            }
-        } else if (buildActive && !forceSneakLocked) {
-            bot.setControlState('sneak', false);
-        }
     });
 
     bot.on('death', () => {
@@ -130,147 +133,207 @@ function startBot() {
         setTimeout(() => { try { bot.respawn(); } catch(e){} }, 2000);
     });
 
-    // 🎯 ดักจับรายละเอียดใบสั่งเตะจริงจากเซิร์ฟเวอร์มาโชว์ใน Log ไม่ให้โปรแกรมคราสดับ
     bot.on('kicked', (reason) => { 
         buildActive = false;
-        let kickMessage = reason;
-        try {
-            if (typeof reason === 'object') {
-                kickMessage = reason.text || JSON.stringify(reason);
-            }
-        } catch (e) {}
-        console.log(`\n🚨🚨🚨 [⚠️ DETECTED KICK - ${bot.username}]: บอทโดนเซิร์ฟเวอร์เตะออก!!`);
-        console.log(`📝 เหตุผลการโดนเตะจริงหน้างาน: "\x1b[31m${kickMessage}\x1b[0m"`);
+        console.log(`\n🚨 บอทโดนเซิร์ฟเวอร์เตะออก!!`);
     });
     
-    bot.on('error', (err) => { 
-        buildActive = false;
-        console.log(`\n❌❌❌ [💥 SYSTEM ERROR]: ข้อผิดพลาดสัญญาณเครือข่าย Socket: ${err.code || err.message}`);
-    });
+    bot.on('error', (err) => { buildActive = false; });
 
-    // 🎯 ระบบ Reconnect สุ่มเวลาตื่นระหว่าง 15-35 วินาที กระจายคิวเน็ตเวิร์กบ้านพี่ไม่ให้ชนหลุดหมู่
     bot.on('end', () => { 
         buildActive = false; 
-        forceSneakLocked = false;
-        if (bot) { try { bot.clearControlStates(); } catch(e){} }
-        
-        const randomReconnectDelay = Math.floor(Math.random() * (35000 - 15000 + 1)) + 15000;
-        console.log(`🔌 การเชื่อมต่อสิ้นสุดลง [${bot.username}] กำลังเตรียมออโต้รีคอนเน็กเข้าใหม่ใน ${(randomReconnectDelay/1000).toFixed(1)} วินาที...`);
-        
+        const randomReconnectDelay = Math.floor(Math.random() * (20000 - 10000 + 1)) + 10000;
         setTimeout(startBot, randomReconnectDelay); 
     });
-
-    bot.on('chat', async (username, message) => {
-        if (username === bot.username) return;
-        if (message.startsWith('build')) {
-            const args = message.split(' ');
-            const startX = parseInt(args[1]);
-            const startY = parseInt(args[2]);
-            const startZ = parseInt(args[3]);
-            if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
-            clearProgress();
-            await startCustomPlatformBuilder(startX, startY, startZ);
-        }
-    });
 }
 
-function setupMovements(botInstance) {
-    const registry = botInstance.registry;
-    const movements = new Movements(botInstance, registry);
-    movements.allowSprinting = false; 
-    movements.allowParkour = false;
-    movements.canDig = true;
-    movements.allow1by1towers = false;
-    movements.maxDropDown = 1;
-    movements.allowFreeMotion = false;
-    botInstance.pathfinder.setMovements(movements);
+async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryData = null) {
+    await startCustomPlatformBuilder(startX, targetY, startZ, recoveryData);
 }
 
-// 🧱 ฟังก์ชันหลักรันแปลนปูเต็มแผงทึบหนา 13 บล็อกงูเลื้อย (ไม่มีเว้นรู)
 async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData = null) {
     buildActive = true;
-    setupMovements(bot);
-
-    const endX = -2638;
-    const stepX = startX <= endX ? 1 : -1;
     
+    const endX = -2637;
+    const stepX = startX <= endX ? 1 : -1;
     let currentX = recoveryData ? recoveryData.currentX : startX;
-    let forwardZ = recoveryData ? recoveryData.forwardZ : true;
+    
+    let forwardZ = true;
+    if (recoveryData) {
+        const distToStartSide = Math.abs(bot.entity.position.z - startZ);
+        const distToEndSide = Math.abs(bot.entity.position.z - (startZ + 64));
+        if (distToEndSide < distToStartSide) {
+            forwardZ = false;
+        }
+    } else if (recoveryData) {
+        forwardZ = recoveryData.forwardZ;
+    }
 
-    console.log(`\n================== [ 🚀เริ่มเดินสายพานปูดินเต็มแผงทึบความเร็วสูง บอท: ${bot.username} ] ==================`);
+    console.log(`\n⚡⚡⚡ [ ENGINE MODE: CLOSE-CONTACT TIGHT-3 PLACER ] ⚡⚡⚡`);
 
-    let isFirstLine = true;
     const realWorldStartX = recoveryData ? recoveryData.startX : startX;
 
     while (buildActive && bot && bot.entity) {
         if (getTotalDirtCount() <= 0) {
-            console.log(`❌ [⚡ STOP BUILDING]: ดินหมดคลัง เคลียร์งานหยุดเท้าทันที`);
+            console.log(`❌ ดินหมดคลัง! หยุดระบบ`);
             clearProgress();
             buildActive = false;
             break;
         }
 
-        // 🎯 กลับมาปูเต็มแผงทึบ 13 บล็อกเหมือนเดิมเป๊ะๆ[cite: 1]
         let zQueue = [];
-        for (let zOffset = 0; zOffset < 13; zOffset++) {
+        for (let zOffset = 0; zOffset < 65; zOffset++) {
             zQueue.push(startZ + zOffset);
         }
         if (!forwardZ) zQueue.reverse();
 
         saveProgress(realWorldStartX, targetY, startZ, currentX, forwardZ);
 
-        if (isFirstLine && !recoveryData) {
-            currentX = startX - stepX;
-            isFirstLine = false;
+        const targetEndZ = forwardZ ? (startZ + 64) : startZ;
+
+        // บังคับให้ขาบอทเดินสไลด์จิกตรงพิกัดแกนบดเนื้อดินเลนหลัก ไม่ปล่อยให้ตัวลอยห่าง
+        const safeWalkDestination = new Vec3(currentX, targetY + 1, targetEndZ);
+
+        await autoRefillDirtFromInventory();
+        let initSlot = -1;
+        for (let slot = 0; slot < 9; slot++) {
+            const item = bot.inventory.slots[36 + slot];
+            if (item && (item.name === 'dirt' || item.name === 'grass_block' || item.name === 'coarse_dirt')) {
+                initSlot = slot;
+                break;
+            }
+        }
+        if (initSlot !== -1 && bot.quickBarSlot !== initSlot) {
+            bot.setQuickBarSlot(initSlot);
+            await new Promise(res => setTimeout(res, 35));
         }
 
-        for (let currentZ of zQueue) {
-            if (!buildActive || !bot || !bot.entity) break;
+        bot.clearControlStates();
+        await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
+        
+        bot.setControlState('forward', true); 
+        bot.setControlState('sprint', true);
 
-            const blockPos = new Vec3(currentX, targetY, currentZ);
-            let currentBlockState = bot.blockAt(blockPos, true);
-            const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt' || currentBlockState.name === 'farmland');
-
-            if (isAlreadyPaved) continue;
-
-            if (bot && bot.entity) {
-                const safePavedX = currentX - stepX;
-                const safeGoalBlock = new Vec3(safePavedX, targetY + 1, currentZ);
-                
-                try { 
-                    setupMovements(bot);
-                    await bot.pathfinder.goto(new GoalBlock(safeGoalBlock.x, safeGoalBlock.y, safeGoalBlock.z));
-                } catch(e) {}
+        // [BURST ENGINE LOOP]
+        while (buildActive && bot && bot.entity) {
+            const currentZDist = Math.abs(bot.entity.position.z - targetEndZ);
+            if (currentZDist < 0.8) {
+                bot.clearControlStates();
+                break; 
             }
 
-            if (bot) bot.clearControlStates();
-            await placeFarmDirtHotbarOnly(blockPos, stepX, targetY + 1, currentZ);
+            const foodLevel = bot.food;
+            const porkCount = getTotalPorkchopCount();
+
+            if (foodLevel <= 12 && porkCount > 0) {
+                await executionEaterSequence(safeWalkDestination, initSlot);
+            } 
+            else if (foodLevel <= 3 && porkCount === 0) {
+                if (bot.controlState.sprint) {
+                    console.log(`⚠️ [WARNING]: เสบียงเนื้อหมูหมดคลัง! บังคับตัดความเร็วกลับเข้าสู่ "โหมดเดินปกติ"`);
+                    bot.setControlState('sprint', false); 
+                }
+            } else {
+                if (buildActive && !bot.controlState.sprint && foodLevel > 3) {
+                    bot.setControlState('sprint', true);
+                }
+            }
+
+            await autoRefillDirtFromInventory();
+
+            // ⚡ [🎯 CRITICAL FIX - TIGHT 3-ROW POCKET MATRIX]:
+            // หักล้างการยิงล่วงหน้าลอยฟ้าทิ้ง เปลี่ยนมาล็อกพิกัด 3 ช่องโอบล้อมรอบตัวละครพอดีเอื้อมมือ
+            // [ บล็อกซ้ายมือตัวละคร (เลนเก่า), บล็อกตรงพิกัดเท้าเหยียบ, บล็อกขวามือตัวละคร (เลนขยับใหม่) ]
+            let xTargets = [currentX - stepX, currentX, currentX + stepX];
+
+            for (let targetXCoord of xTargets) {
+                if (stepX === 1 && targetXCoord > endX) continue;
+                if (stepX === -1 && targetXCoord < endX) continue;
+
+                for (let currentZ of zQueue) {
+                    const blockPos = new Vec3(targetXCoord, targetY, currentZ);
+                    const distToBlock = bot.entity.position.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5)));
+                    
+                    // บีบระยะเอื้อมมือให้กระชับเข้าหาลำตัวไม่เกิน 4.0 บล็อก เพื่อดึงตัวบอทให้เดินมาชิด ๆ เลนจริง
+                    if (distToBlock <= 4.0) { 
+                        let currentBlockState = bot.blockAt(blockPos, true);
+                        const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt');
+                        
+                        if (!isAlreadyPaved) {
+                            await injectPlaceDirtNetworkRaw(blockPos, stepX);
+                        }
+                    }
+                }
+            }
+
+            await new Promise(res => setTimeout(res, 6)); 
+            
+            if (buildActive && !bot.controlState.forward) {
+                await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
+                bot.setControlState('forward', true);
+            }
         }
 
-        if (currentX === endX) break;
+        if (currentX === endX) {
+            console.log('🏆 ปูดินเต็มแผงทึบครบ 5 ชุดสุดพิกัดเรียบร้อยครับพี่!');
+            clearProgress();
+            break;
+        }
         currentX += stepX;
-        forwardZ = !forwardZ;
+        forwardZ = !forwardZ; 
     }
 
-    if (bot && bot.pathfinder) {
-        try { bot.pathfinder.stop(); } catch(e) {}
-        try { bot.clearControlStates(); } catch(e) {}
-    }
+    if (bot) bot.clearControlStates();
     buildActive = false;
 }
 
-async function placeFarmDirtHotbarOnly(targetPos, stepX, standY, standZ) {
-    if (!bot || !bot.entity) return;
+async function executionEaterSequence(safeWalkDestination, initSlot) {
+    console.log(` └─🍖 [AUTO FEEDING]: หลอดอาหารเหลือ ${bot.food} เริ่มกระบวนการล็อกคอกินหมูสุกจนอิ่ม...`);
+    bot.setControlState('sprint', false);
+    bot.clearControlStates();
+    await new Promise(res => setTimeout(res, 40));
+
+    while (buildActive && bot.food < 18 && getTotalPorkchopCount() > 0) {
+        let porkSlot = -1;
+        for (let slot = 0; slot < 9; slot++) {
+            const item = bot.inventory.slots[36 + slot];
+            if (item && item.name === 'cooked_porkchop') {
+                porkSlot = slot;
+                break;
+            }
+        }
+
+        if (porkSlot === -1) {
+            const invPork = bot.inventory.items().find(i => i.name === 'cooked_porkchop' && i.slot >= 9 && i.slot <= 35);
+            if (invPork) {
+                await bot.moveSlotItem(invPork.slot, 36);
+                await new Promise(res => setTimeout(res, 80));
+                porkSlot = 0;
+            }
+        }
+
+        if (porkSlot !== -1) {
+            bot.setQuickBarSlot(porkSlot);
+            await new Promise(res => setTimeout(res, 30));
+            
+            bot.activateItem();
+            await new Promise(res => setTimeout(res, 1650)); 
+            bot.deactivateItem();
+            await new Promise(res => setTimeout(res, 100)); 
+            console.log(`   └─📊 [FEEDING PROGRESS]: เคี้ยวเสร็จ 1 ชิ้น หลอดอาหารปัจจุบันเพิ่มขึ้นเป็น: ${bot.food}`);
+        }
+    }
+
+    console.log(` ✅ [FEEDING SUCCESS]: บอทกินอิ่มเรียบร้อย (หลอดอาหาร: ${bot.food}) สลับถือบล็อกดินมุ่งหน้าลุยงานต่อ!`);
+    if (initSlot !== -1) bot.setQuickBarSlot(initSlot);
+    await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
+    bot.setControlState('forward', true);
+}
+
+async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
+    if (!bot || !bot._client) return;
 
     try {
-        let checkBlock = bot.blockAt(targetPos, true);
-        if (checkBlock && (checkBlock.name === 'dirt' || checkBlock.name === 'grass_block' || checkBlock.name === 'coarse_dirt')) return;
-
-        const botEyePos = bot.entity.position.offset(0, bot.entity.height, 0);
-        const blockCenter = targetPos.plus(new Vec3(0.5, 0.5, 0.5));
-        const distance = botEyePos.distanceTo(blockCenter);
-        if (distance > 4.3) return; // ล็อกระยะเอื้อมปลอดภัยกันสไลด์ตัวหลุดกรอบแปลง
-
         let hotbarDirtSlot = -1;
         for (let slot = 0; slot < 9; slot++) {
             const itemInSlot = bot.inventory.slots[36 + slot];
@@ -281,49 +344,38 @@ async function placeFarmDirtHotbarOnly(targetPos, stepX, standY, standZ) {
         }
 
         if (hotbarDirtSlot === -1) return;
+        if (bot.food <= 12 && getTotalPorkchopCount() > 0) return;
+        if (bot.quickBarSlot !== hotbarDirtSlot) bot.setQuickBarSlot(hotbarDirtSlot);
 
-        const scanFaces = [
-            { offset: new Vec3(0, -1, 0), face: new Vec3(0, 1, 0) },
-            { offset: new Vec3(0, 1, 0), face: new Vec3(0, -1, 0) },
-            { offset: new Vec3(-1, 0, 0), face: new Vec3(1, 0, 0) },
-            { offset: new Vec3(1, 0, 0), face: new Vec3(-1, 0, 0) },
-            { offset: new Vec3(0, 0, -1), face: new Vec3(0, 0, 1) },
-            { offset: new Vec3(0, 0, 1), face: new Vec3(0, 0, -1) }
-        ];
+        let referencePos = targetPos.offset(-stepX, 0, 0);
+        let directionFace = stepX === 1 ? 5 : 4; 
 
-        let referenceBlock = null;
-        let placeFaceVector = null;
-
-        for (const side of scanFaces) {
-            const neighbor = bot.blockAt(targetPos.plus(side.offset));
-            if (neighbor && neighbor.name !== 'air' && neighbor.name !== 'water' && neighbor.name !== 'lava') {
-                referenceBlock = neighbor;
-                placeFaceVector = side.face;
-                break;
-            }
-        }
-
-        if (!referenceBlock || referenceBlock.name === 'air') {
-            referenceBlock = bot.blockAt(targetPos.offset(0, -1, 0));
-            placeFaceVector = new Vec3(0, 1, 0);
-        }
-
-        if (!referenceBlock || referenceBlock.name === 'air') return;
-
-        const distStr = distance.toFixed(2);
-        console.log(`\x1b[35m[PLACE TRACKER - ${bot.username}]\x1b[0m พิกัด X: ${targetPos.x} Z: ${targetPos.z} | ระยะ: ${distStr} เมตร`);
-
-        if (bot.quickBarSlot !== hotbarDirtSlot) {
-            bot.setQuickBarSlot(hotbarDirtSlot);
-            await new Promise(resolve => setTimeout(resolve, 45)); // 🎯 เพิ่มจังหวะหายใจเน็ตตอนสลับช่อง Hotbar
-        }
+        let refBlock = bot.blockAt(referencePos, true);
         
-        await bot.lookAt(targetPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
-        await bot.activateBlock(referenceBlock, placeFaceVector);
-        await new Promise(resolve => setTimeout(resolve, 120)); // 🎯 หน่วงเวลากัน Anti-Cheat ดักจับ Packet ถี่
-    } catch (err) {
-        console.log(`📡 [Network Packet Protected] ข้ามสัญญาณการวาง 1 บล็อกเพื่อป้องกันท่อดีเลย์กระตุก`);
-    }
+        if (!refBlock || refBlock.name === 'air') {
+            referencePos = targetPos.offset(0, 0, -1);
+            directionFace = 3; 
+            refBlock = bot.blockAt(referencePos, true);
+        }
+        if (!refBlock || refBlock.name === 'air') {
+            referencePos = targetPos.offset(0, 0, 1);
+            directionFace = 2; 
+            refBlock = bot.blockAt(referencePos, true);
+        }
+
+        bot._client.write('block_place', {
+            hand: 0, 
+            location: referencePos,
+            direction: directionFace,
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false
+        });
+
+        await bot.swingArm('mainhand');
+        await new Promise(resolve => setTimeout(resolve, 5)); 
+    } catch (err) {}
 }
 
 startBot();
@@ -335,28 +387,39 @@ rl.on('line', async (line) => {
     const input = line.trim();
     if (input === 'c') {
         buildActive = false;
-        forceSneakLocked = false;
-        clearProgress();
-        if (bot && bot.pathfinder) {
-            try { bot.pathfinder.stop(); } catch(e) {}
-            try { bot.clearControlStates(); } catch(e) {}
-        }
+        if (bot) bot.clearControlStates();
+        console.log('🛑 สั่งหยุดการทำงานบอทชั่วคราว (บันทึกจุดค้างไว้ในระบบแล้ว!)');
         return;
     }
+    
     if (input === 'tpa') {
         if (bot && bot.entity) {
-            console.log(`✍️ [Terminal Action] /tpa DukDikauai จากบอท ${bot.username}`);
+            console.log(`✍️ [Terminal Action] ยิงคำสั่ง /tpa DukDikauai ผ่านเบื้องหลัง`);
             bot.chat('/tpa DukDikauai');
         }
         return;
     }
+    
     if (input.startsWith('build')) {
         const args = input.split(' ');
         const startX = parseInt(args[1]);
         const startY = parseInt(args[2]);
         const startZ = parseInt(args[3]);
-        if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) return;
-        clearProgress();
-        await startCustomPlatformBuilder(startX, startY, startZ);
+        if (isNaN(startX) || isNaN(startY) || isNaN(startZ)) {
+            console.log('⚠️ รูปแบบไม่ถูกต้อง! ลองใหม่: build -2719 118 14503');
+            return;
+        }
+
+        if (!progressFilePath) progressFilePath = path.join(__dirname, `progress_${bot.username}.txt`);
+        const savedData = loadProgress();
+
+        if (savedData && savedData.startX === startX && savedData.targetY === startY && savedData.startZ === startZ) {
+            console.log(`🔄 [SMART RESUME]: ตรวจพบว่าพี่สั่งรันเลนเดิม พิกัดตรงกัน! บอทจะเริ่มลุยต่อจาก X: ${savedData.currentX} ทันที`);
+            await startCustomPlatformBuilder(startX, startY, startZ, savedData);
+        } else {
+            console.log(`🤖 ไม่พบประวัติเลนนี้ หรือพี่เปลี่ยนพิกัดแปลงใหม่: เริ่มต้นวิ่งเจาะพิกัด X:${startX} Y:${startY} Z:${startZ}`);
+            clearProgress();
+            await startCustomPlatformBuilder(startX, startY, startZ);
+        }
     }
 });

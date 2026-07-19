@@ -9,6 +9,7 @@ let bot;
 let buildActive = false;
 let progressFilePath = '';
 
+// ตัวล็อกความจำช่องบล็อกแกน X ล่าสุด เพื่อตรวจสอบการเคลื่อนที่ทีละช่อง
 let lastPlacedBlockX = null; 
 
 function saveProgress(startX, targetY, startZ, currentX, forwardZ) {
@@ -49,6 +50,7 @@ function getTotalDirtCount() {
     return dirtTotal + heldCount;
 }
 
+// เช็คจำนวนเนื้อหมูสุกทั้งหมดในเป้
 function getTotalPorkchopCount() {
     if (!bot || !bot.inventory) return 0;
     return bot.inventory.items()
@@ -169,7 +171,10 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
         forwardZ = recoveryData.forwardZ;
     }
 
-    console.log(`\n⚡⚡⚡ [ ENGINE MODE: CLOSE-CONTACT TIGHT-3 PLACER ] ⚡⚡⚡`);
+    console.log(`\n⚡⚡⚡ [ ENGINE MODE: TURBO SPRINT ZERO-TURN PACKET ENGINE ] ⚡⚡⚡`);
+    if (recoveryData) {
+        console.log(`🎯 [RESUME ACTIVE]: ทำงานต่อจาก X:${currentX} | ทิศทางเลื้อย Z: ${forwardZ ? 'วิ่งขึ้น (Z+)' : 'วิ่งกลับ (Z-)'}`);
+    }
 
     const realWorldStartX = recoveryData ? recoveryData.startX : startX;
 
@@ -190,9 +195,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
         saveProgress(realWorldStartX, targetY, startZ, currentX, forwardZ);
 
         const targetEndZ = forwardZ ? (startZ + 64) : startZ;
-
-        // บังคับให้ขาบอทเดินสไลด์จิกตรงพิกัดแกนบดเนื้อดินเลนหลัก ไม่ปล่อยให้ตัวลอยห่าง
-        const safeWalkDestination = new Vec3(currentX, targetY + 1, targetEndZ);
+        const safeWalkDestination = new Vec3(currentX - stepX, targetY + 1, targetEndZ);
 
         await autoRefillDirtFromInventory();
         let initSlot = -1;
@@ -208,6 +211,7 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
             await new Promise(res => setTimeout(res, 35));
         }
 
+        // สั่งล็อกหน้ากล้องมองดิ่งไปข้างหน้าทางจุดหมายเลนถาวร
         bot.clearControlStates();
         await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
         
@@ -222,10 +226,12 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
                 break; 
             }
 
+            // 🎯 [🎯 MOD - LIVE AUTO FOOD MATRIX]:
             const foodLevel = bot.food;
             const porkCount = getTotalPorkchopCount();
 
             if (foodLevel <= 12 && porkCount > 0) {
+                // 🔒 ยกยอดแยกฟังก์ชันออกมากินหมูให้เสร็จสมบูรณ์จนอิ่ม โดยลูปหลักจะจอดรอตรงนี้
                 await executionEaterSequence(safeWalkDestination, initSlot);
             } 
             else if (foodLevel <= 3 && porkCount === 0) {
@@ -241,32 +247,21 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
 
             await autoRefillDirtFromInventory();
 
-            // ⚡ [🎯 CRITICAL FIX - TIGHT 3-ROW POCKET MATRIX]:
-            // หักล้างการยิงล่วงหน้าลอยฟ้าทิ้ง เปลี่ยนมาล็อกพิกัด 3 ช่องโอบล้อมรอบตัวละครพอดีเอื้อมมือ
-            // [ บล็อกซ้ายมือตัวละคร (เลนเก่า), บล็อกตรงพิกัดเท้าเหยียบ, บล็อกขวามือตัวละคร (เลนขยับใหม่) ]
-            let xTargets = [currentX - stepX, currentX, currentX + stepX];
-
-            for (let targetXCoord of xTargets) {
-                if (stepX === 1 && targetXCoord > endX) continue;
-                if (stepX === -1 && targetXCoord < endX) continue;
-
-                for (let currentZ of zQueue) {
-                    const blockPos = new Vec3(targetXCoord, targetY, currentZ);
-                    const distToBlock = bot.entity.position.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5)));
+            for (let currentZ of zQueue) {
+                const blockPos = new Vec3(currentX, targetY, currentZ);
+                const distToBlock = bot.entity.position.distanceTo(blockPos.plus(new Vec3(0.5, 0.5, 0.5)));
+                
+                if (distToBlock <= 4.5) {
+                    let currentBlockState = bot.blockAt(blockPos, true);
+                    const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt');
                     
-                    // บีบระยะเอื้อมมือให้กระชับเข้าหาลำตัวไม่เกิน 4.0 บล็อก เพื่อดึงตัวบอทให้เดินมาชิด ๆ เลนจริง
-                    if (distToBlock <= 4.0) { 
-                        let currentBlockState = bot.blockAt(blockPos, true);
-                        const isAlreadyPaved = currentBlockState && (currentBlockState.name === 'dirt' || currentBlockState.name === 'grass_block' || currentBlockState.name === 'coarse_dirt');
-                        
-                        if (!isAlreadyPaved) {
-                            await injectPlaceDirtNetworkRaw(blockPos, stepX);
-                        }
+                    if (!isAlreadyPaved) {
+                        await injectPlaceDirtNetworkRaw(blockPos, stepX);
                     }
                 }
             }
 
-            await new Promise(res => setTimeout(res, 6)); 
+            await new Promise(res => setTimeout(res, 8)); 
             
             if (buildActive && !bot.controlState.forward) {
                 await bot.lookAt(safeWalkDestination.offset(0.5, 0, 0.5), true);
@@ -287,8 +282,12 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, recoveryData 
     buildActive = false;
 }
 
+// 🎯 [🎯 NEW MOD - ISOLATED EATER LOOP]:
+// ล็อกตัวแอปพลิเคชันให้กินเนื้อหมูจนอิ่ม (Food >= 18) แล้วค่อยปล่อยสัญญานหลุดกลับไปวิ่งทำงานต่อ ป้องกันอาการติดอ่าง
 async function executionEaterSequence(safeWalkDestination, initSlot) {
     console.log(` └─🍖 [AUTO FEEDING]: หลอดอาหารเหลือ ${bot.food} เริ่มกระบวนการล็อกคอกินหมูสุกจนอิ่ม...`);
+    
+    // หยุดเท้าและตัดสปรินต์นิ่งร้อยเปอร์เซ็นต์
     bot.setControlState('sprint', false);
     bot.clearControlStates();
     await new Promise(res => setTimeout(res, 40));
@@ -316,10 +315,12 @@ async function executionEaterSequence(safeWalkDestination, initSlot) {
             bot.setQuickBarSlot(porkSlot);
             await new Promise(res => setTimeout(res, 30));
             
+            // สั่งลั่นไกคลิกขวากินค้างคาไว้
             bot.activateItem();
+            // หน่วงเวลาทางกายภาพจังหวะเคี้ยวของ Minecraft จริง ๆ 1.6 วินาที
             await new Promise(res => setTimeout(res, 1650)); 
             bot.deactivateItem();
-            await new Promise(res => setTimeout(res, 100)); 
+            await new Promise(res => setTimeout(res, 100)); // รอแพ็คเกจเน็ตเซิร์ฟเวอร์อัปเดตค่าหลอดอาหาร
             console.log(`   └─📊 [FEEDING PROGRESS]: เคี้ยวเสร็จ 1 ชิ้น หลอดอาหารปัจจุบันเพิ่มขึ้นเป็น: ${bot.food}`);
         }
     }
@@ -344,7 +345,10 @@ async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
         }
 
         if (hotbarDirtSlot === -1) return;
+        
+        // ถ้ากำลังติดสถานะล็อกหลอดอาหารอยู่ ห้ามสลับช่องมาปูดินเด็ดขาด
         if (bot.food <= 12 && getTotalPorkchopCount() > 0) return;
+
         if (bot.quickBarSlot !== hotbarDirtSlot) bot.setQuickBarSlot(hotbarDirtSlot);
 
         let referencePos = targetPos.offset(-stepX, 0, 0);
@@ -374,7 +378,7 @@ async function injectPlaceDirtNetworkRaw(targetPos, stepX) {
         });
 
         await bot.swingArm('mainhand');
-        await new Promise(resolve => setTimeout(resolve, 5)); 
+        await new Promise(resolve => setTimeout(resolve, 6)); 
     } catch (err) {}
 }
 
