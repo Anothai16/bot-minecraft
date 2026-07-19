@@ -19,7 +19,7 @@ const progressFilePath = path.join(__dirname, 'progress.txt');
 
 const express = require('express');
 const app = express();
-const port = process.env.PORT || 8081;
+const port = process.env.PORT || 8082;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
