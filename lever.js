@@ -9,10 +9,10 @@ const cron = require('node-cron'); // 👈 เพิ่มไลบรารี�
 // ⏱️ ตัวแปรตั้งเวลา (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
 // ====================================================================
 // 1. เวลาสับเปิด (ปกติ: 0 45 5 * * * -> 05:45:00 น.)
-const CRON_ON_TIME = '0 01 20 * * *'; 
+const CRON_ON_TIME = '0 02 20 * * *'; 
 
 // 2. เวลาสับปิด (20:53:00 น.)
-const CRON_OFF_TIME = '0 02 20 * * *';
+const CRON_OFF_TIME = '0 03 20 * * *';
 
 // 💡 [คำแนะนำสำหรับการทดสอบ]:
 // ถ้าจะลองทดสอบระบบตอนนี้ เช่น ขณะนี้เวลา 19:55 น.
@@ -30,7 +30,7 @@ let forceSneakLocked = false;
 
 const express = require('express');
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
