@@ -3,6 +3,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
 const path = require('path');
+
 const { setupAmoryLogin } = require('./login');
 
 const { GoalBlock } = goals;
@@ -345,11 +346,9 @@ async function autoRefillSeedsFromInventory() {
     }
 }
 
-// 🎯 🔥 [THE HOE RESCUE ENGINE]: ฟังก์ชันกู้จอบอัจฉริยะ ลากจอบจากช่องกระเป๋าลึกกลับคืนสู่ Hotbar สล็อต 1 ชัวร์ร้อยเปอร์เซ็นต์
 async function pullHoeToHotbarSafely() {
     if (!bot || !bot.inventory) return false;
     
-    // 1. ตรวจสอบว่ามีจอบพร้อมใช้งานใน Hotbar (ช่อง 36 ถึง 44) หรือยัง
     for (let slot = 0; slot < 9; slot++) {
         const item = bot.inventory.slots[36 + slot];
         if (item && item.name.endsWith('_hoe')) {
@@ -361,17 +360,15 @@ async function pullHoeToHotbarSafely() {
         }
     }
 
-    // 2. 🚨 [RESCUE IN ACTION]: ถ้าใน Hotbar ไม่มีเลย แสดงว่าโดนเด้งหลุดไปสล็อตกระเป๋าหลัก (9-35)
     const deepHoe = bot.inventory.items().find(item => item.name.endsWith('_hoe') && item.slot >= 9 && item.slot <= 35);
     if (deepHoe) {
         console.log(`🛡️ [HOE-RESCUE]: ตรวจพบจอบโดนดีดหลุดไปสล็อตลึกที่ ${deepHoe.slot}! กำลังกู้ลากกลับลงมาที่ Hotbar ช่อง 1...`);
         bot.clearControlStates();
         await delay(100);
         try {
-            // ย้ายจอบจากสล็อตที่โดนดีดหลุด กลับลงมานอนประจำการที่ Hotbar ช่อง 1 (สล็อตไอดี 37)
             await bot.moveSlotItem(deepHoe.slot, 37);
             await delay(250);
-            bot.setQuickBarSlot(1); // สั่งสับเปลี่ยนไอเทมมาถือช่อง 1 ทันที
+            bot.setQuickBarSlot(1); 
             await delay(50);
             return true;
         } catch (err) {
@@ -412,7 +409,6 @@ async function runDualTillEngine(fromX, toX, targetY, z1, z2) {
         let blockState1 = bot.blockAt(blockPos1, true);
         if (blockState1 && (blockState1.name === 'dirt' || blockState1.name === 'grass_block')) {
             if (!plantBlock1 || (!plantBlock1.name.includes('stem') && plantBlock1.name !== 'pumpkin_seeds')) {
-                // 🎯 บังคับกู้จอบกลับเข้ามือ Hotbar ทุกครั้งก่อนลงมือสับหน้าดิน
                 const hoeReady = await pullHoeToHotbarSafely();
                 if (hoeReady) {
                     try {
@@ -429,7 +425,6 @@ async function runDualTillEngine(fromX, toX, targetY, z1, z2) {
         let blockState2 = bot.blockAt(blockPos2, true);
         if (blockState2 && (blockState2.name === 'dirt' || blockState2.name === 'grass_block')) {
             if (!plantBlock2 || (!plantBlock2.name.includes('stem') && plantBlock2.name !== 'pumpkin_seeds')) {
-                // 🎯 บังคับกู้จอบกลับเข้ามือ Hotbar ทุกครั้งก่อนลงมือสับหน้าดิน
                 const hoeReady = await pullHoeToHotbarSafely();
                 if (hoeReady) {
                     try {
@@ -447,14 +442,25 @@ async function runDualTillEngine(fromX, toX, targetY, z1, z2) {
     if (bot) bot.clearControlStates();
 }
 
-// 🌾 [DUAL PLANT ENGINE]: ปลูกเมล็ดคู่ขนานขากลับ
+// 🌾 [DUAL PLANT ENGINE]: ปลูกเมล็ดคู่ขนานขากลับ (แก้ไขไม่ให้ข้ามบล็อกตอนคราฟต์เมล็ด)
 async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
     const stepX = fromX <= toX ? 1 : -1;
     let currentX = fromX;
     if (bot) bot.clearControlStates();
 
-    while (buildActive) {
+    // 🎯 Helper Function ตรวจสอบและดึง Slot เมล็ดแบบ Dynamic ก่อนปลูกทุกครั้ง
+    async function getSeedHotbarSlotDynamic() {
         await autoRefillSeedsFromInventory();
+        for (let slot = 0; slot < 9; slot++) {
+            const item = bot.inventory.slots[36 + slot];
+            if (item && item.name === 'pumpkin_seeds' && item.count > 0) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    while (buildActive) {
         if (getTotalSeedCount() <= 0 && getTotalPumpkinCount() <= 0) break;
 
         const standPos = new Vec3(currentX, targetY + 1, z1);
@@ -469,12 +475,6 @@ async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
             }
         }
 
-        let hotbarSeedSlot = -1;
-        for (let slot = 0; slot < 9; slot++) {
-            const item = bot.inventory.slots[36 + slot];
-            if (item && item.name === 'pumpkin_seeds' && item.count > 0) { hotbarSeedSlot = slot; break; }
-        }
-
         // ==================== เลน Z1 ====================
         const blockPos1 = new Vec3(currentX, targetY, z1);
         const topPos1 = new Vec3(currentX, targetY + 1, z1);
@@ -485,7 +485,6 @@ async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
             // มีเมล็ดแล้ว ข้าม
         } else {
             if (blockState1 && (blockState1.name === 'dirt' || blockState1.name === 'grass_block')) {
-                // 🎯 ดักกู้จอบเข้าสล็อต Hotbar ชัวร์ ๆ
                 const hoeReady = await pullHoeToHotbarSafely();
                 if (hoeReady) {
                     await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
@@ -494,13 +493,16 @@ async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
                 }
             }
             if (blockState1 && blockState1.name === 'farmland') {
-                try {
-                    if (hotbarSeedSlot !== -1) bot.setQuickBarSlot(hotbarSeedSlot);
-                    forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
-                    await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
-                    await bot.placeBlock(blockState1, new Vec3(0, 1, 0));
-                    await delay(35);
-                } catch (err) {}
+                const seedSlot = await getSeedHotbarSlotDynamic();
+                if (seedSlot !== -1) {
+                    try {
+                        bot.setQuickBarSlot(seedSlot);
+                        forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
+                        await bot.lookAt(blockPos1.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                        await bot.placeBlock(blockState1, new Vec3(0, 1, 0));
+                        await delay(35);
+                    } catch (err) {}
+                }
             }
         }
 
@@ -514,7 +516,6 @@ async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
             // มีเมล็ดแล้ว ข้าม
         } else {
             if (blockState2 && (blockState2.name === 'dirt' || blockState2.name === 'grass_block')) {
-                // 🎯 ดักกู้จอบเข้าสล็อต Hotbar ชัวร์ ๆ
                 const hoeReady = await pullHoeToHotbarSafely();
                 if (hoeReady) {
                     await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
@@ -523,13 +524,16 @@ async function runDualPlantEngine(fromX, toX, targetY, z1, z2) {
                 }
             }
             if (blockState2 && blockState2.name === 'farmland') {
-                try {
-                    if (hotbarSeedSlot !== -1) bot.setQuickBarSlot(hotbarSeedSlot);
-                    forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
-                    await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
-                    await bot.placeBlock(blockState2, new Vec3(0, 1, 0));
-                    await delay(35);
-                } catch (err) {}
+                const seedSlot = await getSeedHotbarSlotDynamic();
+                if (seedSlot !== -1) {
+                    try {
+                        bot.setQuickBarSlot(seedSlot);
+                        forceSneakLocked = true; if (bot) bot.setControlState('sneak', true);
+                        await bot.lookAt(blockPos2.plus(new Vec3(0.5, 0.5, 0.5)), true);
+                        await bot.placeBlock(blockState2, new Vec3(0, 1, 0));
+                        await delay(35);
+                    } catch (err) {}
+                }
             }
         }
 

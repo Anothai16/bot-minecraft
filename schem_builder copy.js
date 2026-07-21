@@ -8,40 +8,6 @@ const { setupAmoryLogin } = require('./login');
 const { GoalBlock } = goals;
 let bot;
 let buildActive = false;
-let invReportTimeout = null;
-
-// 📊 ฟังก์ชันรายงานจำนวนไอเทมออกเป็น JSON (หน่วงเวลาป้องกันยิงซ้ำถี่เกินไป)
-function reportInventory() {
-    if (!bot || !bot.inventory) return;
-
-    const countItem = (name) => {
-        return bot.inventory.items()
-            .filter(item => item.name === name)
-            .reduce((sum, item) => sum + item.count, 0);
-    };
-
-    const invData = {
-        type: 'INV_UPDATE',
-        items: {
-            slime_block: countItem('slime_block'),
-            iron_bars: countItem('iron_bars'),
-            observer: countItem('observer'),
-            sticky_piston: countItem('sticky_piston'),
-            obsidian: countItem('obsidian'),
-            note_block: countItem('note_block')
-        }
-    };
-
-    console.log(JSON.stringify(invData));
-}
-
-// ⏳ ฟังก์ชันเรียกรายงานแบบสลัดลูปยิงถี่ (Debounce)
-function triggerInventoryReport() {
-    if (invReportTimeout) clearTimeout(invReportTimeout);
-    invReportTimeout = setTimeout(() => {
-        reportInventory();
-    }, 300);
-}
 
 function startBot() {
     console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์ AmoryCraft...');
@@ -68,20 +34,14 @@ function startBot() {
         console.log(`🔌 บอท [${bot.username}] ออนไลน์สำเร็จ!`);
         console.log(`👉 พิมพ์ 'build X Y Z [จำนวนรอบ]' เพื่อปั๊มฟาร์มขนาน`);
         console.log(`👉 พิมพ์ 'tpa' ใน Terminal เพื่อส่งคำสั่งขอย้ายพิกัดไปหาไอดีพี่ได้ทันทีครับ`);
-
-        setTimeout(() => {
-            triggerInventoryReport();
-            if (bot.inventory) {
-                bot.inventory.on('updateSlot', () => { triggerInventoryReport(); });
-            }
-        }, 3000);
-
+        
+        // 🎯 [AUTO-TPA ON SPAWN]: บอทเกิดเสร็จยิงคำสั่งขอย้ายพิกัดไปหาพี่ออโต้รอบแรกทันที
         setTimeout(() => {
             if (bot) {
                 console.log('🚀 [AUTO TPA]: ส่งคำสั่ง /tpa DukDikauai ไปหาพี่เรียบร้อยครับ กดรับด้วยนะพี่!');
                 bot.chat('/tpa DukDikauai');
             }
-        }, 3500);
+        }, 3500); // หน่วงเวลา 3.5 วินาทีรอแชทรันระบบปลดล็อกให้เกลี้ยงก่อนส่ง
     });
 
     bot.on('death', () => { buildActive = false; });
@@ -106,16 +66,21 @@ function generateCustomQueue(startX, startY, startZ) {
     let queue = [];
     const notePos = new Vec3(startX, startY, startZ);
     
+    // 1. วาง Note Block
     queue.push({ pos: notePos, name: 'note_block', special: 'normal', standOffset: new Vec3(-1.2, 0, 0) });
+    // 2. วาง Observer ล่าง
     queue.push({ pos: notePos.offset(0, 1, 0), name: 'observer', special: 'look_down', standOffset: new Vec3(0, 0, 0) });
+    // 3. ข้างบน Observer วาง Sticky Piston 1
     queue.push({ pos: notePos.offset(0, 2, 0), name: 'sticky_piston', special: 'face_east', standOffset: new Vec3(1.5, 0, 0) });
     
+    // 4. วาง Obsidian
     const piston1Pos = notePos.offset(0, 2, 0);
     const obsiPos = piston1Pos.offset(-1, 0, 0);
     queue.push({ pos: obsiPos, name: 'obsidian', special: 'force_evade', standOffset: new Vec3(-1.2, 0, 1.2) });
 
     const northStation = new Vec3(startX + 2.0, startY, startZ - 2.4); 
 
+    // 5. แผง Slime 7 บล็อกฝั่งเหนือ
     let slime1Start = piston1Pos.offset(1, 0, 0);
     for (let i = 0; i < 7; i++) {
         let p = slime1Start.offset(0, 0, -i);
@@ -127,6 +92,7 @@ function generateCustomQueue(startX, startY, startZ) {
         northSlimePositions.push(slime1Start.offset(0, 0, -i));
     }
 
+    // 6. Iron Bar ฝั่งเหนือ
     let ironIndices1 = [6, 3, 2]; 
     ironIndices1.forEach(idx => {
         if (northSlimePositions[idx]) {
@@ -134,11 +100,13 @@ function generateCustomQueue(startX, startY, startZ) {
         }
     });
 
+    // 7. Sticky Piston ตัวที่สอง
     const piston2Pos = slime1Start.offset(0, 0, 1); 
     queue.push({ pos: piston2Pos, name: 'sticky_piston', special: 'face_west', standOffset: new Vec3(-1.5, 0, 1), forceOrbitActive: true });
 
     const southStation = new Vec3(startX - 2.5, startY, startZ + 2.4);
 
+    // 8. แผง Slime 5 บล็อกฝั่งใต้
     let slime2Start = piston2Pos.offset(-1, 0, 0);
     let southSlimePositions = [];
     for (let i = 0; i < 5; i++) {
@@ -147,6 +115,7 @@ function generateCustomQueue(startX, startY, startZ) {
         southSlimePositions.push(p);
     }
 
+    // 9. Iron Bar ฝั่งใต้
     let ironIndices2 = [4, 1, 0];
     ironIndices2.forEach(idx => {
         if (southSlimePositions[idx]) {
@@ -154,12 +123,15 @@ function generateCustomQueue(startX, startY, startZ) {
         }
     });
 
+    // 10. Observer ยอดเครื่องฝั่ง East
     const obsOnSlime1 = slime1Start.offset(0, 1, 0); 
     queue.push({ pos: obsOnSlime1, name: 'observer', special: 'look_north', customOrbitEast: true });
 
+    // 11. วาง Observer ยอดเครื่องฝั่ง West
     const obsOnSlime2 = slime2Start.offset(0, 1, 0); 
     queue.push({ pos: obsOnSlime2, name: 'observer', special: 'look_south', customOrbitWest: true });
 
+    // 12. วาง Observer บล็อกที่ 26 บนหัว Piston แผงล่าง
     const extensionObsPos = notePos.offset(0, 3, 0);
     queue.push({ pos: extensionObsPos, name: 'observer', special: 'look_east', customOrbitExtension: true });
 
@@ -230,6 +202,7 @@ async function buildStructure(startX, startY, startZ) {
             continue;
         }
 
+        // 🚨 [STRICT Z-ONLY RUN]
         if (task.forceOrbitActive) {
             bot.clearControlStates();
             await bot.look(3.14, 0, true);
@@ -259,6 +232,7 @@ async function buildStructure(startX, startY, startZ) {
             } catch(e) {}
         }
 
+        // 🚨 [DYNAMIC U-ORBIT SOUTH]
         if (task.customOrbitEast) {
             console.log(`🚨 [STRICT AXIS U-ORBIT SOUTH] -> กำลังอ้อมแผงใต้...`);
             await forceWalkStrictAxis(startX - 2.5, startY + 1, bot.entity.position.z);
@@ -273,6 +247,7 @@ async function buildStructure(startX, startY, startZ) {
             bot.setControlState('sneak', true);
         }
 
+        // 🚨 [DYNAMIC U-ORBIT NORTH]
         if (task.customOrbitWest) {
             console.log(`🚨 [STRICT AXIS U-ORBIT NORTH] -> กำลังอ้อมแผงเหนือ...`);
             await forceWalkStrictAxis(startX + 2.5, startY + 1, bot.entity.position.z);
@@ -287,6 +262,7 @@ async function buildStructure(startX, startY, startZ) {
             bot.setControlState('sneak', true);
         }
 
+        // 🚨 [DYNAMIC EXTENSION OBSIDIAN MONITOR - ID 26]
         if (task.customOrbitExtension) {
             console.log(`🚨 [EXTENSION ORBIT] -> เคลื่อนพลวางบล็อกค้ำยันพิเศษลำดับที่ 26...`);
             await forceWalkStrictAxis(startX - 2.0, startY + 1, bot.entity.position.z);
@@ -412,9 +388,6 @@ async function buildStructure(startX, startY, startZ) {
                 if (!checkBlockRealTime || checkBlockRealTime.name !== task.name) {
                     i--; 
                     await new Promise(res => setTimeout(res, 300));
-                } else {
-                    // 🎯 รายงานไอเทมทันทีเมื่อวางสำเร็จ
-                    triggerInventoryReport();
                 }
 
             } catch (err) {
@@ -438,6 +411,8 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 rl.on('line', async (line) => {
     const input = line.trim();
     
+    // 🎯 [🎯 NEW COMMAND INTERCEPTOR - MANUALLY TPA]: 
+    // ยิงคำสั่งส่งแพ็คเก็ตแชทแมนนวลฉากหลังเมื่อพี่พิมพ์ tpa ในหน้าต่าง Console
     if (input === 'tpa') {
         if (bot) {
             console.log('🚀 [MANUAL TPA]: ส่งคำสั่ง /tpa DukDikauai ไปยังหน้าต่างเซิร์ฟเวอร์เรียบร้อยครับ!');
@@ -489,7 +464,7 @@ rl.on('line', async (line) => {
             }
         }
         
-        console.log('\n🏆 [ALL MULTI-SLICES COMPLETE]: บอทสร้างแผงฟาร์มเรียงแถวต่อกันเสร็จสิ้นสมบูรณ์ครบทุกรอบแล้วครับพี่! โหดจัด!');
+        console.log('\n🏆 [ALL MULTI-SLICES COMPLETE]: บอบสร้างแผงฟาร์มเรียงแถวต่อกันเสร็จสิ้นสมบูรณ์ครบทุกรอบแล้วครับพี่! โหดจัด!');
         buildActive = false;
     }
 });

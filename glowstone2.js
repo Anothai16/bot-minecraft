@@ -17,6 +17,20 @@ let currentWorkingYaw = 0;
 // ตัวล็อกความจำช่องบล็อกแกน X ล่าสุด เพื่อตรวจสอบการเคลื่อนที่ทีละช่อง
 let lastPlacedBlockX = null; 
 
+// 🛒 ตัวแปรล็อกสถานะระบบ Auto Shop
+let isBuyingGlowstone = false;
+let shopStep = 0; // ตัวแปรคุม State การเปิดร้านค้า (1 -> 2 -> 3)
+
+// 🛡️ [ANTI-CRASH GLOBAL GUARD]: ดักจับ Error ป้องกันโปรแกรมบึ้มดับ
+process.on('uncaughtException', (err) => {
+    console.log(`⚠️ [NETWORK WARNING]: ตรวจพบสัญญาณเน็ตขัดข้อง (${err.code || err.message}) กำลังเตรียมเชื่อมต่อใหม่...`);
+    buildActive = false;
+    isBuyingGlowstone = false;
+    shopStep = 0;
+});
+
+process.on('unhandledRejection', (reason, promise) => {});
+
 function saveProgress(startX, targetY, startZ, currentX, currentZIdx) {
     if (!progressFilePath) return;
     try {
@@ -83,15 +97,67 @@ function startBot() {
 
     bot.once('spawn', () => {
         progressFilePath = path.join(__dirname, `progress_${bot.username}.txt`);
-        console.log('🛰️ บอท ออนไลน์สำเร็จ!');
-        console.log(`👉 พิมพ์ 'con' ใน Terminal เพื่อดึงประวัติมาปู Glowstone ต่อได้เลยครับพี่`);
+        console.log(`🛰️ บอท [${bot.username}] ออนไลน์สำเร็จ! Ready to work!`);
+        console.log(`👉 พิมพ์ 'con' ใน Terminal เพื่อดึงประวัติมาปู Glowstone ต่อได้เลยครับ`);
     });
 
-    bot.on('windowOpen', (window) => {});
+    // 🛒 [AUTO SHOP DRIVER]: ระบบสั่งซื้อ 3 ขั้นตอน (Totem -> Glowstone -> Slot 16)
+    bot.on('windowOpen', async (window) => {
+        if (!isBuyingGlowstone) return;
+
+        // หน่วงเวลาให้ Server Sync GUI สมบูรณ์
+        await new Promise(r => setTimeout(r, 600));
+        if (!bot.currentWindow || bot.currentWindow.id !== window.id) return;
+
+        // 📌 STEP 1: อยู่หน้าแรก /shop -> กดเลือกหมวดหมู่ Totem (สล็อต 2)
+        if (shopStep === 1) {
+            console.log(`🛒 [SHOP STEP 1]: อยู่หน้าแรก /shop ➔ กดเลือกหมวดหมู่ Totem (สล็อต 2)...`);
+            shopStep = 2; 
+            await bot.clickWindow(2, 0, 0);
+            return;
+        }
+
+        // 📌 STEP 2: อยู่หน้าหมวด Gear -> กดเลือกไอคอน Glowstone (สล็อต 39)
+        if (shopStep === 2) {
+            console.log(`🛒 [SHOP STEP 2]: อยู่หน้าหมวด Gear ➔ กดเลือกไอคอน Glowstone (สล็อต 39)...`);
+            shopStep = 3; 
+            await bot.clickWindow(39, 0, 0);
+            return;
+        }
+
+        // 📌 STEP 3: อยู่หน้าสั่งซื้อ -> กดสล็อต 16 ย้ำซื้อทีละ 64 ชิ้นจนเต็มตัว
+        if (shopStep === 3) {
+            console.log(`🛒 [SHOP STEP 3]: อยู่หน้าเลือกจำนวน ➔ สั่งกดซื้อ Glowstone ยก Stack (สล็อต 16)...`);
+            
+            for (let i = 0; i < 36; i++) {
+                if (!bot.currentWindow) break;
+                
+                // เช็กกระเป๋าเต็ม
+                if (bot.inventory.firstEmptyInventorySlot() === null) {
+                    console.log(`🎒 [SHOP FULL]: ช่องกระเป๋าบอทอัดแน่นเต็มทุกช่องแล้ว!`);
+                    break;
+                }
+
+                // คลิกซ้ายสล็อต 16 (ซื้อยก Stack)
+                await bot.clickWindow(16, 0, 0);
+                
+                await new Promise(r => setTimeout(r, 500)); 
+                console.log(` └─ 📦 กดซื้อสล็อต 16 (รอบที่ ${i + 1}) | จำนวนในตัวปัจจุบัน: ${getTotalGlowstoneCount()} ชิ้น`);
+            }
+            
+            try { bot.closeWindow(window); } catch(e){}
+            await new Promise(r => setTimeout(r, 800));
+            
+            isBuyingGlowstone = false;
+            shopStep = 0;
+            console.log(`✅ [SHOP COMPLETE]: สรุปยอด Glowstone ในตัวทั้งหมด: ${getTotalGlowstoneCount()} ชิ้น พร้อมลุยงานต่อ!`);
+            return;
+        }
+    });
 
     bot.on('physicsTick', () => {
         if (!bot || !bot.entity) return;
-        if (buildActive) {
+        if (buildActive && !isBuyingGlowstone) {
             bot.entity.pitch = -1.57; // ล็อกคอมองฟ้าตรงดิ่ง 90 องศา ค้างแข็งแน่นหนากันเดินเป๋เลน
             bot.entity.yaw = currentWorkingYaw;
             
@@ -135,12 +201,35 @@ function setupMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
+// 🛍️ ฟังก์ชันสั่งวาร์ปเข้า /shop ซื้อของออโต้เมื่อของหมด
+async function autoBuyGlowstone() {
+    console.log(`\n🛒 [AUTO SHOP]: Glowstone หมดคลัง! สั่งเปิด /shop ซื้อเติมออโต้...`);
+    if (bot) bot.clearControlStates();
+    
+    isBuyingGlowstone = true;
+    shopStep = 1; // เริ่มต้นที่ Step 1 เสมอ
+    
+    await new Promise(r => setTimeout(r, 300));
+    bot.chat('/shop');
+
+    for (let wait = 0; wait < 80; wait++) {
+        if (!isBuyingGlowstone && getTotalGlowstoneCount() > 0) {
+            return true;
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
+    
+    isBuyingGlowstone = false;
+    shopStep = 0;
+    return getTotalGlowstoneCount() > 0;
+}
+
 async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryData = null) {
     buildActive = true;
     setupMovements(bot);
 
     const endX = -2638;
-    const zOffsets = [0, 4, 7]; 
+    const zOffsets = [0, 4, 9]; 
 
     let currentZIdx = recoveryData ? recoveryData.currentZIdx : 0;
     let currentX = recoveryData ? recoveryData.currentX : startX;
@@ -177,12 +266,17 @@ async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryDa
         lastPlacedBlockX = null; 
 
         while (buildActive && bot && bot.entity) {
+            
+            // 🛒 ตรวจสอบเสบียง Glowstone ถ้าหมดสั่งเปิด /shop ซื้อออโต้ทันที!
             if (getTotalGlowstoneCount() <= 0) {
-                console.log(`❌ [⚡ STOP BUILDING]: บล็อก Glowstone หมดคลัง หยุดทำงานทันที`);
-                clearProgress();
-                buildActive = false;
-                bot.clearControlStates();
-                return;
+                const boughtSuccess = await autoBuyGlowstone();
+                if (!boughtSuccess) {
+                    console.log(`❌ [⚡ STOP BUILDING]: ซื้อ Glowstone ไม่สำเร็จ หรือเงินหมด หยุดทำงานครับ`);
+                    clearProgress();
+                    buildActive = false;
+                    bot.clearControlStates();
+                    return;
+                }
             }
 
             let rawX = bot.entity.position.x;
@@ -195,16 +289,15 @@ async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryDa
 
             saveProgress(startX, targetY, startZ, botFeetX, zIdx);
 
-            // พิกัดเป้าหมาย Glowstone เกิดลอยฟ้าที่ Y: 142 (targetY + 3 ช่องชั้นโลก)
+            // พิกัดเป้าหมาย Glowstone (ใช้ลอจิกเดิมของคุณที่วางตรงตำแหน่ง)
             const dynamicCeilingY = targetY + 3;
             const targetPos = new Vec3(botFeetX, dynamicCeilingY, currentZ);
             
-            // ⚡ [RAW PACKET INTERCEPTOR]: ยิงลั่นไกดิบระดับเบราวเซอร์ Socket ไม่ต้องรอ Raycast เบรกฝีเท้า
             if (currentFloorX !== lastPlacedBlockX) {
                 let currentBlockState = bot.blockAt(targetPos, true);
                 const isAlreadyPaved = currentBlockState && currentBlockState.name === 'glowstone';
 
-                console.log(`  └─🎯 [TARGET CHECK]: เป้าหมายปูไฟ X: ${targetPos.x} | Y: ${targetPos.y} | Z: ${currentZ} | บล็อกปัจจุบันคือ: "${currentBlockState ? currentBlockState.name : 'null'}"`);
+                console.log(` └─🎯 [TARGET CHECK]: เป้าหมายปูไฟ X: ${targetPos.x} | Y: ${targetPos.y} | Z: ${currentZ} | บล็อกปัจจุบันคือ: "${currentBlockState ? currentBlockState.name : 'null'}"`);
 
                 if (!isAlreadyPaved) {
                     await placeGlowstoneCeilingOnly(targetPos, targetY);
@@ -223,7 +316,7 @@ async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryDa
 
             if (!isEndOfLine) {
                 bot.setControlState('forward', true);
-                await new Promise(res => setTimeout(res, 12)); // ความถี่สับเกียร์ขา 12ms รูดสปีดปรู๊ดปร๊าด
+                await new Promise(res => setTimeout(res, 12)); 
             } else {
                 bot.clearControlStates();
                 console.log(`✅ [RAIL SUCCESS]: ตัวเลขปัดเศษล็อกเข้าล็อกเลี้ยวฉีกตัวหลบมุมเสร็จสิ้น จบเลน Z: ${currentZ}`);
@@ -241,8 +334,7 @@ async function startGlowstonePlatformBuilder(startX, targetY, startZ, recoveryDa
     buildActive = false;
 }
 
-// 🎯 [🎯 OVERHAUL NET SOCKET DRIVER - ANTI-MISS CRITICAL]:
-// เปลี่ยนมาใช้การยิงผ่านช่องทางระดับเน็ตเวิร์กแพ็คเกจโดยตรง บีบให้เซิร์ฟเวอร์ตอบรับและสร้างบล็อกงอกทันทีโดยบอทไม่ต้องชะงักฝีเท้า
+// 🎯 [วางบล็อกตามลอจิกเดิมของคุณที่ตำแหน่ง Y แม่นยำ]:
 async function placeGlowstoneCeilingOnly(targetPos, targetY) {
     if (!bot || !bot.entity || !bot._client) return;
 
@@ -274,24 +366,35 @@ async function placeGlowstoneCeilingOnly(targetPos, targetY) {
             await new Promise(resolve => setTimeout(resolve, 8)); 
         }
 
-        // ล็อกพิกัดคานดินเหนือหัวพิกัดทึบแท้จริง Y: 143 (targetY + 4 ช่องชั้น)
-        const referencePos = new Vec3(targetPos.x, targetY + 4, targetPos.z);
+        const exactGlowstoneY = targetY + 4; 
 
-        console.log(`    └─🧱 [PLACING ACTION]: ⚡ ยิงแพ็คเกจ Socket ดิ่งตรงเกาะคานดิน Y: ${referencePos.y}`);
+        // เช็กบล็อกเหนือหัวว่ามีคานดินอยู่ไหม
+        const topBlockPos = new Vec3(targetPos.x, exactGlowstoneY + 1, targetPos.z);
+        const topBlock = bot.blockAt(topBlockPos);
 
-        // 🔥 สั่งข้ามขั้นตอนของ Mineflayer ยิงช่องแพ็คเกจระดับเครือข่ายอัดตรงเข้าเซิร์ฟเวอร์
-        // ทิศทางคว่ำลงล่างเสยใต้ท้องคานดิน (Direction 0 = Down) บล็อกงอกเรียงเม็ดต่อเนื่องไม่มีเว้นว่าง
+        let referencePos;
+        let placeDirection;
+
+        if (topBlock && topBlock.name !== 'air' && topBlock.name !== 'water') {
+            referencePos = topBlockPos;
+            placeDirection = 0; // Down
+            console.log(` └─🧱 [PLACING]: แปะใต้คานดิน Y: ${topBlockPos.y} -> วางลง Y: ${exactGlowstoneY}`);
+        } else {
+            referencePos = new Vec3(targetPos.x, exactGlowstoneY - 1, targetPos.z);
+            placeDirection = 1; // Up
+            console.log(` └─🧱 [PLACING]: ไม่มีคานดิน! เปลี่ยนไปวางตั้งบน Y: ${referencePos.y} -> วางขึ้น Y: ${exactGlowstoneY}`);
+        }
+
         bot._client.write('block_place', {
             hand: 0,
             location: referencePos,
-            direction: 0, 
+            direction: placeDirection, 
             cursorX: 0.5,
-            cursorY: 0.0,
+            cursorY: (placeDirection === 0) ? 0.0 : 1.0,
             cursorZ: 0.5,
             insideBlock: false
         });
 
-        // จำลองการขยับสวิงแขนอัดแอนตี้ชีทความเร็วสูง 10ms เคลียร์ท่อเน็ต
         await bot.swingArm('mainhand');
         await new Promise(resolve => setTimeout(resolve, 10)); 
     } catch (err) {}
@@ -300,7 +403,12 @@ async function placeGlowstoneCeilingOnly(targetPos, targetY) {
 startBot();
 
 const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const rl = readline.createInterface({ 
+    input: process.stdin, 
+    output: process.stdout 
+});
+
+rl.on('error', (err) => {});
 
 rl.on('line', async (line) => {
     const input = line.trim();
@@ -312,7 +420,7 @@ rl.on('line', async (line) => {
             try { bot.pathfinder.stop(); } catch(e) {}
             try { bot.clearControlStates(); } catch(e) {}
         }
-        console.log('🛑 สั่งเบรกหยุดสายพานทำงานเรียบร้อยครับพี่');
+        console.log('🛑 สั่งเบรกหยุดสายพานทำงานเรียบร้อยครับ');
         return;
     }
     if (input === 'con') {
@@ -322,14 +430,14 @@ rl.on('line', async (line) => {
         if (savedData) {
             const currentGlow = getTotalGlowstoneCount();
             if (currentGlow <= 0) {
-                console.log('⚠️ ไม่สามารถสืบงานต่อได้เนื่องจาก Glowstone ในตัวหมดคลังคครับพี่');
+                console.log('⚠️ ไม่สามารถสืบงานต่อได้เนื่องจาก Glowstone ในตัวหมดคลังครับ');
                 clearProgress();
                 return;
             }
             console.log(`🔄 [RECOVERY SYSTEM]: ตรวจพบไฟล์ประวัติเก่า รันงานต่อจากจุดล่าสุดทันที...`);
             await startGlowstonePlatformBuilder(savedData.startX, savedData.targetY, savedData.startZ, savedData);
         } else {
-            console.log('⚠️ ไม่พบไฟล์ประวัติงานเก่าค้างในระบบเลยครับพี่ พิมพ์สั่ง build ใหม่ยาว ๆ ได้เลย');
+            console.log('⚠️ ไม่พบไฟล์ประวัติงานเก่าค้างในระบบเลยครับ พิมพ์สั่ง build ใหม่ยาว ๆ ได้เลย');
         }
         return;
     }
@@ -349,7 +457,7 @@ rl.on('line', async (line) => {
         let maxLoops = args[4] ? parseInt(args[4]) : 1;
 
         if (isNaN(startX) || isNaN(startY) || isNaN(startZ) || isNaN(maxLoops)) {
-            console.log('⚠️ รูปแบบพิกัดพิมพ์ผิดพี่! พิมพ์: build [startX] [Y] [startZ] [จำนวนรอบ]');
+            console.log('⚠️ รูปแบบพิกัดพิมพ์ผิด! พิมพ์: build [startX] [Y] [startZ] [จำนวนรอบ]');
             return;
         }
 
@@ -369,7 +477,7 @@ rl.on('line', async (line) => {
             }
         }
 
-        console.log('\n🏆 [ALL ROUNDS COMPLETE]: บอทปูแนวไฟ Glowstone เสร็จสิ้นสมบูรณ์ครบทุกรอบแล้วครับพี่!');
+        console.log('\n🏆 [ALL ROUNDS COMPLETE]: บอทปูแนวไฟ Glowstone เสร็จสิ้นสมบูรณ์ครบทุกรอบแล้วครับ!');
         buildActive = false;
     }
 });
