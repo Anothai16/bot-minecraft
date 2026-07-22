@@ -99,68 +99,6 @@ function findPickaxeByMode(mode) {
     return items[0] || null;
 }
 
-// 🧪 ระบบปาขวด EXP ซ่อม Mending อัตโนมัติ
-async function repairPickaxeWithExp(pickaxe) {
-    console.log('🧪 [Auto-Mending Active] เริ่มกระบวนการปาขวด EXP ซ่อมที่ขุด...');
-    
-    try {
-        // 1. สลับที่ขุดไปไว้มือซ้าย (off-hand)
-        await bot.equip(pickaxe, 'off-hand');
-        await new Promise(res => setTimeout(res, 250));
-
-        // 2. ก้มมองลงพื้นเล็กน้อยเพื่อให้เก็บ EXP ได้ไวและไม่ขว้างไกล
-        await bot.look(bot.player.yaw, 0.8, true); 
-
-        while (miningActive) {
-            // เช็กไอเทมในมือซ้าย (ที่ขุด)
-            const offhandItem = bot.inventory.slots[45]; // slot 45 คือ off-hand
-            if (!offhandItem || !offhandItem.name.includes('pickaxe')) {
-                console.log('⚠️ ไม่พบที่ขุดในมือซ้าย ยกเลิกการซ่อม');
-                break;
-            }
-
-            // เช็กความทนทานปัจจุบัน
-            const maxDur = 2031;
-            const currentDamage = offhandItem.durabilityUsed || 0;
-            const remaining = maxDur - currentDamage;
-
-            // ถ้าความทนทานเต็ม (หรือแทบจะเต็มแล้ว) ให้หยุดปาขวด
-            if (currentDamage <= 0 || remaining >= maxDur - 5) {
-                console.log('✅ [Repair Complete] ซ่อมที่ขุดเต็ม 100% เรียบร้อยแล้ว!');
-                break;
-            }
-
-            // ค้นหาขวด EXP ในกระเป๋า
-            const expBottle = bot.inventory.items().find(i => 
-                i.name === 'experience_bottle' || i.name === 'experience_bottle'
-            );
-
-            if (!expBottle) {
-                console.log('⚠️ [Out of EXP Bottles] ขวด EXP หมดกระเป๋าแล้ว! หยุดขุดเพื่อความปลอดภัย');
-                miningActive = false;
-                break;
-            }
-
-            // ถือขวด EXP ในมือขวาแล้วสั่งปา (Activate)
-            await bot.equip(expBottle, 'hand');
-            bot.activateItem(); 
-
-            // ดีเลย์ระหว่างการปาแต่ละขวด (80ms)
-            await new Promise(res => setTimeout(res, 80));
-        }
-
-        // 3. ย้ายที่ขุดจากมือซ้ายกลับมามือขวาเตรียมพร้อมขุดต่อ
-        const repairedPick = bot.inventory.slots[45];
-        if (repairedPick) {
-            await bot.equip(repairedPick, 'hand');
-            await new Promise(res => setTimeout(res, 250));
-        }
-
-    } catch (err) {
-        console.error('⚠️ เกิดข้อผิดพลาดในระบบซ่อมแซม:', err.message);
-    }
-}
-
 async function startStationMining(mode = 'fortune') {
     if (miningActive) {
         stopMining();
@@ -212,9 +150,11 @@ async function startStationMining(mode = 'fortune') {
             await bot.lookAt(exactLookTarget, true);
 
             for (const blockPos of cleanBlocksQueue) {
-                // เช็กความทนทานของที่ขุด
-                const checkResult = await checkAndHandleDurability();
-                if (!checkResult || !miningActive) {
+                const pickaxeCheck = await checkAndTossPickaxe();
+                if (!pickaxeCheck || !miningActive) {
+                    console.log('🛑 [Safety Lock Triggered]: ดักเจอที่ขุดใกล้พัง สั่งหยุดขุดทันที!');
+                    miningActive = false; 
+                    bot.clearControlStates();
                     break;
                 }
 
@@ -236,10 +176,11 @@ async function startStationMining(mode = 'fortune') {
     }
 }
 
-async function checkAndHandleDurability() {
+async function checkAndTossPickaxe() {
     const pickaxe = bot.inventory.items().find(i => i.name.includes('pickaxe'));
     if (!pickaxe) {
         console.log("👉 PICKAXE_BROKEN");
+        console.log("👉 PICKAXE_DURABILITY: 0"); 
         miningActive = false;
         return false; 
     }
@@ -248,20 +189,30 @@ async function checkAndHandleDurability() {
         const maxDur = 2031; 
         const currentDamage = pickaxe.durabilityUsed;
         const remaining = maxDur - currentDamage;
+        
         const durabilityPercent = Math.floor((remaining / maxDur) * 100);
-
         console.log(`👉 PICKAXE_DURABILITY (${currentMode.toUpperCase()}): ${durabilityPercent}%`);
 
-        // ถ้าความทนทานเหลือต่ำกว่า 40 หรือ <= 2% ให้เข้าสู่กระบวนการซ่อม
+        // ถ้าความทนทานเหลือต่ำกว่า 40 แต้ม หรือ <= 2% ย้ายไปใส่มือซ้าย (Off-hand) แล้วสั่งหยุดขุด
         if (remaining <= 40 || durabilityPercent <= 2) {
-            console.log(`⚠️ [Durability Warning] ที่ขุดเหลือแต้มขุด: ${remaining} สั่งเข้าสู่ระบบ Auto-Mending!`);
+            console.log(`⚠️ [Durability Protection] ที่ขุดเหลือแต้มขุด: ${remaining} ย้ายไปใส่มือซ้าย และหยุดขุดทันที!`);
+            console.log("👉 PICKAXE_BROKEN");
             
-            // เรียกฟังก์ชันซ่อมแซมด้วยขวด EXP
-            await repairPickaxeWithExp(pickaxe);
+            miningActive = false; 
+            bot.clearControlStates();
 
-            // หากขุดถูกสั่งยกเลิก/ขวด EXP หมดกลางคละ ให้หยุดทำงาน
-            if (!miningActive) return false;
+            try {
+                // 🎯 ย้ายที่ขุดที่ใกล้พังไปไว้ที่มือซ้าย (off-hand)
+                await bot.equip(pickaxe, 'off-hand');
+                console.log("✅ [Off-Hand Equip Complete] สลับที่ขุดไปไว้มือซ้ายเรียบร้อย!");
+            } catch (e) {
+                console.log(`⚠️ เกิดข้อผิดพลาดในการสลับไปมือซ้าย: ${e.message}`);
+            }
+
+            return false; 
         }
+    } else {
+        console.log("👉 PICKAXE_DURABILITY: 100%");
     }
     return true;
 }
