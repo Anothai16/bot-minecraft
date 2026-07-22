@@ -7,6 +7,7 @@ const { setupAmoryLogin } = require('./login');
 const { GoalBlock } = goals;
 let bot;
 let miningActive = false;
+let isRepairing = false;
 let currentMode = 'fortune';
 
 function startBot() {
@@ -29,13 +30,21 @@ function startBot() {
     setupAmoryLogin(bot);
     bot.loadPlugin(pathfinder);
 
+    bot.on('kicked', (reason) => {
+        console.log('🚨 [KICKED BY SERVER] โดนเซิร์ฟเวอร์เตะหลุด! สาเหตุ:', JSON.stringify(reason));
+    });
+
+    bot.on('error', (err) => {
+        console.log('❌ [BOT ERROR]:', err);
+    });
+
     bot.on('chat', async (username, message) => {
         if (username === bot.username) return;
         const msg = message.trim().toLowerCase();
         
         if (msg === 'mine f' || msg === 'mine fortune') {
             await startStationMining('fortune');
-        } else if (msg === 'mine s' || msg === 'mine silk' || msg === 'mine silktouch') {
+        } else if (msg === 'msg === mine s' || msg === 'mine silk' || msg === 'mine silktouch') {
             await startStationMining('silktouch');
         } else if (msg === 'mine') {
             await startStationMining('fortune');
@@ -44,12 +53,18 @@ function startBot() {
         }
     });
 
-    bot.on('end', () => { miningActive = false; setTimeout(startBot, 10000); });
+    bot.on('end', (reason) => { 
+        console.log(`🔌 [DISCONNECTED] การเชื่อมต่อดับลง (Reason: ${reason})`);
+        miningActive = false; 
+        isRepairing = false;
+        setTimeout(startBot, 10000); 
+    });
 }
 
 function stopMining() {
     if (miningActive) {
         miningActive = false;
+        isRepairing = false;
         console.log('🛑 [Cancel] สั่งยกเลิกการทำงานเรียบร้อยแล้ว!');
         if (bot && bot.pathfinder) {
             bot.pathfinder.stop();
@@ -71,93 +86,125 @@ function setupMiningMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
-function findPickaxeByMode(mode) {
-    const items = bot.inventory.items().filter(i => i.name.includes('pickaxe'));
-    
-    for (const item of items) {
-        let enchants = [];
+// 🔒 ดึงที่ขุดจาก Hotbar ช่อง 1 (Slot 36) หรือ ช่อง 2 (Slot 37)
+function getPickaxeFromLockedHotbar(mode) {
+    const targetInventorySlot = (mode === 'silktouch') ? 36 : 37;
+    const item = bot.inventory.slots[targetInventorySlot];
 
-        if (item.nbt && item.nbt.value && item.nbt.value.Enchantments) {
-            enchants = item.nbt.value.Enchantments.value.value;
-        } else if (item.components) {
-            const enchComp = item.components.find(c => c.type === 'enchantments' || c.name === 'enchantments');
-            if (enchComp && enchComp.data && enchComp.data.levels) {
-                enchants = Object.keys(enchComp.data.levels).map(id => ({ id }));
-            }
-        }
-
-        const enchantStr = JSON.stringify(enchants || item.nbt || item.components || '').toLowerCase();
-
-        if (mode === 'silktouch' && (enchantStr.includes('silk_touch') || enchantStr.includes('silk'))) {
-            return item;
-        }
-        if (mode === 'fortune' && (enchantStr.includes('fortune') || enchantStr.includes('fort'))) {
-            return item;
-        }
+    if (item && item.name.includes('pickaxe')) {
+        return item;
     }
-
-    return items[0] || null;
+    return null;
 }
 
-// 🧪 ระบบปาขวด EXP ซ่อม Mending อัตโนมัติ
-async function repairPickaxeWithExp(pickaxe) {
-    console.log('🧪 [Auto-Mending Active] เริ่มกระบวนการปาขวด EXP ซ่อมที่ขุด...');
+
+// 🧪 ระบบ Mending สุดคลีน: ถือที่ขุดไว้มือขวา + ย้ายขวด EXP ไปปาจากมือซ้าย (Off-hand)
+async function repairPickaxeWithExp(mode) {
+    if (isRepairing) return;
+    isRepairing = true;
+
+    console.log(`🧪 [Auto-Mending Active] เริ่มซ่อมที่ขุด ${mode.toUpperCase()} (ปาขวด EXP จากมือซ้าย)...`);
     
     try {
-        // 1. สลับที่ขุดไปไว้มือซ้าย (off-hand)
-        await bot.equip(pickaxe, 'off-hand');
-        await new Promise(res => setTimeout(res, 250));
+        // 1. ยกเลิกการขุดเดิม และหน่วงเวลา 1 วินาที ให้ Packet เคลียร์สมบูรณ์
+        bot._client.write('block_dig', { status: 1, location: { x: 0, y: 0, z: 0 }, face: 0 });
+        bot.clearControlStates();
+        await new Promise(res => setTimeout(res, 800));
 
-        // 2. ก้มมองลงพื้นเล็กน้อยเพื่อให้เก็บ EXP ได้ไวและไม่ขว้างไกล
-        await bot.look(bot.player.yaw, 0.8, true); 
+        // 2. ล็อกมือขวาให้ถือที่ขุดที่ Hotbar ช่อง 1 (Index 0 = Silk Touch) หรือ ช่อง 2 (Index 1 = Fortune)
+        const pickHotbarIndex = (mode === 'silktouch') ? 0 : 1;
+        const targetPickSlot = (mode === 'silktouch') ? 36 : 37;
+        
+        bot.setQuickBarSlot(pickHotbarIndex);
+        await new Promise(res => setTimeout(res, 400));
 
-        while (miningActive) {
-            // เช็กไอเทมในมือซ้าย (ที่ขุด)
-            const offhandItem = bot.inventory.slots[45]; // slot 45 คือ off-hand
-            if (!offhandItem || !offhandItem.name.includes('pickaxe')) {
-                console.log('⚠️ ไม่พบที่ขุดในมือซ้าย ยกเลิกการซ่อม');
+        const OFFHAND_SLOT = 45; // Slot 45 = มือซ้าย (Off-hand)
+        let thrownCount = 0;
+
+        // 3. ย้ายขวด EXP สแตกแรกไปไว้ที่มือซ้าย (Slot 45)
+        const expBottle = bot.inventory.items().find(i => i.name === 'experience_bottle');
+        if (!expBottle) {
+            console.log('⚠️ [Out of EXP Bottles] ไม่พบขวด EXP ในกระเป๋า!');
+            miningActive = false;
+        } else {
+            console.log('🍾 [LOG] ย้ายขวด EXP ไปไว้ที่มือซ้าย (Off-hand)...');
+            await bot.moveSlotItem(expBottle.slot, OFFHAND_SLOT);
+            await new Promise(res => setTimeout(res, 600));
+        }
+
+        console.log('🍾 เริ่มต้นปาขวด EXP จากมือซ้ายรัวๆ ...');
+
+        // 4. ลูปปาขวด EXP จากมือซ้ายต่อเนื่อง
+        while (miningActive && isRepairing) {
+            // ตรวจสอบที่ขุดในมือขวา
+            const mainHandPick = bot.inventory.slots[targetPickSlot];
+            if (!mainHandPick || !mainHandPick.name.includes('pickaxe')) {
+                console.log(`🛑 ไม่พบที่ขุดใน Hotbar ช่อง ${pickHotbarIndex + 1} สำหรับซ่อม ยกเลิกกระบวนการ`);
                 break;
             }
 
-            // เช็กความทนทานปัจจุบัน
+            // คำนวณความทนทานปัจจุบันของที่ขุดในมือขวา
             const maxDur = 2031;
-            const currentDamage = offhandItem.durabilityUsed || 0;
+            const currentDamage = mainHandPick.durabilityUsed || 0;
             const remaining = maxDur - currentDamage;
+            const durabilityPercent = Math.floor((remaining / maxDur) * 100);
 
-            // ถ้าความทนทานเต็ม (หรือแทบจะเต็มแล้ว) ให้หยุดปาขวด
-            if (currentDamage <= 0 || remaining >= maxDur - 5) {
-                console.log('✅ [Repair Complete] ซ่อมที่ขุดเต็ม 100% เรียบร้อยแล้ว!');
+            // 🎯 หากซ่อมเต็ม 100% แล้ว ให้หยุดปาทันที!
+            if (currentDamage <= 0 || remaining >= maxDur - 15) {
+                console.log(`✅ [Repair Complete] ซ่อมที่ขุดเต็ม 100% เรียบร้อย! (ความทนทาน: ${remaining}/${maxDur} - ใช้ไปทั้งหมด ${thrownCount} ขวด)`);
                 break;
             }
 
-            // ค้นหาขวด EXP ในกระเป๋า
-            const expBottle = bot.inventory.items().find(i => 
-                i.name === 'experience_bottle' || i.name === 'experience_bottle'
-            );
-
-            if (!expBottle) {
-                console.log('⚠️ [Out of EXP Bottles] ขวด EXP หมดกระเป๋าแล้ว! หยุดขุดเพื่อความปลอดภัย');
+            // ตรวจสอบว่ายังมีขวด EXP เหลือในตัวไหม
+            const hasExpInInv = bot.inventory.items().some(item => item.name === 'experience_bottle');
+            const offhandItem = bot.inventory.slots[OFFHAND_SLOT];
+            
+            if (!hasExpInInv && (!offhandItem || offhandItem.name !== 'experience_bottle')) {
+                console.log('⚠️ [Out of EXP Bottles] ขวด EXP หมดกระเป๋าแล้ว!');
                 miningActive = false;
                 break;
             }
 
-            // ถือขวด EXP ในมือขวาแล้วสั่งปา (Activate)
-            await bot.equip(expBottle, 'hand');
-            bot.activateItem(); 
+            // ถ้าขวด EXP ในมือซ้ายหมด ให้ย้ายสแตกใหม่จากเป้มาใส่แทน
+            if (!offhandItem || offhandItem.name !== 'experience_bottle') {
+                const nextExp = bot.inventory.items().find(i => i.name === 'experience_bottle');
+                if (nextExp) {
+                    console.log('📦 [LOG] เติมขวด EXP สแตกใหม่เข้ามือซ้าย...');
+                    await bot.moveSlotItem(nextExp.slot, OFFHAND_SLOT);
+                    await new Promise(res => setTimeout(res, 500));
+                }
+            }
 
-            // ดีเลย์ระหว่างการปาแต่ละขวด (80ms)
-            await new Promise(res => setTimeout(res, 80));
+            // การันตีว่ามือขวาถือที่ขุดช่องล็อกเดิมเสมอ
+            bot.setQuickBarSlot(pickHotbarIndex);
+
+            // 🎯 สั่งปาขวด EXP จากมือซ้าย (Off-hand): activateItem(true) = offhand
+            bot.activateItem(true); 
+            thrownCount++;
+
+            if (thrownCount % 10 === 0 || thrownCount === 1) {
+                console.log(`🍾 [LOG] ปาขวดที่ ${thrownCount} -> Mending มือขวา: ${remaining}/${maxDur} (${durabilityPercent}%)`);
+            }
+
+            // หน่วงเวลาปาแต่ละขวด (180ms)
+            await new Promise(res => setTimeout(res, 180));
         }
 
-        // 3. ย้ายที่ขุดจากมือซ้ายกลับมามือขวาเตรียมพร้อมขุดต่อ
-        const repairedPick = bot.inventory.slots[45];
-        if (repairedPick) {
-            await bot.equip(repairedPick, 'hand');
-            await new Promise(res => setTimeout(res, 250));
+        // 5. เมื่อซ่อมเสร็จ ย้ายขวด EXP ที่เหลือในมือซ้ายกลับเข้ากระเป๋าหลัก (เพื่อเคลียร์มือซ้ายให้ว่าง)
+        const remainingOffhand = bot.inventory.slots[OFFHAND_SLOT];
+        if (remainingOffhand) {
+            console.log('🧹 [LOG] เคลียร์มือซ้าย เก็บขวด EXP ที่เหลือเข้ากระเป๋า...');
+            const emptyMainSlot = bot.inventory.firstEmptyContainerSlot();
+            if (emptyMainSlot) {
+                await bot.moveSlotItem(OFFHAND_SLOT, emptyMainSlot);
+                await new Promise(res => setTimeout(res, 500));
+            }
         }
 
     } catch (err) {
         console.error('⚠️ เกิดข้อผิดพลาดในระบบซ่อมแซม:', err.message);
+    } finally {
+        isRepairing = false;
     }
 }
 
@@ -185,6 +232,9 @@ async function startStationMining(mode = 'fortune') {
     bot.clearControlStates();
     console.log(`... ประจำสถานีเรียบร้อย!`);
 
+    // หน่วงเวลาให้เซิร์ฟเวอร์ Sync การเคลื่อนที่เสร็จสมบูรณ์ก่อนจะล็อกกล้องขุด
+    await new Promise(res => setTimeout(res, 800));
+
     const exactLookTarget = new Vec3(-2739.5, 69.5, 14524.5); 
     await bot.lookAt(exactLookTarget, true);
     await new Promise(res => setTimeout(res, 400)); 
@@ -202,28 +252,52 @@ async function startStationMining(mode = 'fortune') {
         try {
             await handleAutoEatEngine();
 
-            let selectedPickaxe = findPickaxeByMode(currentMode);
-            if (selectedPickaxe) {
-                await bot.equip(selectedPickaxe, 'hand');
-            } else {
-                console.log(`⚠️ ไม่พบที่ขุดสาย ${currentMode} ในตัว!`);
+            if (isRepairing) {
+                await new Promise(res => setTimeout(res, 500));
+                continue;
             }
+
+            // เช็กไอเทมใน Hotbar ช่องที่ล็อกไว้
+            let selectedPickaxe = getPickaxeFromLockedHotbar(currentMode);
+            
+            // ถ้าไม่พบใน Hotbar ลองเช็กในมือซ้าย เผื่อค้างอยู่
+            if (!selectedPickaxe && bot.inventory.slots[45] && bot.inventory.slots[45].name.includes('pickaxe')) {
+                const targetHotbarSlot = (currentMode === 'silktouch') ? 36 : 37;
+                console.log('⚠️ [RECOVERY] เจอมือซ้ายถือที่ขุดค้างไว้! กำลังย้ายกลับ Hotbar...');
+                await bot.moveSlotItem(45, targetHotbarSlot);
+                await new Promise(res => setTimeout(res, 600));
+                selectedPickaxe = getPickaxeFromLockedHotbar(currentMode);
+            }
+
+            if (!selectedPickaxe) {
+                const slotNum = (currentMode === 'silktouch') ? 1 : 2;
+                console.log(`🛑 หยุดการทำงานเนื่องจากไม่พบที่ขุดใน Hotbar ช่อง ${slotNum} สำหรับโหมด ${currentMode.toUpperCase()}`);
+                miningActive = false;
+                break;
+            }
+
+            const pickHotbarIndex = (currentMode === 'silktouch') ? 0 : 1;
+            bot.setQuickBarSlot(pickHotbarIndex);
 
             await bot.lookAt(exactLookTarget, true);
 
             for (const blockPos of cleanBlocksQueue) {
-                // เช็กความทนทานของที่ขุด
-                const checkResult = await checkAndHandleDurability();
-                if (!checkResult || !miningActive) {
+                const checkResult = await checkAndHandleDurability(selectedPickaxe);
+                if (!checkResult || !miningActive || isRepairing) {
                     break;
                 }
 
-                bot._client.write('block_dig', { status: 0, location: blockPos, face: 1 });
-                bot.swingArm('right');
+                if (bot.heldItem && bot.heldItem.name.includes('pickaxe')) {
+                    bot._client.write('block_dig', { status: 0, location: blockPos, face: 1 });
+                    bot.swingArm('right');
 
-                await new Promise(resolve => setTimeout(resolve, 140));
+                    await new Promise(resolve => setTimeout(resolve, 140));
 
-                bot._client.write('block_dig', { status: 2, location: blockPos, face: 1 });
+                    bot._client.write('block_dig', { status: 2, location: blockPos, face: 1 });
+                } else {
+                    console.log('⚠️ มือไม่ได้ถือที่ขุด ข้ามการขุดบล็อกนี้เพื่อความปลอดภัย');
+                    break;
+                }
             }
 
             if (!miningActive) break; 
@@ -236,10 +310,12 @@ async function startStationMining(mode = 'fortune') {
     }
 }
 
-async function checkAndHandleDurability() {
-    const pickaxe = bot.inventory.items().find(i => i.name.includes('pickaxe'));
+// ตัวแปรเก็บค่าเปอร์เซ็นต์ความทนทานล่าสุด ป้องกันLog ยิงซ้ำ
+let lastLoggedDurability = -1;
+
+async function checkAndHandleDurability(pickaxe) {
     if (!pickaxe) {
-        console.log("👉 PICKAXE_BROKEN");
+        console.log("👉 PICKAXE_NOT_FOUND");
         miningActive = false;
         return false; 
     }
@@ -250,16 +326,18 @@ async function checkAndHandleDurability() {
         const remaining = maxDur - currentDamage;
         const durabilityPercent = Math.floor((remaining / maxDur) * 100);
 
-        console.log(`👉 PICKAXE_DURABILITY (${currentMode.toUpperCase()}): ${durabilityPercent}%`);
+        // 🎯 พิมพ์ Log เฉพาะตอนที่ % ลดลง หรือเป็นครั้งแรกที่ขุดเท่านั้น!
+        if (durabilityPercent !== lastLoggedDurability) {
+            console.log(`👉 PICKAXE_DURABILITY (${currentMode.toUpperCase()}): ${durabilityPercent}% (แต้มคงเหลือ: ${remaining}/${maxDur})`);
+            lastLoggedDurability = durabilityPercent;
+        }
 
-        // ถ้าความทนทานเหลือต่ำกว่า 40 หรือ <= 2% ให้เข้าสู่กระบวนการซ่อม
-        if (remaining <= 40 || durabilityPercent <= 2) {
-            console.log(`⚠️ [Durability Warning] ที่ขุดเหลือแต้มขุด: ${remaining} สั่งเข้าสู่ระบบ Auto-Mending!`);
-            
-            // เรียกฟังก์ชันซ่อมแซมด้วยขวด EXP
-            await repairPickaxeWithExp(pickaxe);
-
-            // หากขุดถูกสั่งยกเลิก/ขวด EXP หมดกลางคละ ให้หยุดทำงาน
+        if (remaining <= 60 || durabilityPercent <= 3) {
+            if (!isRepairing) {
+                console.log(`⚠️ [Durability Warning] ที่ขุด ${currentMode.toUpperCase()} เหลือแต้มขุด: ${remaining} สั่งเข้าสู่ระบบ Auto-Mending!`);
+                await repairPickaxeWithExp(currentMode);
+                lastLoggedDurability = -1; // รีเซ็ตค่าเพื่อให้ Log อัปเดตใหม่หลังซ่อมเสร็จ
+            }
             if (!miningActive) return false;
         }
     }
