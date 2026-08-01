@@ -9,15 +9,11 @@ const cron = require('node-cron'); // 👈 เพิ่มไลบรารี�
 // ⏱️ ตัวแปรตั้งเวลา (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
 // ====================================================================
 // 1. เวลาสับเปิด (ปกติ: 0 45 5 * * * -> 05:45:00 น.)
-const CRON_ON_TIME = '0 00 7 * * *';
+const CRON_ON_TIME = '10 42 18 * * *';
 
-// 2. เวลาสับปิด (20:53:00 น.)
-const CRON_OFF_TIME = '0 40 5 * * *';
+// 2. เวลาสับปิด (06:25:00 น.)
+const CRON_OFF_TIME = '5 42 18 * * *';
 
-// 💡 [คำแนะนำสำหรับการทดสอบ]:
-// ถ้าจะลองทดสอบระบบตอนนี้ เช่น ขณะนี้เวลา 19:55 น.
-// ให้เปลี่ยน CRON_ON_TIME เป็น '0 56 19 * * *' (สับเปิดตอน 19:56)
-// และเปลี่ยน CRON_OFF_TIME เป็น '0 57 19 * * *' (สับปิดตอน 19:57)
 // ====================================================================
 
 // 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
@@ -30,7 +26,7 @@ let forceSneakLocked = false;
 
 const express = require('express');
 const app = express();
-const port = process.env.PORT || 8083;
+const port = process.env.PORT || 8085;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
@@ -70,12 +66,12 @@ function checkSeedCount() {
 async function setLeverState(targetState = null) {
     if (!bot) return;
 
-    // 🎯 อัปเดตพิกัดคันโยกเป็น X:-2790 Y:38 Z:14511
-    const leverPos = new Vec3(-2790, 38, 14511);
+    // 🎯 อัปเดตพิกัดคันโยกเป็น X:-2791 Y:38 Z:14509
+    const leverPos = new Vec3(-2791, 38, 14509);
     const leverBlock = bot.blockAt(leverPos);
 
     if (!leverBlock || leverBlock.name !== 'lever') {
-        console.log(`❌ [LEVER ERROR]: ไม่พบคันโยกที่พิกัด X:-2790 Y:38 Z:14511`);
+        console.log(`❌ [LEVER ERROR]: ไม่พบคันโยกที่พิกัด X:-2791 Y:38 Z:14509`);
         return;
     }
 
@@ -123,7 +119,7 @@ function initScheduler() {
         await setLeverState('ON');
     });
 
-    // คิวที่ 2: สับคันโยกให้ "ปิด (OFF)" ตามเวลา CRON_OFF_TIME (06:30 น.)
+    // คิวที่ 2: สับคันโยกให้ "ปิด (OFF)" ตามเวลา CRON_OFF_TIME (06:25 น.)
     cron.schedule(CRON_OFF_TIME, async () => {
         console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับปิดคันโยกตามกำหนดการ!`);
         await setLeverState('OFF');
@@ -158,14 +154,14 @@ function startBot() {
         setTimeout(async () => {
             checkSeedCount();
             
-            // 🔍 เช็กเวลาตอนเข้าเกมใหม่ (กรณีเซิร์ฟเวอร์รีสตาร์ตตอน 6 โมง แล้วบอทเพิ่งเข้าเกมมาหลัง 06:30)
+            // 🔍 เช็กเวลาตอนเข้าเกมใหม่ (กรณีเซิร์ฟเวอร์รีสตาร์ตตอน 6 โมง แล้วบอทเพิ่งเข้าเกมมาหลัง 06:25)
             const now = new Date();
             const hours = now.getHours();
             const minutes = now.getMinutes();
 
-            // ช่วงเวลาหลัง 06:30 น. ถึงก่อน 05:45 น. ของวันถัดไป คันโยกควรอยู่ในสถานะ "ปิด (OFF)"
-            if ((hours === 6 && minutes >= 30) || (hours > 6 || hours < 5)) {
-                console.log(`🕒 [RECONNECT CHECK]: ตรวจพบเวลาปัจจุบัน ${hours}:${minutes} น. (หลังเวลา 06:30) ทำการเช็กและสับปิดคันโยกอัตโนมัติ...`);
+            // ช่วงเวลาหลัง 06:25 น. ถึงก่อน 05:45 น. ของวันถัดไป คันโยกควรอยู่ในสถานะ "ปิด (OFF)"
+            if ((hours === 6 && minutes >= 25) || (hours > 6 || hours < 5)) {
+                console.log(`🕒 [RECONNECT CHECK]: ตรวจพบเวลาปัจจุบัน ${hours}:${minutes} น. (หลังเวลา 06:25) ทำการเช็กและสับปิดคันโยกอัตโนมัติ...`);
                 await setLeverState('OFF');
             }
 
