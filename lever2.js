@@ -3,22 +3,23 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
 const path = require('path');
-const cron = require('node-cron'); // 👈 เพิ่มไลบรารีตั้งเวลา
+const cron = require('node-cron');
 
 // ====================================================================
 // ⏱️ ตัวแปรตั้งเวลา (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
 // ====================================================================
-// 1. เวลาสับเปิด (ปกติ: 0 45 5 * * * -> 05:45:00 น.)
 const CRON_ON_TIME = '0 00 7 * * *';
-
-// 2. เวลาสับปิด (20:53:00 น.)
 const CRON_OFF_TIME = '0 40 5 * * *';
-
-// 💡 [คำแนะนำสำหรับการทดสอบ]:
-// ถ้าจะลองทดสอบระบบตอนนี้ เช่น ขณะนี้เวลา 19:55 น.
-// ให้เปลี่ยน CRON_ON_TIME เป็น '0 56 19 * * *' (สับเปิดตอน 19:56)
-// และเปลี่ยน CRON_OFF_TIME เป็น '0 57 19 * * *' (สับปิดตอน 19:57)
 // ====================================================================
+
+// 🎯 ฟังก์ชันดึงเวลาปัจจุบันของเครื่อง (รูปแบบ: [HH:MM:SS])
+function getTimestamp() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `[${hours}:${minutes}:${seconds}]`;
+}
 
 // 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
 const { setupAmoryLogin } = require('./login');
@@ -32,7 +33,7 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
-app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
+app.listen(port, () => console.log(`${getTimestamp()} 🌍 Health check listening on port ${port}`));
 
 function getMaxDurability(itemName) {
     if (itemName.startsWith('netherite_')) return 2031;
@@ -61,21 +62,20 @@ function getTotalSeedCount() {
 
 function checkSeedCount() {
     const totalSeeds = getTotalSeedCount();
-    console.log(`👉 SEED_COUNT: ${totalSeeds}`);
+    console.log(`${getTimestamp()} 👉 SEED_COUNT: ${totalSeeds}`);
     const hoePercent = getHoeDurabilityPercent();
-    console.log(`👉 HOE_DURABILITY: ${hoePercent}`);
+    console.log(`${getTimestamp()} 👉 HOE_DURABILITY: ${hoePercent}`);
 }
 
 // 🕹️ ฟังก์ชันโยกคันโยกและสั่งให้ตรงกับสถานะเป้าหมาย (targetState: 'ON' หรือ 'OFF')
 async function setLeverState(targetState = null) {
     if (!bot) return;
 
-    // 🎯 อัปเดตพิกัดคันโยกเป็น X:-2790 Y:38 Z:14511
     const leverPos = new Vec3(-2790, 38, 14511);
     const leverBlock = bot.blockAt(leverPos);
 
     if (!leverBlock || leverBlock.name !== 'lever') {
-        console.log(`❌ [LEVER ERROR]: ไม่พบคันโยกที่พิกัด X:-2790 Y:38 Z:14511`);
+        console.log(`${getTimestamp()} ❌ [LEVER ERROR]: ไม่พบคันโยกที่พิกัด X:-2790 Y:38 Z:14511`);
         return;
     }
 
@@ -83,17 +83,15 @@ async function setLeverState(targetState = null) {
         let props = leverBlock.getProperties ? leverBlock.getProperties() : (leverBlock._properties || {});
         let isPowered = props.powered === 'true' || props.powered === true;
 
-        // ถ้ากำหนด targetState ไว้ และสถานะปัจจุบันตรงอยู่แล้ว -> ไม่ต้องโยกซ้ำ
         if (targetState === 'ON' && isPowered) {
-            console.log(`ℹ️ [LEVER SCHEDULE]: คันโยกเปิด (ON) อยู่แล้ว ข้ามการโยกซ้ำ`);
+            console.log(`${getTimestamp()} ℹ️ [LEVER SCHEDULE]: คันโยกเปิด (ON) อยู่แล้ว ข้ามการโยกซ้ำ`);
             return;
         }
         if (targetState === 'OFF' && !isPowered) {
-            console.log(`ℹ️ [LEVER SCHEDULE]: คันโยกปิด (OFF) อยู่แล้ว ข้ามการโยกซ้ำ`);
+            console.log(`${getTimestamp()} ℹ️ [LEVER SCHEDULE]: คันโยกปิด (OFF) อยู่แล้ว ข้ามการโยกซ้ำ`);
             return;
         }
 
-        // หันหน้าไปหาคันโยกและกดโยก
         await bot.lookAt(leverPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
         await bot.activateBlock(leverBlock);
 
@@ -104,39 +102,37 @@ async function setLeverState(targetState = null) {
         isPowered = props.powered === 'true' || props.powered === true;
         const facing = props.facing ? props.facing.toString().toUpperCase() : 'UNKNOWN';
 
-        console.log(`\n🕹️ ================= [ LEVER AUTOMATION ] =================`);
-        console.log(`🎯 คำสั่งตั้งเวลา       : ${targetState ? targetState : 'TOGGLE'}`);
-        console.log(`🟢 สถานะใหม่ (Powered)  : ${isPowered ? 'เปิด (ON)' : 'ปิด (OFF)'}`);
-        console.log(`🧭 ทิศทางคันโยก (Facing) : ${facing}`);
+        console.log(`\n${getTimestamp()} 🕹️ ================= [ LEVER AUTOMATION ] =================`);
+        console.log(`${getTimestamp()} 🎯 คำสั่งตั้งเวลา       : ${targetState ? targetState : 'TOGGLE'}`);
+        console.log(`${getTimestamp()} 🟢 สถานะใหม่ (Powered)  : ${isPowered ? 'เปิด (ON)' : 'ปิด (OFF)'}`);
+        console.log(`${getTimestamp()} 🧭 ทิศทางคันโยก (Facing) : ${facing}`);
         console.log(`========================================================\n`);
 
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการโยกคันโยก: ${err.message}`);
+        console.log(`${getTimestamp()} ❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการโยกคันโยก: ${err.message}`);
     }
 }
 
 // ⏰ ฟังก์ชันตั้งคิวงานอัตโนมัติ Cron Jobs
 function initScheduler() {
-    // คิวที่ 1: สับคันโยกให้ "เปิด (ON)" ตามเวลา CRON_ON_TIME (05:45 น.)
     cron.schedule(CRON_ON_TIME, async () => {
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับเปิดคันโยกตามกำหนดการ!`);
+        console.log(`\n${getTimestamp()} ⏰ [CRON TRIGGER]: ถึงเวลาสับเปิดคันโยกตามกำหนดการ!`);
         await setLeverState('ON');
     });
 
-    // คิวที่ 2: สับคันโยกให้ "ปิด (OFF)" ตามเวลา CRON_OFF_TIME (06:30 น.)
     cron.schedule(CRON_OFF_TIME, async () => {
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับปิดคันโยกตามกำหนดการ!`);
+        console.log(`\n${getTimestamp()} ⏰ [CRON TRIGGER]: ถึงเวลาสับปิดคันโยกตามกำหนดการ!`);
         await setLeverState('OFF');
     });
 
-    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับเปิดไว้ที่ [${CRON_ON_TIME}] และสับปิดไว้ที่ [${CRON_OFF_TIME}] เรียบร้อยแล้ว`);
+    console.log(`${getTimestamp()} ⏱️ [SCHEDULER READY]: ตั้งระบบสับเปิดไว้ที่ [${CRON_ON_TIME}] และสับปิดไว้ที่ [${CRON_OFF_TIME}] เรียบร้อยแล้ว`);
 }
 
 function startBot() {
-    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
+    console.log(`${getTimestamp()} 🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
-        username: 'Lervy_Lever', // 👈 เปลี่ยนชื่อบอทเป็น Lervy_Lever
+        username: 'Lervy_Lever',
         version: '1.21.11'
     });
 
@@ -153,19 +149,17 @@ function startBot() {
     bot.loadPlugin(pathfinder);
 
     bot.once('spawn', () => {
-        console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ!');
+        console.log(`${getTimestamp()} Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ!`);
         
         setTimeout(async () => {
             checkSeedCount();
             
-            // 🔍 เช็กเวลาตอนเข้าเกมใหม่ (กรณีเซิร์ฟเวอร์รีสตาร์ตตอน 6 โมง แล้วบอทเพิ่งเข้าเกมมาหลัง 06:30)
             const now = new Date();
             const hours = now.getHours();
             const minutes = now.getMinutes();
 
-            // ช่วงเวลาหลัง 06:30 น. ถึงก่อน 05:45 น. ของวันถัดไป คันโยกควรอยู่ในสถานะ "ปิด (OFF)"
             if ((hours === 6 && minutes >= 30) || (hours > 6 || hours < 5)) {
-                console.log(`🕒 [RECONNECT CHECK]: ตรวจพบเวลาปัจจุบัน ${hours}:${minutes} น. (หลังเวลา 06:30) ทำการเช็กและสับปิดคันโยกอัตโนมัติ...`);
+                console.log(`${getTimestamp()} 🕒 [RECONNECT CHECK]: ตรวจพบเวลาปัจจุบัน ${hours}:${minutes} น. (หลังเวลา 06:30) ทำการเช็กและสับปิดคันโยกอัตโนมัติ...`);
                 await setLeverState('OFF');
             }
 
@@ -194,13 +188,13 @@ function startBot() {
     });
 
     bot.on('kicked', (reason) => {
-        console.log(`\n🚨🚨🚨 [⚠️ DETECTED KICK]: บอทโดนเซิร์ฟเวอร์เตะออก!!`);
+        console.log(`\n${getTimestamp()} 🚨🚨🚨 [⚠️ DETECTED KICK]: บอทโดนเซิร์ฟเวอร์เตะออก!!`);
         buildActive = false;
         forceSneakLocked = false;
     });
 
     bot.on('error', (err) => {
-        console.log(`\n❌❌❌ [💥 SYSTEM ERROR]: โปรแกรมขัดข้องหลุดการเชื่อมต่อ!`);
+        console.log(`\n${getTimestamp()} ❌❌❌ [💥 SYSTEM ERROR]: โปรแกรมขัดข้องหลุดการเชื่อมต่อ!`);
         buildActive = false;
         forceSneakLocked = false;
     });
@@ -255,14 +249,14 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
     let startRound = selectSet ? selectSet : 1;
     let endRound = selectSet ? selectSet : 3;
 
-    console.log(`\n============================ [ ระบบฟาร์มล็อกเลนเดินความเร็วสูง ] ============================`);
+    console.log(`\n${getTimestamp()} ============================ [ ระบบฟาร์มล็อกเลนเดินความเร็วสูง ] ============================`);
 
     for (let round = startRound; round <= endRound; round++) {
         if (!buildActive) break;
 
         const checkHoe = bot.inventory.items().find(i => i.name.endsWith('_hoe'));
         if (!checkHoe || getHoeDurabilityPercent() <= 1) {
-            console.log('❌ [⚡ STOP FARMING]: ตรวจไม่พบจอบใช้การได้ หรือจอบพังวิกฤต ระงับคิวงานระบบฟาร์มทันที');
+            console.log(`${getTimestamp()} ❌ [⚡ STOP FARMING]: ตรวจไม่พบจอบใช้การได้ หรือจอบพังวิกฤต ระงับคิวงานระบบฟาร์มทันที`);
             break;
         }
 
@@ -276,14 +270,14 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
         if (round === 1) {
             walkZ = zCandidate1;
             parallelZ = zCandidate2;
-            console.log(`\n🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
+            console.log(`\n${getTimestamp()} 🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
         } else {
             walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
             parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่ร่วม] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
+            console.log(`\n${getTimestamp()} 🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่ร่วม] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
         }
 
-        console.log(`🚜 เริ่มสเต็ป 1: วิ่งสับพรวนดินเลนคู่ขนาน [เท้าล็อกเหยียบ Z: ${walkZ}]`);
+        console.log(`${getTimestamp()} 🚜 เริ่มสเต็ป 1: วิ่งสับพรวนดินเลนคู่ขนาน [เท้าล็อกเหยียบ Z: ${walkZ}]`);
         await runTurboTillEngine(startX, targetEndX, targetY, walkZ, walkZ);
         if (!buildActive) break;
 
@@ -291,24 +285,24 @@ async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
         if (!buildActive) break;
 
         if (getTotalSeedCount() > 0) {
-            console.log(`\n🌾 เริ่มสเต็ป 2: วิ่งสับเกียร์ไล่ปลูกเมล็ดฟักทองเลนคู่ [เท้าล็อกเหยียบ Z: ${walkZ}]`);
+            console.log(`\n${getTimestamp()} 🌾 เริ่มสเต็ป 2: วิ่งสับเกียร์ไล่ปลูกเมล็ดฟักทองเลนคู่ [เท้าล็อกเหยียบ Z: ${walkZ}]`);
             await runTurboPlantEngine(startX, targetEndX, targetY, walkZ, walkZ);
             if (!buildActive) break;
 
             await runTurboPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
         } else {
-            console.log('⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน');
+            console.log(`${getTimestamp()} ⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน`);
         }
 
         if (!buildActive) break;
 
-        console.log(`🚀 [CHAINING REPORT] จบกระบวนการชุดที่ ${round} สำเร็จ!`);
+        console.log(`${getTimestamp()} 🚀 [CHAINING REPORT] จบกระบวนการชุดที่ ${round} สำเร็จ!`);
         if (round < endRound) {
             await new Promise(resolve => setTimeout(resolve, 600));
         }
     }
 
-    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวแกนคี่เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
+    console.log(`\n${getTimestamp()} 🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวแกนคี่เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
     buildActive = false;
 }
 
@@ -482,7 +476,7 @@ rl.on('line', async (line) => {
 
     if (input === 'tpa') {
         if (bot && bot.entity) {
-            console.log('✍️ [Terminal Action] ยิงคำสั่งด่วน -> /tpa DukDikauai');
+            console.log(`${getTimestamp()} ✍️ [Terminal Action] ยิงคำสั่งด่วน -> /tpa DukDikauai`);
             bot.chat('/tpa DukDikauai');
         }
         return;
