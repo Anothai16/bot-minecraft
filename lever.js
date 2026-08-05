@@ -206,7 +206,7 @@ function startBot() {
         console.log('Glory! 🛰️ บอท [Lever_Ohman] ออนไลน์สำเร็จ!');
         
         setTimeout(async () => {
-            checkSeedCount();
+            // maain3checkSeedCount();
 
             // 🔍 ตรวจสอบเวลาเครื่องตอนบอท Reconnect เข้ามาใหม่
             const now = new Date();
