@@ -3,30 +3,41 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
 const path = require('path');
-const cron = require('node-cron'); // 👈 เพิ่มไลบรารีตั้งเวลา
+const cron = require('node-cron');
 
 // ====================================================================
-// ⏱️ ตัวแปรตั้งเวลา (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
+// ⏱️ ตัวแปรตั้งเวลาสับเปิด (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
 // ====================================================================
-// 1. เวลาสับเปิด (ปกติ: 0 45 5 * * * -> 05:45:00 น.)
 const CRON_ON_TIME = '0 35 5 * * *';
-
-// 2. เวลาสับปิด (20:53:00 น.)
-const CRON_OFF_TIME = '0 10 7 * * *';
-
-// 💡 [คำแนะนำสำหรับการทดสอบ]:
-// ถ้าจะลองทดสอบระบบตอนนี้ เช่น ขณะนี้เวลา 19:55 น.
-// ให้เปลี่ยน CRON_ON_TIME เป็น '0 56 19 * * *' (สับเปิดตอน 19:56)
-// และเปลี่ยน CRON_OFF_TIME เป็น '0 57 19 * * *' (สับปิดตอน 19:57)
 // ====================================================================
 
-// 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
+// 🕒 ฟังก์ชันดึงเวลาปัจจุบันของเครื่องสำหรับหน้า Log
+function getTimestamp() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('th-TH', { hour12: false });
+    const dateStr = now.toISOString().split('T')[0];
+    return `[${dateStr} ${timeStr}]`;
+}
+
+// 📝 Override console.log / console.error เพื่อให้ติด Timestamp นำหน้าอัตโนมัติ
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = function (...args) {
+    originalLog.apply(console, [`${getTimestamp()}`, ...args]);
+};
+
+console.error = function (...args) {
+    originalError.apply(console, [`${getTimestamp()}`, ...args]);
+};
+
 const { setupAmoryLogin } = require('./login');
 
 const { GoalBlock } = goals;
 let bot;
 let buildActive = false;
 let forceSneakLocked = false;
+let offTimeoutTimer = null;
 
 const express = require('express');
 const app = express();
@@ -66,6 +77,33 @@ function checkSeedCount() {
     console.log(`👉 HOE_DURABILITY: ${hoePercent}`);
 }
 
+// 👥 ฟังก์ชันเช็ครายชื่อผู้เล่น 3 คนในเซิร์ฟเวอร์
+function checkTargetPlayers() {
+    if (!bot || !bot.players) return false;
+
+    const targets = ['Samatachai', 'Kaitom_4', 'Kaitom_67'];
+    const onlinePlayers = Object.keys(bot.players);
+
+    const foundPlayers = targets.filter(name => onlinePlayers.includes(name));
+    const missingPlayers = targets.filter(name => !onlinePlayers.includes(name));
+
+    console.log(`\n👥 ================= [ PLAYER CHECK ] =================`);
+    console.log(`📊 จำนวนผู้เล่นออนไลน์ทั้งหมด : ${onlinePlayers.length} คน`);
+    console.log(`✅ พบผู้เล่นเป้าหมาย (${foundPlayers.length}/${targets.length}) : ${foundPlayers.join(', ') || 'ไม่พบใครเลย'}`);
+    
+    if (missingPlayers.length > 0) {
+        console.log(`❌ ยังไม่ออนไลน์ : ${missingPlayers.join(', ')}`);
+    }
+
+    const isAllPresent = foundPlayers.length === targets.length;
+    if (isAllPresent) {
+        console.log(`🎉 [ALERT COMPLETE]: พบผู้เล่นครบทั้ง 3 คนแล้ว!`);
+    }
+    console.log(`=====================================================\n`);
+
+    return isAllPresent;
+}
+
 // 🕹️ ฟังก์ชันโยกคันโยกและสั่งให้ตรงกับสถานะเป้าหมาย (targetState: 'ON' หรือ 'OFF')
 async function setLeverState(targetState = null) {
     if (!bot) return;
@@ -82,7 +120,6 @@ async function setLeverState(targetState = null) {
         let props = leverBlock.getProperties ? leverBlock.getProperties() : (leverBlock._properties || {});
         let isPowered = props.powered === 'true' || props.powered === true;
 
-        // ถ้ากำหนด targetState ไว้ และสถานะปัจจุบันตรงอยู่แล้ว -> ไม่ต้องโยกซ้ำ
         if (targetState === 'ON' && isPowered) {
             console.log(`ℹ️ [LEVER SCHEDULE]: คันโยกเปิด (ON) อยู่แล้ว ข้ามการโยกซ้ำ`);
             return;
@@ -92,7 +129,6 @@ async function setLeverState(targetState = null) {
             return;
         }
 
-        // หันหน้าไปหาคันโยกและกดโยก
         await bot.lookAt(leverPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
         await bot.activateBlock(leverBlock);
 
@@ -104,7 +140,7 @@ async function setLeverState(targetState = null) {
         const facing = props.facing ? props.facing.toString().toUpperCase() : 'UNKNOWN';
 
         console.log(`\n🕹️ ================= [ LEVER AUTOMATION ] =================`);
-        console.log(`🎯 คำสั่งตั้งเวลา       : ${targetState ? targetState : 'TOGGLE'}`);
+        console.log(`🎯 คำสั่ง               : ${targetState ? targetState : 'TOGGLE'}`);
         console.log(`🟢 สถานะใหม่ (Powered)  : ${isPowered ? 'เปิด (ON)' : 'ปิด (OFF)'}`);
         console.log(`🧭 ทิศทางคันโยก (Facing) : ${facing}`);
         console.log(`========================================================\n`);
@@ -114,21 +150,34 @@ async function setLeverState(targetState = null) {
     }
 }
 
+// 🔄 ฟังก์ชันประมวลผลตามเงื่อนไข: สับเปิด -> เช็คผู้เล่น 3 คน -> รอนับถอยหลัง 10 นาที -> สับปิด
+async function handleScheduledLeverRoutine() {
+    console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับเปิดคันโยกตามกำหนดการ!`);
+    await setLeverState('ON');
+
+    const isComplete = checkTargetPlayers();
+
+    if (isComplete) {
+        console.log(`⏳ [TIMER STARTED]: พบผู้เล่นครบ 3 คน! กำลังตั้งเวลารอ 10 นาทีเพื่อสั่งปิดคันโยก...`);
+        
+        if (offTimeoutTimer) clearTimeout(offTimeoutTimer);
+
+        offTimeoutTimer = setTimeout(async () => {
+            console.log(`\n⌛ [TIMER EXPIRED]: ครบกำหนดเวลา 10 นาทีเรียบร้อยแล้ว! กำลังสั่งสับปิดคันโยก...`);
+            await setLeverState('OFF');
+        }, 10 * 60 * 1000);
+    } else {
+        console.log(`⚠️ [TIMER CANCELLED]: ผู้เล่นเป้าหมายยังมาไม่ครบ 3 คน ระงับการนับถอยหลังปิดคันโยก 10 นาที`);
+    }
+}
+
 // ⏰ ฟังก์ชันตั้งคิวงานอัตโนมัติ Cron Jobs
 function initScheduler() {
-    // คิวที่ 1: สับคันโยกให้ "เปิด (ON)" ตามเวลา CRON_ON_TIME (05:45 น.)
     cron.schedule(CRON_ON_TIME, async () => {
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับเปิดคันโยกตามกำหนดการ!`);
-        await setLeverState('ON');
+        await handleScheduledLeverRoutine();
     });
 
-    // คิวที่ 2: สับคันโยกให้ "ปิด (OFF)" ตามเวลา CRON_OFF_TIME (06:30 น.)
-    cron.schedule(CRON_OFF_TIME, async () => {
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับปิดคันโยกตามกำหนดการ!`);
-        await setLeverState('OFF');
-    });
-
-    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับเปิดไว้ที่ [${CRON_ON_TIME}] และสับปิดไว้ที่ [${CRON_OFF_TIME}] เรียบร้อยแล้ว`);
+    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับเปิดไว้ที่ [${CRON_ON_TIME}] เรียบร้อยแล้ว`);
 }
 
 function startBot() {
@@ -156,22 +205,27 @@ function startBot() {
         
         setTimeout(async () => {
             checkSeedCount();
-            
-            // 🔍 เช็กเวลาตอนเข้าเกมใหม่ (กรณีเซิร์ฟเวอร์รีสตาร์ตตอน 6 โมง แล้วบอทเพิ่งเข้าเกมมาหลัง 06:30)
-            const now = new Date();
-            const hours = now.getHours();
-            const minutes = now.getMinutes();
-
-            // ช่วงเวลาหลัง 06:30 น. ถึงก่อน 05:45 น. ของวันถัดไป คันโยกควรอยู่ในสถานะ "ปิด (OFF)"
-            if ((hours === 6 && minutes >= 30) || (hours > 6 || hours < 5)) {
-                console.log(`🕒 [RECONNECT CHECK]: ตรวจพบเวลาปัจจุบัน ${hours}:${minutes} น. (หลังเวลา 06:30) ทำการเช็กและสับปิดคันโยกอัตโนมัติ...`);
-                await setLeverState('OFF');
-            }
+            checkTargetPlayers();
 
             if (bot.inventory) {
                 bot.inventory.on('updateSlot', () => { checkSeedCount(); });
             }
         }, 8000);
+    });
+
+    bot.on('playerJoined', (player) => {
+        const targets = ['Samatachai', 'Kaitom_4', 'Kaitom_67'];
+        if (targets.includes(player.username)) {
+            console.log(`🟢 [PLAYER JOINED]: ${player.username} เข้าสู่เซิร์ฟเวอร์`);
+            checkTargetPlayers();
+        }
+    });
+
+    bot.on('playerLeft', (player) => {
+        const targets = ['Samatachai', 'Kaitom_4', 'Kaitom_67'];
+        if (targets.includes(player.username)) {
+            console.log(`🔴 [PLAYER LEFT]: ${player.username} ออกจากเซิร์ฟเวอร์`);
+        }
     });
 
     bot.on('death', () => {
@@ -212,6 +266,11 @@ function startBot() {
             return;
         }
 
+        if (message.trim() === 'check') {
+            checkTargetPlayers();
+            return;
+        }
+
         if (message.startsWith('farm')) {
             const args = message.split(' ');
             let startX = parseInt(args[1]);
@@ -229,6 +288,7 @@ function startBot() {
     bot.on('end', () => { 
         buildActive = false; 
         forceSneakLocked = false;
+        if (offTimeoutTimer) clearTimeout(offTimeoutTimer);
         if (bot) bot.setControlState('sneak', false);
         setTimeout(startBot, 10000); 
     });
@@ -476,6 +536,11 @@ rl.on('line', async (line) => {
     
     if (input === 'push') {
         await setLeverState();
+        return;
+    }
+
+    if (input === 'check' || input === 'players') {
+        checkTargetPlayers();
         return;
     }
 
