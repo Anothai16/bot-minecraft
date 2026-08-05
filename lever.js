@@ -8,6 +8,7 @@ const cron = require('node-cron');
 // ====================================================================
 // ⏱️ ตัวแปรตั้งเวลาสับเปิด (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
 // ====================================================================
+// เวลาสับเปิดคันโยก (05:35:00 น.)
 const CRON_ON_TIME = '0 35 5 * * *';
 // ====================================================================
 
@@ -31,13 +32,14 @@ console.error = function (...args) {
     originalError.apply(console, [`${getTimestamp()}`, ...args]);
 };
 
+// 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
 const { setupAmoryLogin } = require('./login');
 
 const { GoalBlock } = goals;
 let bot;
 let buildActive = false;
 let forceSneakLocked = false;
-let offTimeoutTimer = null;
+let offTimeoutTimer = null; // ตัวแปรเก็บ Timer นับถอยหลัง 10 นาที
 
 const express = require('express');
 const app = express();
@@ -205,7 +207,47 @@ function startBot() {
         
         setTimeout(async () => {
             checkSeedCount();
-            checkTargetPlayers();
+
+            // 🔍 ตรวจสอบเวลาเครื่องตอนบอท Reconnect เข้ามาใหม่
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+
+            // ตรวจสอบว่าเป็นช่วงเวลาหลังสับเปิดปกติ (เช่น หลัง 05:35 น. ถึงก่อน 08:00 น.)
+            const isAfterCronTime = (hours === 5 && minutes >= 35) || (hours >= 6 && hours < 8);
+
+            if (isAfterCronTime) {
+                console.log(`🕒 [RECONNECT DETECTED]: บอทล็อกอินกลับเข้ามาช่วงเวลา ${hours}:${minutes.toString().padStart(2, '0')} น. ทำการตรวจสอบสถานะคันโยกและรายชื่อผู้เล่น...`);
+                
+                const leverPos = new Vec3(-2725, 64, 14506);
+                const leverBlock = bot.blockAt(leverPos);
+                
+                if (leverBlock && leverBlock.name === 'lever') {
+                    const props = leverBlock.getProperties ? leverBlock.getProperties() : (leverBlock._properties || {});
+                    const isPowered = props.powered === 'true' || props.powered === true;
+
+                    // ถ้าพบว่าคันโยกเปิด (ON) ค้างไว้อยู่ ให้เช็คคนและตั้งเวลานับถอยหลัง 10 นาทีปิดทันที
+                    if (isPowered) {
+                        console.log(`🟢 [RECONNECT CHECK]: พบว่าคันโยกเปิด (ON) ค้างไว้อยู่! สั่งประมวลผลเช็คผู้เล่นและตั้งเวลาปิด...`);
+                        
+                        const isComplete = checkTargetPlayers();
+                        if (isComplete) {
+                            console.log(`⏳ [TIMER STARTED]: ผู้เล่นครบ 3 คน! กำลังตั้งเวลารอ 10 นาทีเพื่อสั่งปิดคันโยก...`);
+                            if (offTimeoutTimer) clearTimeout(offTimeoutTimer);
+                            offTimeoutTimer = setTimeout(async () => {
+                                console.log(`\n⌛ [TIMER EXPIRED]: ครบกำหนดเวลา 10 นาที! กำลังสั่งสับปิดคันโยก...`);
+                                await setLeverState('OFF');
+                            }, 10 * 60 * 1000);
+                        } else {
+                            console.log(`⚠️ [TIMER CANCELLED]: คันโยกเปิดอยู่แต่ผู้เล่นยังมาไม่ครบ 3 คน ระงับการนับถอยหลัง 10 นาที`);
+                        }
+                    } else {
+                        console.log(`ℹ️ [RECONNECT CHECK]: คันโยกปิด (OFF) อยู่แล้ว ไม่ต้องดำเนินการเพิ่มเติม`);
+                    }
+                }
+            } else {
+                checkTargetPlayers();
+            }
 
             if (bot.inventory) {
                 bot.inventory.on('updateSlot', () => { checkSeedCount(); });
