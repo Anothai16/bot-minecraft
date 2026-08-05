@@ -72,12 +72,6 @@ function getTotalSeedCount() {
         .reduce((sum, item) => sum + item.count, 0);
 }
 
-function checkSeedCount() {
-    const totalSeeds = getTotalSeedCount();
-    console.log(`👉 SEED_COUNT: ${totalSeeds}`);
-    const hoePercent = getHoeDurabilityPercent();
-    console.log(`👉 HOE_DURABILITY: ${hoePercent}`);
-}
 
 // 👥 ฟังก์ชันเช็ครายชื่อผู้เล่น 3 คนในเซิร์ฟเวอร์
 function checkTargetPlayers() {
@@ -206,7 +200,6 @@ function startBot() {
         console.log('Glory! 🛰️ บอท [Lever_Ohman] ออนไลน์สำเร็จ!');
         
         setTimeout(async () => {
-            // maain3checkSeedCount();
 
             // 🔍 ตรวจสอบเวลาเครื่องตอนบอท Reconnect เข้ามาใหม่
             const now = new Date();
@@ -249,9 +242,6 @@ function startBot() {
                 checkTargetPlayers();
             }
 
-            if (bot.inventory) {
-                bot.inventory.on('updateSlot', () => { checkSeedCount(); });
-            }
         }, 8000);
     });
 
@@ -348,70 +338,7 @@ function setupMovements(botInstance) {
     botInstance.pathfinder.setMovements(movements);
 }
 
-async function startCustomPlatformBuilder(startX, targetY, startZ, selectSet) {
-    buildActive = true;
-    setupMovements(bot);
 
-    const targetEndX = -2638;
-    let startRound = selectSet ? selectSet : 1;
-    let endRound = selectSet ? selectSet : 3;
-
-    console.log(`\n============================ [ ระบบฟาร์มล็อกเลนเดินความเร็วสูง ] ============================`);
-
-    for (let round = startRound; round <= endRound; round++) {
-        if (!buildActive) break;
-
-        const checkHoe = bot.inventory.items().find(i => i.name.endsWith('_hoe'));
-        if (!checkHoe || getHoeDurabilityPercent() <= 1) {
-            console.log('❌ [⚡ STOP FARMING]: ตรวจไม่พบจอบใช้การได้ หรือจอบพังวิกฤต ระงับคิวงานระบบฟาร์มทันที');
-            break;
-        }
-
-        let currentBaseZ = startZ + ((round - 1) * 4);
-        const zCandidate1 = currentBaseZ;      
-        const zCandidate2 = currentBaseZ + 1;  
-
-        let walkZ;         
-        let parallelZ;     
-
-        if (round === 1) {
-            walkZ = zCandidate1;
-            parallelZ = zCandidate2;
-            console.log(`\n🎰 [ชุดที่ 1 / 3] -> เท้าล็อกเดินบนแกน Z: ${walkZ} | สะบัดหน้าทำงานแกน Z: ${parallelZ}`);
-        } else {
-            walkZ = (zCandidate1 % 2 !== 0) ? zCandidate1 : zCandidate2;
-            parallelZ = (walkZ === zCandidate1) ? zCandidate2 : zCandidate1;
-            console.log(`\n🎰 [ชุดที่ ${round} / 3 - โหมดเท้าล็อกแกน Z คี่ร่วม] -> ขาไปขากลับเดินบนแกน Z คี่: ${walkZ} | หันไปทำงานแกน Z คู่: ${parallelZ}`);
-        }
-
-        console.log(`🚜 เริ่มสเต็ป 1: วิ่งสับพรวนดินเลนคู่ขนาน [เท้าล็อกเหยียบ Z: ${walkZ}]`);
-        await runTurboTillEngine(startX, targetEndX, targetY, walkZ, walkZ);
-        if (!buildActive) break;
-
-        await runTurboTillEngine(targetEndX, startX, targetY, walkZ, parallelZ);
-        if (!buildActive) break;
-
-        if (getTotalSeedCount() > 0) {
-            console.log(`\n🌾 เริ่มสเต็ป 2: วิ่งสับเกียร์ไล่ปลูกเมล็ดฟักทองเลนคู่ [เท้าล็อกเหยียบ Z: ${walkZ}]`);
-            await runTurboPlantEngine(startX, targetEndX, targetY, walkZ, walkZ);
-            if (!buildActive) break;
-
-            await runTurboPlantEngine(targetEndX, startX, targetY, walkZ, parallelZ);
-        } else {
-            console.log('⚠️ [Warning] เมล็ดฟักทองในตักหมดเกลี้ยง! สั่งข้ามสเต็ปปักเมล็ดไปขึ้นชุดถัดไปด่วน');
-        }
-
-        if (!buildActive) break;
-
-        console.log(`🚀 [CHAINING REPORT] จบกระบวนการชุดที่ ${round} สำเร็จ!`);
-        if (round < endRound) {
-            await new Promise(resolve => setTimeout(resolve, 600));
-        }
-    }
-
-    console.log(`\n🏆 [All Job Completed] ภารกิจฟาร์มล็อกแกนเท้าเดินเดี่ยวแกนคี่เสร็จสมบูรณ์เรียบร้อยครับพี่!`);
-    buildActive = false;
-}
 
 async function autoRefillSeedsFromInventory() {
     if (!bot || !bot.inventory) return;
