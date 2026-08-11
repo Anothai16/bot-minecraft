@@ -15,6 +15,16 @@ const BOT_NAMES = [
     'Domertown',
     'Nattanon09',
     'Nanepez',
+    'Sudlorkayeejai',
+    'Wood_Skel',
+    'sindirt',
+    'Pompamz',
+    // 'quast',
+    // 'Geyman',
+    // 'Jolibee',
+    // 'Posma2',
+    // 'Rxzy3',
+    'mecular',
     'Iron34',
     'd456'
 ];
