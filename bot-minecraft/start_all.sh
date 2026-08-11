@@ -6,7 +6,7 @@ export DOTNET_GCHeapHardLimit=0x2800000   # จำกัด GC Heap อยู่
 export DOTNET_GCConserveMemory=9          # ตั้งค่าการประหยัด Memory ระดับสูงสุด (1-9)
 export DOTNET_GCLatencyMode=2             # ใช้ LowMemory GC Mode
 
-BOTS=("obs1" "Morgan05" "Domertown" "Nattanon09" "Nanepez" "Sudlorkayeejai" "Wood_Skel" "sindirt")
+BOTS=("obs1" "Morgan05" "Domertown" "Nattanon09" "Nanepez" "Sudlorkayeejai" "Wood_Skel" "sindirt" "Pompamz" "Netherboy")
 
 for BOT in "${BOTS[@]}"; do
     echo "กำลังเปิดบอท: $BOT"
