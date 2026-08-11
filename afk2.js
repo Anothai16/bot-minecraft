@@ -1,181 +1,125 @@
 const mineflayer = require('mineflayer');
+const minecraftData = require('minecraft-data');
 
-const HOST = 'play.amorycraft.com';
-const PORT = 25565;
-const VERSION = '1.21.11';
+const SERVER_HOST = 'play.amorycraft.com';
+const SERVER_PORT = 25565;
+const BOT_PASSWORD = '112233';
+const MC_VERSION = '1.20.1';
 
-const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+console.log(`[System] กำลังเตรียมระบบ Shared Resources (${MC_VERSION})...`);
+const sharedData = minecraftData(MC_VERSION);
 
-function setupAmoryLogin(botInstance) {
-    const username = botInstance.username || (botInstance.options && botInstance.options.username) || 'Bot';
-    let isBookProcessed = false; 
+const BOT_NAMES = [
+    'Geyman',
+    'Jolibee',
+    'Posma2',
+    'Rxzy3',
+    'mecular',
+    'Iron34',
+    'd456'
+];
 
-    if (!botInstance._client) return;
-
-    // 🎯 [เรดาร์ชั้นที่ 1]: ดักฟังแพ็คเก็ตดิบเพื่อแก้ด่านสมุด
-    botInstance._client.on('packet', (data, metadata) => {
-        if (!metadata || !metadata.name) return;
-
-        if (metadata.name === 'open_book' || metadata.name.includes('book')) {
-            if (isBookProcessed) return; 
-            isBookProcessed = true; 
-
-            console.log(`\n🚨 [${username}]: ตรวจพบด่านสมุดล็อกหน้าจอ กำลังแก้ทาง...`);
-            
-            // 1. ยิงรหัสผ่านรอบแรกทันทีที่เจอสมุด
-            setTimeout(() => {
-                if (botInstance && !botInstance._client.ended) {
-                    botInstance.chat('/login 112233');
-                    console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 1 [/login 112233]`);
-                }
-            }, 600);
-
-            // 2. ปิดหน้าต่างสมุดเพื่อปลดล็อก UI
-            setTimeout(() => {
-                if (botInstance && botInstance._client && !botInstance._client.ended) {
-                    try {
-                        botInstance.closeWindow(0); 
-                        console.log(`✅ [${username}]: ปลดล็อกด่านตรวจสมุดสำเร็จ!`);
-                    } catch (e) {}
-                }
-            }, 1200);
-
-            // 3. ยิงรหัสผ่านรอบที่ 2 ซ้ำ
-            setTimeout(() => {
-                if (botInstance && !botInstance._client.ended) {
-                    botInstance.chat('/login 112233');
-                    console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 2 ซ้ำเพื่อความชัวร์`);
-                }
-            }, 1800);
-        }
-    });
-
-    // 🛰️ [เรดาร์ชั้นที่ 2]: ถือเข็มทิศและ "คลิกขวา" (Use Item)
-    botInstance.once('spawn', () => {
-        setTimeout(async () => {
-            if (!botInstance || !botInstance.inventory || botInstance._client.ended) return;
-            
-            // ค้นหา Recovery Compass ในช่องเก็บของ
-            const blueCompass = botInstance.inventory.items().find(i => i.name === 'recovery_compass');
-            if (blueCompass) {
-                try {
-                    // ถือเข็มทิศบนมือ
-                    await botInstance.equip(blueCompass, 'hand');
-                    await sleep(800); 
-                    
-                    // คลิกขวาใช้งานเข็มทิศ
-                    await botInstance.activateItem();
-                    console.log(`🧭 [${username}]: คลิกขวาใช้งานเข็มทิศฟ้าเรียบร้อย`);
-                } catch (equipErr) {
-                    console.log(`[!] [${username}] เกิดข้อผิดพลาดขณะถือ/คลิกขวาเข็มทิศ:`, equipErr.message);
-                }
-            } else {
-                console.log(`⚠️ [${username}]: ไม่พบเข็มทิศในกระเป๋า พยายามยิง /server survival แทน...`);
-                botInstance.chat('/server survival');
-            }
-        }, 7000); // รอ 7 วินาทีให้แน่ใจว่าล็อกอินผ่านเรียบร้อย
-    });
-
-    // 🚨 [เรดาร์ชั้นที่ 3]: เมื่อหน้าต่างเมนูเปิดขึ้นมา "คลิกซ้าย" (Left Click) บล็อกหญ้าในสล็อต 10
-    botInstance.on('windowOpen', async (window) => {
-        await sleep(1500);
-        if (!botInstance || botInstance._client.ended) return;
-
-        const targetSlotID = 10; // ช่องสล็อตบล็อกหญ้า
-        try {
-            // clickWindow(slot, mouseButton, mode)
-            // mouseButton = 0 หมายถึง Left Click (คลิกซ้าย)
-            await botInstance.clickWindow(targetSlotID, 0, 0);
-            console.log(`🟩 [${username}]: คลิกซ้ายเลือกเมนูบล็อกหญ้า (Slot ${targetSlotID}) เรียบร้อย`);
-            
-            setTimeout(() => {
-                if (botInstance && !botInstance._client.ended) {
-                    botInstance.chat('/home home');
-                    console.log(`🏠 [${username}]: เข้าสู่บ้านเรียบร้อยครับ!`);
-                }
-            }, 3000);
-        } catch (clickErr) {
-            console.log(`[!] [${username}] เกิดข้อผิดพลาดขณะคลิกเมนู:`, clickErr.message);
-        }
-    });
-}
-
-// รายชื่อบอทที่ต้องการเปิด
-const botNames = ['K666']; 
-
-function startBot(accountName, delay = 0) {
+function createBotInstance(username, delayMs) {
     setTimeout(() => {
-        console.log(`[SYS] กำลังเชื่อมต่อบอท: ${accountName}...`);
+        console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
 
         const bot = mineflayer.createBot({
-            host: HOST,
-            port: PORT,
-            username: accountName,
-            version: VERSION,
-
-            // ⚡ 1. ปิดฟิสิกส์และการคำนวณตำแหน่ง
+            host: SERVER_HOST,
+            port: SERVER_PORT,
+            username: username,
+            version: MC_VERSION,
+            data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 120000,
+            checkTimeoutInterval: 60000
+        });
 
-            // ⚡ 2. ปิดเฉพาะ Plugin ที่ไม่จำเป็น (เปิด Window/Inventory ไว้สำหรับการคลิก)
-            plugins: {
-                chest: false,
-                furnace: false,
-                dispenser: false,
-                enchantment_table: false,
-                brewing_stand: false,
-                villager: false,
-                trade: false,
-                book: false,
-                anvil: false,
-                pathfinder: false,
-                'relative-nodes': false,
-                raycast: false
+        // 0: Start, 1: Anvil, 2: Confirm, 3: Lobby (รอคลิกเข็มทิศ), 4: Joined Survival
+        bot.state = 0;
+
+        bot.on('windowOpen', async (window) => {
+            // --- STEP 0: เข้าเซิร์ฟครั้งแรก เจอ GUI หลัก ---
+            if (window.type === 'minecraft:generic_9x3' && bot.state === 0) {
+                bot.state = 1;
+                setTimeout(() => {
+                    bot.clickWindow(1, 0, 0).catch(() => {});
+                }, 1200);
+
+                // เผื่อเป็นบอทเก่าที่ล็อกอินค้างไว้แล้ว (ไม่มี Anvil เด้งมา)
+                setTimeout(() => {
+                    if (bot.state === 1) {
+                        bot.state = 3;
+                        triggerCompass(bot, username);
+                    }
+                }, 4000);
+            }
+            
+            // --- STEP 1: เจอ Anvil พิมพ์รหัสผ่าน ---
+            else if (window.type === 'minecraft:anvil' && bot.state === 1) {
+                bot.state = 2;
+                setTimeout(() => {
+                    try {
+                        bot._client.write('name_item', { name: BOT_PASSWORD });
+                        setTimeout(() => {
+                            bot.clickWindow(2, 0, 0).catch(() => {});
+                        }, 800);
+                    } catch (e) {}
+                }, 1200);
+            }
+
+            // --- STEP 2: กลับมาจาก Anvil กดยืนยันปุ่มล็อกอิน ---
+            else if (window.type === 'minecraft:generic_9x3' && bot.state === 2) {
+                bot.state = 3;
+                setTimeout(() => {
+                    bot.clickWindow(2, 0, 0).catch(() => {});
+                    console.log(`[✓] [${username}] กรอกรหัสผ่านสำเร็จ! (กำลังรอวาร์ปเข้าห้องโถง...)`);
+                    triggerCompass(bot, username);
+                }, 1200);
+            }
+
+            // --- STEP 3: GUI เข็มทิศเปิดขึ้นมาจริงๆ (ต้องอยู่ใน State 3 เท่านั้น!) ---
+            else if (window.type === 'minecraft:generic_9x3' && bot.state === 3) {
+                bot.state = 4; // เปลี่ยนเป็น State 4 ทันที ป้องกันกดซ้ำ
+                setTimeout(() => {
+                    bot.clickWindow(10, 0, 0).catch(() => {});
+                    console.log(`[>] [${username}] เลือกโหมด Survival (Slot 10) เรียบร้อย`);
+
+                    // พิมพ์ /afk หลังวาร์ปเข้าโลกหลัก
+                    setTimeout(() => {
+                        bot.chat('/afk');
+                        console.log(`[✓] [${username}] พิมพ์ /afk สำเร็จ! (ออนไลน์สมบูรณ์)`);
+                    }, 10000);
+                }, 1500);
             }
         });
 
-        // ⚡ 3. ดักทิ้งเฉพาะ Packet โลกและ Entity เพื่อไม่ให้รก RAM (ปล่อย Packet Window / Inventory ไว้)
-        bot._client.on('packet', (data, metadata) => {
-            if (
-                metadata.name === 'map_chunk' || 
-                metadata.name === 'unload_chunk' || 
-                metadata.name === 'spawn_entity' ||
-                metadata.name === 'light_update' ||
-                metadata.name === 'block_change'
-            ) {
-                return;
-            }
-        });
+        // ฟังก์ชันคลิกขวาเข็มทิศ
+        function triggerCompass(botInstance, botName) {
+            setTimeout(() => {
+                try {
+                    console.log(`[>] [${botName}] กำลังคลิกขวาใช้เข็มทิศ...`);
+                    botInstance.activateItem();
+                } catch (e) {}
+            }, 6000); // เว้น 6 วินาทีให้วาร์ปห้องโถงนิ่งๆ ก่อน
+        }
 
-        // ผูกฟังก์ชันล็อกอิน
-        setupAmoryLogin(bot);
-
-        // ระบบขยับตัวเบาๆ ป้องกัน AFK Kick ทุก 2 นาที
         bot.on('spawn', () => {
-            setInterval(() => {
-                if (bot._client && !bot._client.ended) {
-                    bot._client.write('look', {
-                        yaw: 0,
-                        pitch: 0,
-                        onGround: true
-                    });
-                }
-            }, 120000);
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
-        bot.on('end', () => {
-            console.log(`[!] [${accountName}] หลุดการเชื่อมต่อ... รอต่อใหม่ใน 20 วินาที`);
-            setTimeout(() => startBot(accountName, 0), 20000);
+        bot.on('error', () => {});
+
+        bot.on('end', (reason) => {
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 25 วินาที...`);
+            createBotInstance(username, 25000);
         });
 
-        bot.on('error', (err) => {
-            console.log(`[ERR] [${accountName}] เกิดข้อผิดพลาด:`, err.message);
-        });
-
-    }, delay);
+    }, delayMs);
 }
 
-// เรียกทำงาน
-botNames.forEach((name, index) => {
-    startBot(name, index * 5000);
+console.log('==================================================');
+console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (State Machine Control)`);
+console.log('==================================================');
+
+BOT_NAMES.forEach((name, index) => {
+    createBotInstance(name, index * 25000);
 });
