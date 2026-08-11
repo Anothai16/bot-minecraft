@@ -12,7 +12,7 @@ let bot;
 let isReconnecting = false;
 
 function startBot() {
-    console.log('🔌 กำลังทำการเชื่อมต่อ (โหมด Ultra Low CPU Chunk Loader)...');
+    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
@@ -24,11 +24,10 @@ function startBot() {
     });
 
     if (bot._client) {
-        // ⚡ [ULTRA FIX 1]: คาย Packet ขยะทิ้งตั้งแต่งานระดับ Network Socket
+        // ⚡ [CPU OPTIMIZATION]: ดรอปเฉพาะแพ็คเก็ตแสดงผลที่ไม่จำเป็น
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
 
-            // รายชื่อ Packet ที่ไม่ต้องให้ Node.js เอาไปประมวลผลต่อ
             const dropPackets = [
                 'world_particles', 'packet_world_particles',
                 'named_sound_effect', 'sound_effect', 'entity_destroy',
@@ -44,17 +43,15 @@ function startBot() {
         });
     }
 
-    // เรียกระบบล็อกอินเดิม
+    // เรียกระบบล็อกอิน
     setupAmoryLogin(bot);
 
     bot.once('spawn', () => {
-        console.log('🛰️ บอท [K555] ออนไลน์สำเร็จ! กำลังปิดการทำงานเบื้องหลังที่ไม่จำเป็น...');
+        console.log('🛰️ บอท [K555] ออนไลน์สำเร็จ!');
 
-        // ⚡ [ULTRA FIX 2]: ปิดการคำนวณ Physics & Ticks
         bot.physicsEnabled = false;
         if (bot.physics) bot.physics.stopped = true;
 
-        // ⚡ [ULTRA FIX 3]: ปิดการอัปเดต World & Entities ใน Memory โดยสิ้นเชิง
         if (bot.world) {
             bot.world.columns = {};
             bot.world.setBlockStateId = () => {};
@@ -62,17 +59,10 @@ function startBot() {
         }
 
         if (bot.entities) {
-            bot.removeAllListeners();
+            bot.removeAllListeners('entityMoved');
+            bot.removeAllListeners('entitySpawn');
             bot.entities = {};
         }
-
-        // ⚡ [ULTRA FIX 4]: ถอด Event Listeners ของ Mineflayer ภายในทิ้ง
-        const keepEvents = ['kicked', 'error', 'end', 'spawn'];
-        bot.eventNames().forEach(eventName => {
-            if (!keepEvents.includes(eventName)) {
-                bot.removeAllListeners(eventName);
-            }
-        });
     });
 
     bot.on('kicked', (reason) => console.log(`\n🚨 [KICKED]: บอทโดนเตะออก!!`));
