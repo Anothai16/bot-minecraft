@@ -1,0 +1,20 @@
+# ล็อกแชทไม่ให้หลุด
+/internal set chatmode commands-only
+
+# ปลดล็อก Dialog + ล็อกอิน
+wait 1
+/dialog input 1 pass 112233
+/dialog submit 1 1
+/login 112233
+
+# รอโหลดเข้าโลก Lobby แล้วกดใช้เข็มทิศ
+wait 4
+/useitem mainhand
+
+# กดเลือกสล็อต 10 ใน GUI
+wait 2
+/inventory 1 click 10
+
+# วาร์ปกลับบ้าน
+wait 3
+/home home
