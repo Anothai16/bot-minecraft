@@ -5,6 +5,8 @@
 82.26.104.50
 dritestudio
 
+pm2 start main.py --name "afk-bot" --interpreter python3
+
 farm -2718 83 14543 
 
 farm -2718 83 14556
