@@ -1,4 +1,5 @@
 const http = require('http');
+const os = require('os');
 const mineflayer = require('mineflayer');
 const minecraftData = require('minecraft-data');
 
@@ -6,9 +7,9 @@ const SERVER_HOST = 'play.amorycraft.com';
 const SERVER_PORT = 25565;
 const BOT_PASSWORD = '112233';
 const MC_VERSION = '1.20.1';
-const WEB_PORT = 3000; // พอร์ตสำหรับเปิดดูเว็บหน้าจอสถานะ
+const WEB_PORT = 3000;
+const DELAY_BETWEEN_BOTS = 20000; // เว้นระยะปล่อยบอทตัวละ 20 วินาที
 
-console.log(`[System] กำลังเตรียมระบบ Shared Resources (${MC_VERSION})...`);
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
@@ -16,10 +17,10 @@ const BOT_NAMES = [
     'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456', 'llMasterll', 'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
 ];
 
-// Object สำหรับเก็บสถานะของบอทแต่ละตัว realtime
+// เก็บสถานะบอท Real-time
 const botStatusMap = {};
 BOT_NAMES.forEach(name => {
-    botStatusMap[name] = { status: 'Offline', step: '-', lastUpdate: new Date().toLocaleTimeString('th-TH') };
+    botStatusMap[name] = { status: 'Offline', step: 'รอคิวเชื่อมต่อ...', lastUpdate: new Date().toLocaleTimeString('th-TH') };
 });
 
 function updateStatus(name, status, step) {
@@ -28,6 +29,19 @@ function updateStatus(name, status, step) {
         step: step || botStatusMap[name]?.step || '-',
         lastUpdate: new Date().toLocaleTimeString('th-TH')
     };
+}
+
+// ฟังก์ชันดึง Local IP ของเครื่อง VPS
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '127.0.0.1';
 }
 
 function createBotInstance(username, delayMs) {
@@ -122,9 +136,7 @@ function createBotInstance(username, delayMs) {
     }, delayMs);
 }
 
-// ==========================================
-// Web Server ขนาดจิ๋ว (ประหยัดทรัพยากรสุดๆ)
-// ==========================================
+// Web Dashboard
 const server = http.createServer((req, res) => {
     if (req.url === '/api/status') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -213,13 +225,30 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(WEB_PORT, () => {
-    console.log(`[Web] Dashboard พร้อมใช้งานที่ http://localhost:${WEB_PORT}`);
+    // ดึง Public IP ของ VPS มาแสดงบน Log
+    http.get('http://api.ipify.org', (res) => {
+        let publicIp = '';
+        res.on('data', chunk => publicIp += chunk);
+        res.on('end', () => printStartupLogs(publicIp.trim()));
+    }).on('error', () => {
+        printStartupLogs(getLocalIP());
+    });
 });
 
-console.log('==================================================');
-console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (3-Step Direct Login)`);
-console.log('==================================================');
+function printStartupLogs(ipAddress) {
+    console.log('==================================================');
+    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SYSTEM`);
+    console.log('==================================================');
+    console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
+    console.log(` [+] Minecraft Ver.  : ${MC_VERSION}`);
+    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
+    console.log(` [+] Delay / Bot     : ${DELAY_BETWEEN_BOTS / 1000} วินาที`);
+    console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
+    console.log(` [🌐] Local Access   : http://localhost:${WEB_PORT}`);
+    console.log('==================================================');
 
-BOT_NAMES.forEach((name, index) => {
-    createBotInstance(name, index * 20000);
-});
+    // เริ่มปล่อยบอททีละตัว
+    BOT_NAMES.forEach((name, index) => {
+        createBotInstance(name, index * DELAY_BETWEEN_BOTS);
+    });
+}
