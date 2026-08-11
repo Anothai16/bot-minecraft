@@ -10,17 +10,50 @@ console.log(`[System] กำลังเตรียมระบบ Shared Resou
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
-    'Geyman',
-    'Jolibee',
-    'Posma2',
-    'Rxzy3',
+    'obs1',
+    'Morgan05',
+    'Domertown',
+    'Nattanon09',
+    'Nanepez',
+    'Sudlorkayeejai',
+    'Wood_Skel',
+    'sindirt',
+    'Pompamz',
+    // 'quast',
+    // 'Geyman',
+    // 'Jolibee',
+    // 'Posma2',
+    // 'Rxzy3',
     'mecular',
     'Iron34',
     'd456'
 ];
 
+// ฟังก์ชันช่วยสำหรับการ Delay (Sleep)
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ฟังก์ชันช่วยสำหรับ "รอให้มี Window/GUI ประเภทที่ต้องการเปิดขึ้นมาจริง"
+function waitForWindow(bot, windowType, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            bot.removeListener('windowOpen', handler);
+            reject(new Error(`รอหน้าต่าง ${windowType} นานเกินไป (Timeout)`));
+        }, timeoutMs);
+
+        const handler = (window) => {
+            if (!windowType || window.type === windowType) {
+                clearTimeout(timer);
+                bot.removeListener('windowOpen', handler);
+                resolve(window);
+            }
+        };
+
+        bot.on('windowOpen', handler);
+    });
+}
+
 function createBotInstance(username, delayMs) {
-    setTimeout(() => {
+    setTimeout(async () => {
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
 
         const bot = mineflayer.createBot({
@@ -33,98 +66,74 @@ function createBotInstance(username, delayMs) {
             checkTimeoutInterval: 60000
         });
 
-        // 0: Start, 1: Anvil, 2: Confirm, 3: Lobby (รอคลิกเข็มทิศ), 4: Joined Survival
-        bot.state = 0;
+        // 📌 ระบบคุมการทำงานแบบเรียงลำดับขั้นตอนทีละ Step (Sequential Workflow)
+        async function runAuthenticationProcess() {
+            try {
+                // STEP 1: รอเปิด GUI หน้าแรกสุด -> สั่งคลิกสมุด (Slot 1)
+                await waitForWindow(bot, 'minecraft:generic_9x3');
+                console.log(`[1/5] [${username}] เปิดหน้าต่างล็อกอินหลักสำเร็จ -> กดสมุด (Slot 1)`);
+                await sleep(1000);
+                await bot.clickWindow(1, 0, 0);
 
-        bot.on('windowOpen', async (window) => {
-            // --- STEP 0: เข้าเซิร์ฟครั้งแรก เจอ GUI หลัก ---
-            if (window.type === 'minecraft:generic_9x3' && bot.state === 0) {
-                bot.state = 1;
-                setTimeout(() => {
-                    bot.clickWindow(1, 0, 0).catch(() => {});
-                }, 1200);
+                // STEP 2: รอเปิด Anvil -> พิมพ์รหัสผ่าน 112233
+                await waitForWindow(bot, 'minecraft:anvil');
+                console.log(`[2/5] [${username}] เปิดหน้าต่าง Anvil สำเร็จ -> กำลังพิมพ์รหัสผ่าน...`);
+                await sleep(1000);
+                bot._client.write('name_item', { name: BOT_PASSWORD });
+                await sleep(800);
+                await bot.clickWindow(2, 0, 0);
 
-                // สำหรับบอทเก่าที่ล็อกอินไว้แล้ว ให้เว้น 4 วินาทีถ้าไม่มี Anvil ค่อยกดเข็มทิศ
-                setTimeout(() => {
-                    if (bot.state === 1) {
-                        bot.state = 3;
-                        triggerCompass(bot, username);
-                    }
-                }, 4000);
+                // STEP 3: รอเปิด GUI ยืนยันรหัสผ่าน -> สั่งกดปุ่มยืนยัน (Slot 2)
+                await waitForWindow(bot, 'minecraft:generic_9x3');
+                console.log(`[3/5] [${username}] กลับมาหน้าต่างยืนยัน -> กดปุ่มยืนยัน (Slot 2)`);
+                await sleep(1000);
+                await bot.clickWindow(2, 0, 0);
+                console.log(`[✓] [${username}] กรอกรหัสผ่านผ่านแล้ว! (รอ 6 วินาทีเพื่อวาร์ปเข้าห้องโถง)`);
+
+                // STEP 4: เว้นระยะ 6 วินาทีให้ตัวละครวาร์ปเข้าห้องโถงนิ่งๆ แล้วค่อยเปิดเข็มทิศ
+                await sleep(6000);
+                console.log(`[4/5] [${username}] คลิกขวาใช้เข็มทิศ...`);
+                
+                // สั่งคลิกขวาเข็มทิศ แล้วตั้ง "รอให้หน้าต่างเมนูเข็มทิศเปิดขึ้นมาจริงๆ"
+                const compassPromise = waitForWindow(bot, 'minecraft:generic_9x3');
+                bot.activateItem();
+                await compassPromise;
+
+                // STEP 5: เมนูเข็มทิศเปิดเรียบร้อย -> สั่งกดโหมด Survival (Slot 10)
+                console.log(`[5/5] [${username}] เปิดเมนูเข็มทิศสำเร็จ -> คลิกเลือก Survival (Slot 10)`);
+                await sleep(1200);
+                await bot.clickWindow(10, 0, 0);
+
+                // จบกระบวนการ: รอวาร์ปเข้าโลก Survival 8 วินาที แล้วพิมพ์ /afk
+                await sleep(8000);
+                bot.chat('/afk');
+                console.log(`[✓] [✓] [${username}] พิมพ์ /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+
+            } catch (err) {
+                console.error(`[-] [${username}] ขั้นตอนขัดข้อง: ${err.message}`);
             }
-            
-            // --- STEP 1: เจอ Anvil พิมพ์รหัสผ่าน ---
-            else if (window.type === 'minecraft:anvil' && bot.state === 1) {
-                bot.state = 2; // ย้ายไป State 2 ทันที กันบอทเก่ามากดซ้ำ
-                setTimeout(() => {
-                    try {
-                        bot._client.write('name_item', { name: BOT_PASSWORD });
-                        setTimeout(() => {
-                            bot.clickWindow(2, 0, 0).catch(() => {});
-                        }, 800);
-                    } catch (e) {}
-                }, 1200);
-            }
-
-            // --- STEP 2: กลับมาจาก Anvil กดยืนยันปุ่มล็อกอิน ---
-            else if (window.type === 'minecraft:generic_9x3' && bot.state === 2) {
-                bot.state = 3; // ล็อก State เป็น 3 ทันที
-                setTimeout(() => {
-                    bot.clickWindow(2, 0, 0).catch(() => {});
-                    console.log(`[✓] [${username}] กรอกรหัสผ่านสำเร็จ! (กำลังรอวาร์ปเข้าห้องโถง...)`);
-                    
-                    // สั่งใช้เข็มทิศหลังจากกดยืนยันรหัสแล้วเท่านั้น
-                    triggerCompass(bot, username);
-                }, 1200);
-            }
-
-            // --- STEP 3: GUI เข็มทิศเปิดขึ้นมาจริงๆ (ต้องอยู่ใน State 3 เท่านั้น!) ---
-            else if (window.type === 'minecraft:generic_9x3' && bot.state === 3) {
-                bot.state = 4; // เปลี่ยนเป็น State 4 ทันที ป้องกันกดซ้ำ
-                setTimeout(() => {
-                    bot.clickWindow(10, 0, 0).catch(() => {});
-                    console.log(`[>] [${username}] เลือกโหมด Survival (Slot 10) เรียบร้อย`);
-
-                    // พิมพ์ /afk หลังวาร์ปเข้าโลกหลัก
-                    setTimeout(() => {
-                        bot.chat('/afk');
-                        console.log(`[✓] [${username}] พิมพ์ /afk สำเร็จ! (ออนไลน์สมบูรณ์)`);
-                    }, 10000);
-                }, 1500);
-            }
-        });
-
-        // ฟังก์ชันคลิกขวาเข็มทิศ
-        function triggerCompass(botInstance, botName) {
-            setTimeout(() => {
-                // เช็คว่าถ้ายังอยู่ใน State 3 จริงๆ ถึงจะกดใช้เข็มทิศ
-                if (botInstance.state === 3) {
-                    try {
-                        console.log(`[>] [${botName}] กำลังคลิกขวาใช้เข็มทิศ...`);
-                        botInstance.activateItem();
-                    } catch (e) {}
-                }
-            }, 6000); // เว้น 6 วินาทีให้วาร์ปห้องโถงนิ่งๆ ก่อน
         }
 
-        bot.on('spawn', () => {
-            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
+        bot.once('spawn', () => {
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ เริ่มต้นกระบวนการล็อกอิน...`);
+            runAuthenticationProcess();
         });
 
         bot.on('error', () => {});
 
         bot.on('end', (reason) => {
-            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 25 วินาที...`);
-            createBotInstance(username, 25000);
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 15 วินาที...`);
+            createBotInstance(username, 15000);
         });
 
     }, delayMs);
 }
 
 console.log('==================================================');
-console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (State Machine Control)`);
+console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (ปล่อยตัวละ 10 วินาที)`);
 console.log('==================================================');
 
+// ⚡ ปรับเป็น index * 10000 (เข้าห่างกันตัวละ 10 วินาที)
 BOT_NAMES.forEach((name, index) => {
-    createBotInstance(name, index * 25000);
+    createBotInstance(name, index * 10000);
 });
