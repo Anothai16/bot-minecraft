@@ -7,7 +7,7 @@ const CONFIG = {
     port: 25565,
     username: 'K555',
     version: '1.20.4',
-    reconnectDelay: 10000 // รอ 10 วินาทีก่อนเข้าใหม่เวลาหลุด
+    reconnectDelay: 10000
 };
 
 let bot = null;
@@ -37,11 +37,27 @@ function createAFKBot() {
         port: CONFIG.port,
         username: CONFIG.username,
         version: CONFIG.version,
-        viewDistance: 'tiny',          // โหลดแมพแคบที่สุดเพื่อประหยัด RAM
-        checkTimeoutInterval: 60000    // ยืดเวลาเช็ค Timeout
+        viewDistance: 'tiny',
+        checkTimeoutInterval: 60000
     });
 
-    let isBookProcessed = false;
+    let isLoginSent = false;
+
+    // ฟังก์ชันยิงรหัสผ่านแบบการันตี (ทำรอบเดียวต่อการเชื่อมต่อ)
+    const sendLogin = (source) => {
+        if (isLoginSent || !bot || bot._client.ended) return;
+        isLoginSent = true;
+
+        bot.chat('/login 112233');
+        console.log(`✍️ [LOGIN]: ยิง /login 112233 เรียบร้อย (${source})`);
+
+        // พยายามสั่งปิดหน้าต่างสมุดดักไว้กันจอค้าง
+        setTimeout(() => {
+            if (bot && !bot._client.ended) {
+                try { bot.closeWindow(0); } catch (e) {}
+            }
+        }, 800);
+    };
 
     // ⚡ [CPU SAVER]: ดักกรอง Packet Particle ทิ้ง
     if (bot._client) {
@@ -50,32 +66,31 @@ function createAFKBot() {
                 metadata.size = 0;
             }
 
-            // 🎯 เรดาร์ชั้นที่ 1: ดักฟัง Packet สมุดเพื่อยิงรหัสผ่าน
-            if (metadata && metadata.name && (metadata.name === 'open_book' || metadata.name.includes('book'))) {
-                if (isBookProcessed) return;
-                isBookProcessed = true;
-
-                console.log(`🚨 [LOGIN]: ตรวจพบด่านสมุด ส่งรหัสผ่าน...`);
-                setTimeout(() => {
-                    if (bot && bot._client && !bot._client.ended) {
-                        bot.chat('/login 112233');
-                        console.log(`✍️ [LOGIN]: ยิง /login 112233 เรียบร้อย`);
-                    }
-                }, 500);
-
-                setTimeout(() => {
-                    if (bot && bot._client && !bot._client.ended) {
-                        try { bot.closeWindow(0); } catch (e) {}
-                    }
-                }, 1200);
+            // 🎯 ดักจับ Packet สมุด (กรณี metadata ส่งชื่อมา)
+            if (metadata && metadata.name && metadata.name.includes('book')) {
+                sendLogin('Book Packet Detected');
             }
         });
     }
 
-    // 🛰️ เรดาร์ชั้นที่ 2: กดใช้งานเข็มทิศฟ้าหลัง Spawn 6 วินาที
-    bot.once('spawn', () => {
-        console.log(`🛰️ [SPAWN]: บอทเข้าโลกแล้ว รอซิงค์ไอเทม...`);
+    // 💬 ดักจับข้อความแชทระบบ (ถ้ามีคำว่า login ให้ยิงทันที)
+    bot.on('message', (jsonMsg) => {
+        const msgStr = jsonMsg.toString().toLowerCase();
+        if (msgStr.includes('/login') || msgStr.includes('login') || msgStr.includes('รหัสผ่าน')) {
+            sendLogin('Chat Trigger');
+        }
+    });
 
+    // 🛰️ เรดาร์ชั้นที่ 2: บังคับยิงรหัสผ่าน Fast Trigger หลัง Spawn 2 วินาที + สลับถือเข็มทิศ
+    bot.once('spawn', () => {
+        console.log(`🛰️ [SPAWN]: บอทเข้าโลกแล้ว...`);
+
+        // Fast Trigger: บังคับยิงรหัสผ่านหลังเข้าโลก 2 วินาทีชัวร์ๆ 100%
+        setTimeout(() => {
+            sendLogin('Fast Trigger หลัง Spawn');
+        }, 2000);
+
+        // รอซิงค์ไอเทม แล้วกดเข็มทิศฟ้าเข้าเซิร์ฟหลัก
         setTimeout(async () => {
             if (!bot || !bot.inventory || bot._client.ended) return;
 
@@ -88,7 +103,6 @@ function createAFKBot() {
                     console.log(`🧭 [ITEM]: กดใช้งานเข็มทิศฟ้าเรียบร้อย`);
                 } catch (e) {}
             } else {
-                // ถ้าไม่มีเข็มทิศ ลองยิงคำสั่งตรง
                 bot.chat('/server survival');
             }
         }, 6000);
@@ -115,11 +129,10 @@ function createAFKBot() {
         } catch (e) {}
     });
 
-    // 🛑 ระบบ Auto Reconnect เมื่อหลุด/โดนเตะ/เออร์เรอร์
+    // 🛑 ระบบ Auto Reconnect
     bot.on('kicked', (reason) => safeReconnect(`Kicked: ${reason}`));
     bot.on('error', (err) => safeReconnect(`Error: ${err.message}`));
     bot.on('end', (reason) => safeReconnect(`End: ${reason}`));
 }
 
-// เริ่มต้นรันบอท
 createAFKBot();
