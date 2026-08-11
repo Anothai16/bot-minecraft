@@ -22,4 +22,4 @@ cd "$(dirname "$0")"
   echo "/home home"
   
   cat
-) | ./MinecraftClient-20260809-500-linux-x64 K666 - play.amorycraft.com
+) | ./MinecraftClient K666 - play.amorycraft.com
