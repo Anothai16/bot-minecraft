@@ -10,23 +10,8 @@ console.log(`[System] กำลังเตรียมระบบ Shared Resou
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
-    'obs1',
-    'Morgan05',
-    'Domertown',
-    'Nattanon09',
-    'Nanepez',
-    'Sudlorkayeejai',
-    'Wood_Skel',
-    'sindirt',
-    'Pompamz',
-    // 'quast',
-    // 'Geyman',
-    // 'Jolibee',
-    // 'Posma2',
-    // 'Rxzy3',
-    'mecular',
-    'Iron34',
-    'd456'
+    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz', 'Netherboy', 'quast', 'Geyman'
+            , 'Jolibee','Posma2','Rxzy3','mecular', 'Iron34','d456','llMasterll','Ixcw2534','ShadowEmpress','gulnwza007','Monosox','twenty29','0zow29'
 ];
 
 function createBotInstance(username, delayMs) {
