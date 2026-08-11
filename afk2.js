@@ -44,7 +44,7 @@ function createBotInstance(username, delayMs) {
                     bot.clickWindow(1, 0, 0).catch(() => {});
                 }, 1200);
 
-                // เผื่อเป็นบอทเก่าที่ล็อกอินค้างไว้แล้ว (ไม่มี Anvil เด้งมา)
+                // สำหรับบอทเก่าที่ล็อกอินไว้แล้ว ให้เว้น 4 วินาทีถ้าไม่มี Anvil ค่อยกดเข็มทิศ
                 setTimeout(() => {
                     if (bot.state === 1) {
                         bot.state = 3;
@@ -55,7 +55,7 @@ function createBotInstance(username, delayMs) {
             
             // --- STEP 1: เจอ Anvil พิมพ์รหัสผ่าน ---
             else if (window.type === 'minecraft:anvil' && bot.state === 1) {
-                bot.state = 2;
+                bot.state = 2; // ย้ายไป State 2 ทันที กันบอทเก่ามากดซ้ำ
                 setTimeout(() => {
                     try {
                         bot._client.write('name_item', { name: BOT_PASSWORD });
@@ -68,10 +68,12 @@ function createBotInstance(username, delayMs) {
 
             // --- STEP 2: กลับมาจาก Anvil กดยืนยันปุ่มล็อกอิน ---
             else if (window.type === 'minecraft:generic_9x3' && bot.state === 2) {
-                bot.state = 3;
+                bot.state = 3; // ล็อก State เป็น 3 ทันที
                 setTimeout(() => {
                     bot.clickWindow(2, 0, 0).catch(() => {});
                     console.log(`[✓] [${username}] กรอกรหัสผ่านสำเร็จ! (กำลังรอวาร์ปเข้าห้องโถง...)`);
+                    
+                    // สั่งใช้เข็มทิศหลังจากกดยืนยันรหัสแล้วเท่านั้น
                     triggerCompass(bot, username);
                 }, 1200);
             }
@@ -95,10 +97,13 @@ function createBotInstance(username, delayMs) {
         // ฟังก์ชันคลิกขวาเข็มทิศ
         function triggerCompass(botInstance, botName) {
             setTimeout(() => {
-                try {
-                    console.log(`[>] [${botName}] กำลังคลิกขวาใช้เข็มทิศ...`);
-                    botInstance.activateItem();
-                } catch (e) {}
+                // เช็คว่าถ้ายังอยู่ใน State 3 จริงๆ ถึงจะกดใช้เข็มทิศ
+                if (botInstance.state === 3) {
+                    try {
+                        console.log(`[>] [${botName}] กำลังคลิกขวาใช้เข็มทิศ...`);
+                        botInstance.activateItem();
+                    } catch (e) {}
+                }
             }, 6000); // เว้น 6 วินาทีให้วาร์ปห้องโถงนิ่งๆ ก่อน
         }
 
