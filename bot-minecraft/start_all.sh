@@ -1,19 +1,11 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# 1. ตั้งค่าบีบ RAM ของ .NET Runtime ให้เหลือน้อยที่สุด
+# ตั้งค่าบีบ Memory ของ .NET (ยังคงไว้เพื่อประหยัด RAM)
 export DOTNET_gcServer=0
 export DOTNET_GCHeapHardLimit=0x4000000
 export DOTNET_GCConserveMemory=9
 
-# 2. โหลด jemalloc ช่วยคืน RAM ให้ Linux (ตรวจสอบ path ไฟล์ .so ให้ตรงกับชิปเครื่องของคุณ)
-if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
-    export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2
-elif [ -f /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 ]; then
-    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-fi
-
-# รายชื่อบอท 5 ตัว
 BOTS=("obs1" "Morgan05" "Domertown" "Nattanon09" "Nanepez")
 
 for BOT in "${BOTS[@]}"; do
@@ -38,11 +30,9 @@ for BOT in "${BOTS[@]}"; do
       echo "/afk"
       
       cat
-    ) | ./MinecraftClient "$BOT" - play.amorycraft.com > /dev/null 2>&1 &
+    ) | ./MinecraftClient "$BOT" - play.amorycraft.com &
 
-    # หน่วงเวลา 10 วินาทีก่อนเปิดตัวถัดไป
     sleep 10
 done
 
-# ค้าง Process หลักไว้ไม่ให้ PM2 สั่งปิด
 wait
