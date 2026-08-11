@@ -1,81 +1,94 @@
 import time
-from javascript import require
+import threading
 
-# ดึงโมดูลการหน่วงเวลาและใช้งานฟังก์ชัน Asynchronous ของ Python
-def sleep(ms):
-    time.sleep(ms / 1000.0)
+def sleep_sec(secs):
+    time.sleep(secs)
 
 def setup_amory_login(bot_instance):
-    """
-    ฟังก์ชันจัดการระบบออโต้ล็อกอิน ฝ่าด่านสมุดหนังสือ และเข้าเซิร์ฟเวอร์ย่อย AmoryCraft (เวอร์ชัน Python)
-    """
-    # ดึงชื่อแบบปลอดภัย ถ้ายังไม่มาให้ขึ้นคำว่า 'Bot' แทนชั่วคราว
-    username = bot_instance.username or (bot_instance.options and bot_instance.options.username) or 'Bot'
+    # ดึงชื่อบอทแบบปลอดภัย
+    username = getattr(bot_instance, 'username', 'Bot')
     
-    # ตัวแปรล็อกระบบ (ใช้ list เพื่อให้ฟังก์ชันภายในรังสี Packet เข้าถึงและแก้ไขค่าได้)
-    state = {"is_book_processed": False}
+    # ตัวแปรล็อกป้องกันการประมวลผลด่านสมุดซ้ำซ้อน
+    is_book_processed = [False]
 
-    if not bot_instance._client:
+    if not hasattr(bot_instance, '_client') or not bot_instance._client:
         return
 
-    # 🎯 [เรดาร์ชั้นที่ 1]: ดักฟังแพ็คเกจเครือข่ายดิบ ทะลวงด่าน Book UI
-    @bot_instance._client.on('packet')
-    def handle_packet(data, metadata):
-        if metadata.name == 'open_book' or 'book' in metadata.name:
-            if state["is_book_processed"]:
+    # 🎯 [เรดาร์ชั้นที่ 1]: ดักฟังแพ็คเก็ตเครือข่ายดิบ ทะลวงด่าน Book UI
+    def handle_packet(data, metadata, *args):
+        packet_name = str(metadata.name) if hasattr(metadata, 'name') else ''
+        
+        if packet_name == 'open_book' or 'book' in packet_name:
+            if is_book_processed[0]:
                 return
-            state["is_book_processed"] = True
+            is_book_processed[0] = True
 
             print(f"\n🚨 [{username}]: ตรวจพบด่านสมุดล็อกหน้าจอ กำลังแก้ทาง...")
-            
-            # หน่วงเวลา 500ms แล้วส่งรหัสผ่านสวนกลับเข้าช่องแชท
-            sleep(500)
-            if bot_instance:
+
+            # 1. ยิงรหัสผ่านสวนแชท
+            def send_pass():
+                time.sleep(0.5)
                 bot_instance.chat('/login 112233')
                 print(f"✍️ [{username}]: ยิงรหัสผ่าน [/login 112233] เรียบร้อย")
 
-            # หน่วงเวลา 1200ms บังคับส่งสัญญาณกดปิดหน้าหนังสือทิ้งทันทีไม่ให้จอค้าง
-            sleep(1200)
-            if bot_instance and bot_instance._client:
+            # 2. บังคับปิดหน้าต่างสมุดไม่ให้จอค้าง
+            def close_book():
+                time.sleep(1.2)
                 try:
                     bot_instance.closeWindow(0)
                     print(f"✅ [{username}]: ปลดล็อกด่านตรวจสมุดสำเร็จ!")
                 except Exception:
                     pass
 
+            threading.Thread(target=send_pass).start()
+            threading.Thread(target=close_book).start()
+
+    bot_instance._client.on('packet', handle_packet)
+
     # 🛰️ [เรดาร์ชั้นที่ 2]: กลไกคว้าเข็มทิศฟ้าคัดท้ายเข้าเกมหลัก
-    @bot_instance.once('spawn')
-    def handle_spawn(*args):
-        # หน่วงเวลา 6 วินาทีให้รหัสผ่านซิงค์ผ่านด่านสมุดก่อน แล้วค่อยคว้าเข็มทิศฟ้า
-        sleep(6000)
-        if not bot_instance or not bot_instance.inventory:
-            return
-            
-        # ค้นหาเข็มทิศฟื้นฟู (Recovery Compass) ในกระเป๋า
-        blue_compass = next((i for i in bot_instance.inventory.items() if i.name == 'recovery_compass'), None)
-        if blue_compass:
+    def handle_spawn(this, *args):
+        def do_equip():
+            time.sleep(6) # หน่วงเวลา 6 วินาทีให้รหัสผ่านซิงค์
             try:
-                bot_instance.equip(blue_compass, 'hand')
-                sleep(800)
-                bot_instance.activateItem()
-            except Exception:
+                if not bot_instance.inventory:
+                    return
+                
+                # ค้นหา recovery_compass ในช่องเก็บของ
+                items = bot_instance.inventory.items()
+                blue_compass = None
+                for item in items:
+                    if item.name == 'recovery_compass':
+                        blue_compass = item
+                        break
+
+                if blue_compass:
+                    bot_instance.equip(blue_compass, 'hand')
+                    time.sleep(0.8)
+                    bot_instance.activateItem()
+                    print(f"🧭 [{username}]: กดใช้งานเข็มทิศฟ้าเรียบร้อย!")
+            except Exception as e:
                 pass
 
+        threading.Thread(target=do_equip).start()
+
+    bot_instance.once('spawn', handle_spawn)
+
     # 🚨 [เรดาร์ชั้นที่ 3]: หน้าต่างเมนูปกติ (สล็อตเลือกเซิร์ฟย่อยหญ้าไอดี 10)
-    @bot_instance.on('windowOpen')
-    def handle_window_open(window):
-        # ดีเลย์ 1.5 วินาที แล้วจิ้มบล็อกหญ้าหลักเพื่อเข้าเซิร์ฟย่อย (สล็อตไอดี 10)
-        sleep(1500)
-        target_slot_id = 10
-        
-        try:
-            bot_instance.clickWindow(target_slot_id, 0, 0)
-            
-            # พอก้าวเข้าสู่ Spawn ย่อยเสร็จ สั่งยิงคำสั่งกลับพิกัดบ้านหลักทันที
-            sleep(2500)
-            if bot_instance:
+    def handle_window_open(this, window, *args):
+        def do_click():
+            time.sleep(1.5)
+            target_slot_id = 10
+            try:
+                # จิ้มสล็อตไอดี 10 (บล็อกหญ้า)
+                bot_instance.clickWindow(target_slot_id, 0, 0)
+                
+                # พอก้าวเข้าสู่ Spawn ย่อยเสร็จ สั่งยิงกลับบ้าน
+                time.sleep(2.5)
                 bot_instance.chat('/home home')
-                current_name = bot_instance.username or username
-                print(f"🏠 [{current_name}]: ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อยครับพี่!")
-        except Exception:
-            pass
+                print(f"🏠 [{username}]: ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อยครับพี่!")
+            except Exception as e:
+                pass
+
+        threading.Thread(target=do_click).start()
+
+    bot_instance.on('windowOpen', handle_window_open)
