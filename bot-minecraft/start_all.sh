@@ -1,41 +1,48 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# รายชื่อบอททั้ง 5 ตัว
+# 1. ตั้งค่าบีบ RAM ของ .NET Runtime ให้เหลือน้อยที่สุด
+export DOTNET_gcServer=0
+export DOTNET_GCHeapHardLimit=0x4000000
+export DOTNET_GCConserveMemory=9
+
+# 2. โหลด jemalloc ช่วยคืน RAM ให้ Linux (ตรวจสอบ path ไฟล์ .so ให้ตรงกับชิปเครื่องของคุณ)
+if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
+    export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2
+elif [ -f /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 ]; then
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+fi
+
+# รายชื่อบอท 5 ตัว
 BOTS=("obs1" "Morgan05" "Domertown" "Nattanon09" "Nanepez")
 
-# ลูปเปิดบอทรันคำสั่งทีละตัว
 for BOT in "${BOTS[@]}"; do
     echo "--------------------------------------------------"
     echo "กำลังเปิดบอท: $BOT"
     echo "--------------------------------------------------"
     
     (
-      # 1. รอ 10 วินาที ให้หน้า Dialog โหลดขึ้นมาจนสมบูรณ์
       sleep 10
       echo "/dialog input pass 112233"
       
       sleep 3
       echo "/dialog click 1"
       
-      # 2. รอ 10 วินาที ให้เซิร์ฟเวอร์ปลดล็อกล็อกอิน
       sleep 10
       echo "/useitem mainhand"
       
-      # 3. รอ 1 วินาที สั่งคลิก GUI เลือกสล็อต 10
       sleep 1
       echo "/inventory container click 10 Left"
       
-      # 4. รอ 8 วินาที แล้วพิมพ์ /afk
       sleep 8
       echo "/afk"
       
       cat
-    ) | ./MinecraftClient "$BOT" - play.amorycraft.com &
+    ) | ./MinecraftClient "$BOT" - play.amorycraft.com > /dev/null 2>&1 &
 
-    # หน่วงเวลา 10 วินาทีก่อนที่จะเริ่มเปิดบอทตัวถัดไป
+    # หน่วงเวลา 10 วินาทีก่อนเปิดตัวถัดไป
     sleep 10
 done
 
-# ค้าง Process ไว้ไม่ให้ PM2 สั่งปิดสคริปต์
+# ค้าง Process หลักไว้ไม่ให้ PM2 สั่งปิด
 wait
