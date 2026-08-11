@@ -3,10 +3,10 @@ cd "$(dirname "$0")"
 
 (
   # 1. รอ 5 วินาที ให้หน้า Dialog โหลดขึ้นมาจนสมบูรณ์
-  sleep 5
+  sleep 10
   echo "/dialog input pass 112233"
   
-  sleep 1
+  sleep 3
   echo "/dialog click 1"
   
   # 2. รอ 5 วินาที ให้เซิร์ฟเวอร์ปลดล็อกล็อกอิน และวาร์ปตัวละครเข้าจุด Spawn
