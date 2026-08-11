@@ -12,74 +12,66 @@ let bot;
 let isReconnecting = false;
 
 function startBot() {
-    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์ (โหมด Chunk Loader 48 บล็อก)...');
+    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์ (โหมด Chunk Loader ประหยัด CPU)...');
     
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
         username: 'K555',
         version: '1.21.11',
-        // 🎯 viewDistance = 3 (3 Chunks = 48 บล็อครอบตัว ในทุกระดับความสูง Y)
-        viewDistance: 3,
+        viewDistance: 3, // รัศมี 48 บล็อก (3 Chunks)
         checkTimeoutInterval: 60000,
         noResetWorld: true
     });
 
     if (bot._client) {
-        // ⚡ [CPU OPTIMIZATION]: ดักตัดเฉพาะ Packet ที่ไม่เกี่ยวกับฟาร์มทิ้งตั้งแต่ระดับ Socket
+        // ⚡ [CPU KILLER FIX 1]: ทะลวงดักกักแพ็คเก็ต Block/Piston/Chunk ก่อนถึง Mineflayer Engine
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
 
-            // ตัดการประมวลผล Particle, เสียง, และการขยับของสิ่งมีชีวิตอื่นเพื่อเซฟ CPU
-            const ignoredPackets = [
+            // แพ็คเก็ตขยะเน็ตเวิร์ก ปิดการแกะข้อมูลทั้งหมด
+            const heavyPackets = [
                 'world_particles', 'packet_world_particles',
                 'named_sound_effect', 'sound_effect', 'entity_destroy',
                 'rel_entity_move', 'entity_move_look', 'entity_teleport',
-                'entity_head_rotation', 'animation'
+                'entity_head_rotation', 'animation',
+                'block_change', 'multi_block_change', 'block_action', 'block_entity_data'
             ];
 
-            if (ignoredPackets.includes(metadata.name)) {
+            if (heavyPackets.includes(metadata.name)) {
                 metadata.size = 0;
             }
         });
     }
 
-    // เรียกระบบล็อกอินเดิม (ไม่แตะลอจิก)
+    // เรียกระบบล็อกอินเดิม
     setupAmoryLogin(bot);
 
     bot.once('spawn', () => {
-        console.log('🛰️ บอท [K555] เข้าสู่โลกสำเร็จ! เริ่มโหลดพื้นที่ 48 บล็อครอบตัว (เต็มความสูง Y)...');
+        console.log('🛰️ บอท [K555] ออนไลน์สำเร็จ! กำลังรันโหมดประหยัด CPU ขั้นสูงสุด...');
 
-        // ⚡ [CPU OPTIMIZATION]: ปิด Physics Engine การเดิน/ตก/ชน ของตัวบอท
+        // ⚡ [CPU KILLER FIX 2]: ปิดการทำงานเบื้องหลังของ Mineflayer ทั้งหมด
         bot.physicsEnabled = false;
-        if (bot.physics) {
-            bot.physics.stopped = true;
+        if (bot.physics) bot.physics.stopped = true;
+
+        // ปิดการประมวลผล World & Entity ทั้งหมด
+        if (bot.world) {
+            bot.world.columns = {};
+            // ปิดการอัปเดตบล็อกในหน่วยความจำ
+            bot.world.setBlockStateId = () => {};
         }
 
-        // ⚡ [CPU OPTIMIZATION]: ปิดการจำตำแหน่ง Entity รอบตัวเพื่อคืน CPU ให้ Event Loop
         if (bot.entities) {
             bot.removeAllListeners('entityMoved');
             bot.removeAllListeners('entitySpawn');
+            bot.entities = {};
         }
 
-        // ⚡ เคลียร์ Memory ถอดโครงสร้างแคชขยะออก ไม่ให้ค้างจน RAM/CPU พุ่ง
-        setInterval(() => {
-            if (bot && bot.world && bot.world.columns) {
-                const keys = Object.keys(bot.world.columns);
-                // ถ้าแคชเกิน 49 Chunks (รัศมี 3 Chunks รอบตัว) ให้ล้างข้อมูลขยะทิ้ง
-                if (keys.length > 49) {
-                    bot.world.columns = {};
-                }
-            }
-        }, 30000); // ทำความสะอาดทุกๆ 30 วินาที
+        // ลบ Listener ที่สะสมในระบบออก
+        bot.removeAllListeners('physicsTick');
     });
 
-    bot.on('kicked', (reason) => {
-        console.log(`\n🚨🚨🚨 [⚠️ DETECTED KICK]: บอทโดนเตะออก!!`);
-    });
-
-    bot.on('error', (err) => {
-        console.log(`\n❌❌❌ [💥 SYSTEM ERROR]: หลุดการเชื่อมต่อ!`);
-    });
+    bot.on('kicked', (reason) => console.log(`\n🚨 [KICKED]: บอทโดนเตะออก!!`));
+    bot.on('error', (err) => console.log(`\n❌ [ERROR]: หลุดการเชื่อมต่อ!`));
 
     bot.on('end', () => { 
         if (isReconnecting) return;
