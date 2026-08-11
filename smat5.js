@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
-const { setupAmoryLogin } = require('./login2');
+const { setupAmoryLogin } = require('./login');
 
 const { GoalBlock } = goals;
 let bot;
@@ -19,7 +19,7 @@ const progressFilePath = path.join(__dirname, 'progress.txt');
 
 const express = require('express');
 const app = express();
-const port = process.env.PORT || 8092;
+const port = process.env.PORT || 8089;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
@@ -64,7 +64,7 @@ function startBot() {
     console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
-        username: 'DukDikauai',
+        username: 'K666',
         version: '1.21.11'
     });
 
