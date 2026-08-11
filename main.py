@@ -8,7 +8,7 @@ print("🔌 กำลังทำการเชื่อมต่อเข้�
 bot = mineflayer.createBot({
     'host': 'play.amorycraft.com',
     'port': 25565,
-    'username': 'K666',
+    'username': 'K555',
     'version': '1.21.11'  # 👈 กำหนดเวอร์ชันให้ตรงเพื่อป้องกัน Proxy Internal Error
 })
 
