@@ -1,3 +1,4 @@
+const http = require('http');
 const mineflayer = require('mineflayer');
 const minecraftData = require('minecraft-data');
 
@@ -5,18 +6,34 @@ const SERVER_HOST = 'play.amorycraft.com';
 const SERVER_PORT = 25565;
 const BOT_PASSWORD = '112233';
 const MC_VERSION = '1.20.1';
+const WEB_PORT = 3000; // พอร์ตสำหรับเปิดดูเว็บหน้าจอสถานะ
 
 console.log(`[System] กำลังเตรียมระบบ Shared Resources (${MC_VERSION})...`);
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
-    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz', 'Netherboy', 'quast', 'Geyman'
-            , 'Jolibee','Posma2','Rxzy3','mecular', 'Iron34','d456','llMasterll','Ixcw2534','ShadowEmpress','gulnwza007','Monosox','twenty29','0zow29'
+    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz', 'Netherboy', 'quast', 'Geyman',
+    'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456', 'llMasterll', 'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
 ];
+
+// Object สำหรับเก็บสถานะของบอทแต่ละตัว realtime
+const botStatusMap = {};
+BOT_NAMES.forEach(name => {
+    botStatusMap[name] = { status: 'Offline', step: '-', lastUpdate: new Date().toLocaleTimeString('th-TH') };
+});
+
+function updateStatus(name, status, step) {
+    botStatusMap[name] = {
+        status,
+        step: step || botStatusMap[name]?.step || '-',
+        lastUpdate: new Date().toLocaleTimeString('th-TH')
+    };
+}
 
 function createBotInstance(username, delayMs) {
     setTimeout(() => {
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
+        updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
 
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
@@ -28,46 +45,35 @@ function createBotInstance(username, delayMs) {
             checkTimeoutInterval: 60000
         });
 
-        // 0: หน้าล็อกอินแรก, 1: อยู่หน้าโถง (รอคลิกเข็มทิศ), 2: เสร็จสิ้น
         bot.flowState = 0;
 
         bot.on('windowOpen', async (window) => {
-            
-            // ==========================================
-            // STEP 1: หน้าต่าง GUI ล็อกอินแรกสุดเปิดขึ้นมา
-            // ==========================================
             if (window.type === 'minecraft:generic_9x3' && bot.flowState === 0) {
-                bot.flowState = 1; // เปลี่ยน State เพื่อเตรียมไปรอถือเข็มทิศที่ห้องโถง
+                bot.flowState = 1;
                 console.log(`[1/3] [${username}] พบ GUI ล็อกอิน -> กำลังกดปุ่มเข้าสู่ระบบ (Slot 2)...`);
+                updateStatus(username, 'Logging in', 'กดเข้าสู่ระบบ (Slot 2)');
 
                 setTimeout(async () => {
                     try {
-                        // กด Slot 2 (ปุ่ม oak_button "เข้าสู่ระบบ")
                         await bot.clickWindow(2, 0, 0);
                         console.log(`[✓] [${username}] กดเข้าสู่ระบบเรียบร้อย! (กำลังวาร์ปไปห้องโถง...)`);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
 
-                        // ==========================================
-                        // STEP 2: รอ 6 วินาทีให้วาร์ปมาถึงห้องโถงนิ่งๆ แล้วถือเข็มทิศคลิกขวา
-                        // ==========================================
                         setTimeout(async () => {
                             console.log(`[2/3] [${username}] ถึงห้องโถงแล้ว -> กำลังสแกนถือเข็มทิศ...`);
+                            updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
                             
-                            // หาไอเทมเข็มทิศในช่องเก็บของ
                             const compass = bot.inventory.items().find(i => i.name.includes('compass'));
-                            
                             if (compass) {
                                 try {
                                     await bot.equip(compass, 'hand');
                                     await bot.sleep(500);
                                     bot.activateItem();
-                                    console.log(`[>] [${username}] ถือเข็มทิศและคลิกขวาเรียบร้อย!`);
                                 } catch (e) {
                                     bot.activateItem();
                                 }
                             } else {
-                                // ถ้าไม่มีในช่องเก็บของ ลองสั่งคลิกขวาตรงๆ
                                 try { bot.activateItem(); } catch (e) {}
-                                console.log(`[>] [${username}] สั่งคลิกขวาใช้เข็มทิศ (Direct)`);
                             }
 
                         }, 6000);
@@ -77,24 +83,21 @@ function createBotInstance(username, delayMs) {
                     }
                 }, 1500);
             }
-
-            // ==========================================
-            // STEP 3: เมนูเข็มทิศเปิดขึ้นมา -> กด Survival (Slot 10: บรรทัด 2 ช่อง 2)
-            // ==========================================
             else if (window.type === 'minecraft:generic_9x3' && bot.flowState === 1) {
-                bot.flowState = 2; // ล็อก State เสร็จสมบูรณ์
+                bot.flowState = 2;
                 console.log(`[3/3] [${username}] GUI เข็มทิศเปิดขึ้นมาแล้ว! -> กำลังกดเลือก Survival (Slot 10)...`);
+                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
-                        // กด Slot 10 (บล็อกหญ้า Survival)
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] เลือกโหมด Survival เรียบร้อย! (กำลังวาร์ปเข้าเซิร์ฟหลัก...)`);
+                        console.log(`[>] [${username}] เลือกโหมด Survival เรียบร้อย!`);
+                        updateStatus(username, 'Entering Survival', 'กำลังเข้าโลก Survival');
 
-                        // รอวาร์ปเข้าโลก Survival 8 วินาที แล้วพิมพ์ /afk
                         setTimeout(() => {
                             bot.chat('/afk');
                             console.log(`[✓] [✓] [${username}] พิมพ์ /afk สำเร็จ! (ออนไลน์สมบูรณ์)`);
+                            updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
                         }, 8000);
 
                     } catch (err) {
@@ -112,11 +115,106 @@ function createBotInstance(username, delayMs) {
 
         bot.on('end', (reason) => {
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 20 วินาที...`);
+            updateStatus(username, 'Offline', `หลุด (${reason})`);
             createBotInstance(username, 20000);
         });
 
     }, delayMs);
 }
+
+// ==========================================
+// Web Server ขนาดจิ๋ว (ประหยัดทรัพยากรสุดๆ)
+// ==========================================
+const server = http.createServer((req, res) => {
+    if (req.url === '/api/status') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(botStatusMap));
+        return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Multi-Bot Status</title>
+    <style>
+        body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 20px; }
+        h2 { color: #4caf50; margin-bottom: 10px; }
+        .stats { margin-bottom: 15px; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; background: #1e1e1e; font-size: 13px; }
+        th, td { border: 1px solid #333; padding: 6px 10px; text-align: left; }
+        th { background: #2a2a2a; color: #aaa; }
+        .Online { color: #4caf50; font-weight: bold; }
+        .Connecting, .Logging, .Selecting, .In { color: #ffeb3b; }
+        .Offline { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h2>🤖 Minecraft Multi-Bot Dashboard</h2>
+    <div class="stats" id="summary">กำลังโหลดข้อมูล...</div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>ชื่อบอท</th>
+                <th>สถานะ</th>
+                <th>ขั้นตอนล่าสุด</th>
+                <th>อัปเดตเมื่อ</th>
+            </tr>
+        </thead>
+        <tbody id="bot-table"></tbody>
+    </table>
+
+    <script>
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const tbody = document.getElementById('bot-table');
+                
+                let onlineCount = 0;
+                let total = 0;
+                let html = '';
+
+                Object.keys(data).forEach((name, index) => {
+                    total++;
+                    const bot = data[name];
+                    const isOnline = bot.status.includes('Online');
+                    if (isOnline) onlineCount++;
+
+                    let statusClass = 'Offline';
+                    if (isOnline) statusClass = 'Online';
+                    else if (bot.status !== 'Offline') statusClass = 'Connecting';
+
+                    html += \`<tr>
+                        <td>\${index + 1}</td>
+                        <td><b>\${name}</b></td>
+                        <td class="\${statusClass}">\${bot.status}</td>
+                        <td>\${bot.step}</td>
+                        <td>\${bot.lastUpdate}</td>
+                    </tr>\`;
+                });
+
+                tbody.innerHTML = html;
+                document.getElementById('summary').innerHTML = 
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | อัปเดตอัตโนมัติทุก 3 วินาที\`;
+            } catch (e) {}
+        }
+
+        fetchStatus();
+        setInterval(fetchStatus, 3000);
+    </script>
+</body>
+</html>
+    `);
+});
+
+server.listen(WEB_PORT, () => {
+    console.log(`[Web] Dashboard พร้อมใช้งานที่ http://localhost:${WEB_PORT}`);
+});
 
 console.log('==================================================');
 console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (3-Step Direct Login)`);
