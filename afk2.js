@@ -29,28 +29,8 @@ const BOT_NAMES = [
     'd456'
 ];
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ฟังก์ชันรอรับ Window ถัดไปโดยไม่สนประเภท (แค่อย่างน้อยมี Window เปิดขึ้นมา)
-function waitForAnyWindow(bot, timeoutMs = 10000) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            bot.removeListener('windowOpen', handler);
-            reject(new Error('ไม่มีหน้าต่างใดๆ เปิดขึ้นมาเลย (Timeout)'));
-        }, timeoutMs);
-
-        const handler = (window) => {
-            clearTimeout(timer);
-            bot.removeListener('windowOpen', handler);
-            resolve(window);
-        };
-
-        bot.on('windowOpen', handler);
-    });
-}
-
 function createBotInstance(username, delayMs) {
-    setTimeout(async () => {
+    setTimeout(() => {
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
 
         const bot = mineflayer.createBot({
@@ -63,81 +43,102 @@ function createBotInstance(username, delayMs) {
             checkTimeoutInterval: 60000
         });
 
-        async function runAuthenticationProcess() {
-            try {
-                // 1. รอเปิด GUI หน้าแรกสุด -> สั่งคลิกสมุด (Slot 1)
-                const win1 = await waitForAnyWindow(bot);
-                console.log(`[1/5] [${username}] เปิด GUI หน้าแรกสำเร็จ (${win1.type}) -> สั่งคลิกสมุด (Slot 1)`);
-                await sleep(1500);
-                
-                // ลองคลิกซ้าย Slot 1
-                await bot.clickWindow(1, 0, 0);
+        // 0: หน้าแรก, 1: รอ Anvil, 2: รอยืนยันรหัส, 3: รอใช้เข็มทิศ, 4: อยู่ใน Survival
+        bot.authStage = 0;
 
-                // 2. รอรับ Window ถัดไปที่เซิร์ฟเวอร์ส่งกลับมา
-                const win2 = await waitForAnyWindow(bot);
-                console.log(`[2/5] [${username}] เซิร์ฟเวอร์ส่งหน้าต่างประเภท: ${win2.type} กลับมา`);
+        bot.on('windowOpen', async (window) => {
+            
+            // STAGE 0: หน้าต่างแรกสุด (generic_9x3) -> คลิก Slot 1 (สมุด)
+            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
+                bot.authStage = 1; // ล็อคเข้า Stage 1 ทันที
+                console.log(`[1/5] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอกด Slot 1 (สมุด)...`);
 
-                // ถ้าเป็น Anvil ให้ยิง Packet พิมพ์รหัส
-                if (win2.type === 'minecraft:anvil') {
-                    console.log(`[>] [${username}] กำลังยิงรหัสผ่านลงใน Anvil...`);
-                    await sleep(1200);
-                    bot._client.write('name_item', { name: BOT_PASSWORD });
-                    await sleep(800);
-                    await bot.clickWindow(2, 0, 0); // หยิบผลลัพธ์จาก Anvil
-
-                    // รอ GUI ยืนยันรหัสเด้งกลับมา
-                    const win3 = await waitForAnyWindow(bot);
-                    console.log(`[3/5] [${username}] กลับมาหน้าต่างยืนยัน (${win3.type}) -> กด Slot 2 ยืนยัน`);
-                    await sleep(1200);
-                    await bot.clickWindow(2, 0, 0);
-                } else {
-                    // ถ้าไม่ใช่ Anvil (อาจเป็นปุ่มยืนยัน หรือเข็มทิศเลย) ให้ลองกด Slot 2 ยืนยันดู
-                    console.log(`[i] [${username}] ไม่ใช่ Anvil -> ลองกด Slot 2 ยืนยันเลย`);
-                    await sleep(1200);
-                    await bot.clickWindow(2, 0, 0).catch(() => {});
-                }
-
-                // 3. รอ 6 วินาที เข้าห้องโถง แล้วกดใช้เข็มทิศ
-                console.log(`[4/5] [${username}] รอ 6 วินาทีวาร์ปเข้าห้องโถง แล้วใช้เข็มทิศ...`);
-                await sleep(6000);
-                
-                const compassPromise = waitForAnyWindow(bot);
-                bot.activateItem();
-                const compassWin = await compassPromise;
-                console.log(`[5/5] [${username}] GUI เข็มทิศเปิดขึ้นมาแล้ว (${compassWin.type}) -> เลือก Survival (Slot 10)`);
-
-                await sleep(1500);
-                await bot.clickWindow(10, 0, 0);
-
-                // จบกระบวนการ: รอวาร์ปเข้าโลก Survival 8 วินาที แล้วพิมพ์ /afk
-                await sleep(8000);
-                bot.chat('/afk');
-                console.log(`[✓] [✓] [${username}] พิมพ์ /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
-
-            } catch (err) {
-                console.error(`[-] [${username}] ขั้นตอนขัดข้อง: ${err.message}`);
+                // หน่วงเวลา 1.5 วินาทีเพื่อให้ GUI โหลดไอเทมครบชัวร์ๆ ก่อนกด
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(1, 0, 0);
+                        console.log(`[>] [${username}] กด Slot 1 เรียบร้อย`);
+                    } catch (err) {
+                        console.error(`[-] [${username}] กด Slot 1 พลาด: ${err.message}`);
+                    }
+                }, 1500);
             }
-        }
 
-        bot.once('spawn', () => {
-            console.log(`[✓] [${username}] โหลดฉากสำเร็จ เริ่มต้นกระบวนการล็อกอิน...`);
-            runAuthenticationProcess();
+            // STAGE 1: หน้าต่าง Anvil เด้งขึ้นมา -> พิมพ์รหัสผ่าน
+            else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
+                bot.authStage = 2; // ล็อคเข้า Stage 2 ทันที
+                console.log(`[2/5] [${username}] พบ Anvil -> กำลังพิมพ์รหัสผ่าน ${BOT_PASSWORD}...`);
+
+                setTimeout(() => {
+                    try {
+                        bot._client.write('name_item', { name: BOT_PASSWORD });
+                        setTimeout(async () => {
+                            await bot.clickWindow(2, 0, 0); // หยิบผลลัพธ์ใน Anvil
+                            console.log(`[>] [${username}] ส่งรหัสผ่านเข้า Anvil เรียบร้อย`);
+                        }, 1000);
+                    } catch (e) {}
+                }, 1500);
+            }
+
+            // STAGE 2: กลับมาจาก Anvil เจอ GUI ยืนยันรหัส -> กด Slot 2
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
+                bot.authStage = 3; // ล็อคเข้า Stage 3 ทันที
+                console.log(`[3/5] [${username}] พบ GUI ยืนยัน -> กำลังกดปุ่มยืนยัน (Slot 2)...`);
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(2, 0, 0);
+                        console.log(`[✓] [${username}] กรอกรหัสผ่านผ่านแล้ว! (รอ 6 วินาทีเพื่อเปิดเข็มทิศ...)`);
+
+                        // รอ 6 วินาทีให้ตัวละครวาร์ปเข้าห้องโถงนิ่งๆ แล้วคลิกขวาเข็มทิศ
+                        setTimeout(() => {
+                            console.log(`[4/5] [${username}] กำลังคลิกขวาใช้เข็มทิศ...`);
+                            try { bot.activateItem(); } catch (e) {}
+                        }, 6000);
+
+                    } catch (e) {}
+                }, 1500);
+            }
+
+            // STAGE 3: เมนูเข็มทิศเปิดขึ้นมา (ต้องผ่าน Stage 3 เท่านั้น) -> กด Survival (Slot 10)
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
+                bot.authStage = 4; // ล็อคเข้า Stage 4 (เสร็จสิ้น)
+                console.log(`[5/5] [${username}] พบเมนูเข็มทิศ -> กำลังกดเลือก Survival (Slot 10)...`);
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(10, 0, 0);
+                        console.log(`[>] [${username}] เลือกโหมด Survival เรียบร้อย!`);
+
+                        // รอวาร์ปเข้าเซิร์ฟหลัก 8 วินาที แล้วพิมพ์ /afk
+                        setTimeout(() => {
+                            bot.chat('/afk');
+                            console.log(`[✓] [✓] [${username}] พิมพ์ /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+                        }, 8000);
+
+                    } catch (e) {}
+                }, 1500);
+            }
+        });
+
+        bot.on('spawn', () => {
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
         bot.on('error', () => {});
 
         bot.on('end', (reason) => {
-            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 15 วินาที...`);
-            createBotInstance(username, 15000);
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 20 วินาที...`);
+            createBotInstance(username, 20000);
         });
 
     }, delayMs);
 }
 
 console.log('==================================================');
-console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (Any Window Waiter)`);
+console.log(`เริ่มต้นระบบ Mineflayer Multi-Bot (Strict Event Sequence)`);
 console.log('==================================================');
 
 BOT_NAMES.forEach((name, index) => {
-    createBotInstance(name, index * 10000);
+    createBotInstance(name, index * 20000); // เว้นระยะต่อตัวละ 20 วินาที
 });
