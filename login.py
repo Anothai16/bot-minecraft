@@ -1,4 +1,8 @@
-from javascript import On, Once, setTimeout
+from javascript import On, Once, require
+
+# ดึงฟังก์ชัน setTimeout ของ Node.js มาใช้งานอย่างถูกต้อง
+timers = require('timers')
+set_timeout = timers.setTimeout
 
 def setup_amory_login(bot_instance):
     username = getattr(bot_instance, 'username', 'Bot')
@@ -32,8 +36,8 @@ def setup_amory_login(bot_instance):
                 except Exception:
                     pass
 
-            setTimeout(send_pass, 500)
-            setTimeout(close_book, 1200)
+            set_timeout(send_pass, 500)
+            set_timeout(close_book, 1200)
 
     # 🛰️ [เรดาร์ชั้นที่ 2]: กลไกคว้าเข็มทิศฟ้าคัดท้ายเข้าเกมหลัก
     @Once(bot_instance, 'spawn')
@@ -53,7 +57,7 @@ def setup_amory_login(bot_instance):
 
                 if blue_compass:
                     bot_instance.equip(blue_compass, 'hand')
-                    setTimeout(do_activate, 800)
+                    set_timeout(do_activate, 800)
             except Exception:
                 pass
 
@@ -65,7 +69,7 @@ def setup_amory_login(bot_instance):
                 pass
 
         # หน่วงเวลา 6000ms (6 วินาที) แล้วสลับถือเข็มทิศ
-        setTimeout(do_equip, 6000)
+        set_timeout(do_equip, 6000)
 
     # 🚨 [เรดาร์ชั้นที่ 3]: หน้าต่างเมนูปกติ (สล็อตเลือกเซิร์ฟย่อยหญ้าไอดี 10)
     @On(bot_instance, 'windowOpen')
@@ -75,7 +79,7 @@ def setup_amory_login(bot_instance):
             try:
                 # จิ้มสล็อตไอดี 10 (บล็อกหญ้า)
                 bot_instance.clickWindow(target_slot_id, 0, 0)
-                setTimeout(go_home, 2500)
+                set_timeout(go_home, 2500)
             except Exception:
                 pass
 
@@ -87,4 +91,4 @@ def setup_amory_login(bot_instance):
                 pass
 
         # หน่วงเวลา 1500ms แล้วจิ้มสล็อต 10
-        setTimeout(do_click, 1500)
+        set_timeout(do_click, 1500)
