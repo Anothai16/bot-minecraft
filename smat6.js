@@ -12,27 +12,29 @@ let bot;
 let isReconnecting = false;
 
 function startBot() {
-    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
+    console.log('🔌 กำลังทำการเชื่อมต่อเข้าสู่เซิร์ฟเวอร์ (โหมด Chunk Loader 48 บล็อก)...');
     
     bot = mineflayer.createBot({ 
         host: 'play.amorycraft.com', 
         username: 'K555',
         version: '1.21.11',
-        viewDistance: 'tiny',  // 1. บังคับโหลดแมพแคบที่สุด
-        checkTimeoutInterval: 60000
+        // 🎯 viewDistance = 3 (3 Chunks = 48 บล็อครอบตัว ในทุกระดับความสูง Y)
+        viewDistance: 3,
+        checkTimeoutInterval: 60000,
+        noResetWorld: true
     });
 
-    // ⚡ [CPU Extreme Optimization 1]: ดักกรอง Packet กราฟิก/เสียง ทิ้งตั้งแต่ระดับ Socket (ไม่ให้เข้ามาใน Memory)
     if (bot._client) {
+        // ⚡ [CPU OPTIMIZATION]: ดักตัดเฉพาะ Packet ที่ไม่เกี่ยวกับฟาร์มทิ้งตั้งแต่ระดับ Socket
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
 
-            // ตัดการประมวลผล Particle, Sound, Lighting และ Entity Animations
+            // ตัดการประมวลผล Particle, เสียง, และการขยับของสิ่งมีชีวิตอื่นเพื่อเซฟ CPU
             const ignoredPackets = [
                 'world_particles', 'packet_world_particles',
                 'named_sound_effect', 'sound_effect', 'entity_destroy',
                 'rel_entity_move', 'entity_move_look', 'entity_teleport',
-                'entity_head_rotation', 'animation', 'block_change', 'multi_block_change'
+                'entity_head_rotation', 'animation'
             ];
 
             if (ignoredPackets.includes(metadata.name)) {
@@ -41,25 +43,34 @@ function startBot() {
         });
     }
 
-    // เรียกระบบล็อกอินเดิม
+    // เรียกระบบล็อกอินเดิม (ไม่แตะลอจิก)
     setupAmoryLogin(bot);
 
     bot.once('spawn', () => {
-        console.log('🛰️ บอท [K555] ออนไลน์สำเร็จ!');
+        console.log('🛰️ บอท [K555] เข้าสู่โลกสำเร็จ! เริ่มโหลดพื้นที่ 48 บล็อครอบตัว (เต็มความสูง Y)...');
 
-        // ⚡ [CPU Extreme Optimization 2]: สั่งปิด Physics และตัดฟังชันวนลูปของ Mineflayer
+        // ⚡ [CPU OPTIMIZATION]: ปิด Physics Engine การเดิน/ตก/ชน ของตัวบอท
         bot.physicsEnabled = false;
-
-        // ปิดการอัปเดตตำแหน่งจากเน็ตเวิร์กเมื่อเข้าสู่โหมด AFK
         if (bot.physics) {
             bot.physics.stopped = true;
         }
 
-        // ปิดการประมวลผล Entity Tracking รอบตัว (ไม่ต้องเสีย CPU จำว่าตัวอะไรเดินผ่าน)
+        // ⚡ [CPU OPTIMIZATION]: ปิดการจำตำแหน่ง Entity รอบตัวเพื่อคืน CPU ให้ Event Loop
         if (bot.entities) {
             bot.removeAllListeners('entityMoved');
             bot.removeAllListeners('entitySpawn');
         }
+
+        // ⚡ เคลียร์ Memory ถอดโครงสร้างแคชขยะออก ไม่ให้ค้างจน RAM/CPU พุ่ง
+        setInterval(() => {
+            if (bot && bot.world && bot.world.columns) {
+                const keys = Object.keys(bot.world.columns);
+                // ถ้าแคชเกิน 49 Chunks (รัศมี 3 Chunks รอบตัว) ให้ล้างข้อมูลขยะทิ้ง
+                if (keys.length > 49) {
+                    bot.world.columns = {};
+                }
+            }
+        }, 30000); // ทำความสะอาดทุกๆ 30 วินาที
     });
 
     bot.on('kicked', (reason) => {
