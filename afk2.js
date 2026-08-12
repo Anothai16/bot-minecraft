@@ -68,7 +68,7 @@ function stopBotInstance(username) {
     }
 }
 
-// ฟังก์ชันช่วยสแกนถือและเปิดใช้เข็มทิศ
+// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ
 async function useCompass(bot, username) {
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
     console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
@@ -87,7 +87,6 @@ async function useCompass(bot, username) {
 }
 
 function createBotInstance(username, delayMs = 0) {
-    // 🛡️ ป้องกันการตีกัน: ถ้าบอทตัวนี้รันอยู่แล้ว หรือกำลังทำงานอยู่ ให้มองข้ามทันที
     const currentStatus = botStatusMap[username]?.status || 'Stopped';
     const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
 
@@ -145,7 +144,6 @@ function createBotInstance(username, delayMs = 0) {
                     try {
                         await bot.clickWindow(1, 0, 0);
 
-                        // Fallback กรณี Anvil ไม่เด้งเปิดใน 3.5 วินาที
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
                                 console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
@@ -257,8 +255,8 @@ function createBotInstance(username, delayMs = 0) {
 // Web Server + REST API
 // ==========================================
 const server = http.createServer((req, res) => {
-    const urlParts = req.url.split('?');
-    const path = urlParts[0];
+    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    const path = parsedUrl.pathname;
 
     if (path === '/api/status') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -267,41 +265,55 @@ const server = http.createServer((req, res) => {
     }
 
     if (path === '/api/control') {
-        const params = new URLSearchParams(urlParts[1]);
-        const name = params.get('name');
-        const action = params.get('action');
+        const action = parsedUrl.searchParams.get('action');
+        const name = parsedUrl.searchParams.get('name');
 
-        if (action === 'start-all') {
-            BOT_NAMES.forEach((bName, idx) => {
-                botStatusMap[bName].enabled = true;
-                createBotInstance(bName, idx * 10000);
-            });
-        } else if (action === 'start-range') {
-            const start = parseInt(params.get('start')) || 0;
-            const end = parseInt(params.get('end')) || BOT_NAMES.length;
+        if (action === 'start-range') {
+            const startVal = parseInt(parsedUrl.searchParams.get('start'));
+            const endVal = parseInt(parsedUrl.searchParams.get('end'));
             
+            const start = isNaN(startVal) ? 0 : startVal;
+            const end = isNaN(endVal) ? BOT_NAMES.length : endVal;
+
+            console.log(`[Batch Command] สั่งรันช่วงดรรชนี ${start} ถึง ${end}`);
+
             const targetBots = BOT_NAMES.slice(start, end);
             let launchIndex = 0;
 
             targetBots.forEach((bName) => {
-                botStatusMap[bName].enabled = true;
-                
-                // เช็คว่าถ้าตัวไหนไม่ได้ออนอยู่ ค่อยสั่งเปิดโดยรันห่างกันตัวละ 10 วิ
                 const currStatus = botStatusMap[bName]?.status || 'Stopped';
                 const isRunning = activeBots[bName] && (currStatus.includes('Online') || currStatus === 'Connecting' || currStatus === 'Logging in' || currStatus === 'In Lobby');
 
                 if (!isRunning) {
+                    botStatusMap[bName].enabled = true;
+                    createBotInstance(bName, launchIndex * 10000);
+                    launchIndex++;
+                } else {
+                    console.log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
+                }
+            });
+        } 
+        else if (action === 'start-all') {
+            let launchIndex = 0;
+            BOT_NAMES.forEach((bName) => {
+                const currStatus = botStatusMap[bName]?.status || 'Stopped';
+                const isRunning = activeBots[bName] && (currStatus.includes('Online') || currStatus === 'Connecting' || currStatus === 'Logging in' || currStatus === 'In Lobby');
+
+                if (!isRunning) {
+                    botStatusMap[bName].enabled = true;
                     createBotInstance(bName, launchIndex * 10000);
                     launchIndex++;
                 }
             });
-        } else if (action === 'stop-all') {
+        } 
+        else if (action === 'stop-all') {
             BOT_NAMES.forEach(bName => {
                 botStatusMap[bName].enabled = false;
                 stopBotInstance(bName);
                 updateStatus(bName, 'Stopped', 'ระงับการทำงาน');
             });
-        } else if (name && botStatusMap[name]) {
+        } 
+        else if (name && botStatusMap[name]) {
             if (action === 'start') {
                 botStatusMap[name].enabled = true;
                 botStatusMap[name].lastError = '-';
