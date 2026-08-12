@@ -8,27 +8,26 @@ const SERVER_PORT = 25565;
 const BOT_PASSWORD = '112233';
 const MC_VERSION = '1.20.1';
 const WEB_PORT = 3000;
-const DELAY_BETWEEN_BOTS = 20000;
 
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
-    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz', 'quast', 'Geyman',
+    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz',  'quast', 'Geyman',
     'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456', 'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
 ];
 
-// เก็บ Instance ของบอทที่รันอยู่
+// เก็บ Instance ของบอทที่กำลังทำงาน
 const activeBots = {};
 
-// เก็บสถานะและ Log ของบอทแต่ละตัว
+// ตั้งค่าเริ่มต้นให้บอททุกตัวอยู่ในสถานะ "ปิดใช้งาน" (enabled = false)
 const botStatusMap = {};
 BOT_NAMES.forEach(name => {
     botStatusMap[name] = { 
         status: 'Stopped', 
-        step: 'ระงับการทำงาน', 
+        step: 'รอสั่งเปิดจากหน้าเว็บ...', 
         lastUpdate: new Date().toLocaleTimeString('th-TH'),
         lastError: '-',
-        enabled: true // สถานะเปิด/ปิดเปิดใช้งานรายตัว
+        enabled: false // 🔥 ปิดไว้ก่อนตอนรันโค้ดครั้งแรก
     };
 });
 
@@ -50,7 +49,7 @@ function stopBotInstance(username) {
 }
 
 function createBotInstance(username, delayMs = 0) {
-    // ถ้าบอทตัวนี้ถูกสั่งปิดจากหน้าเว็บ ไม่ต้องสร้างขึ้นมา
+    // ถ้าบอทไม่ได้เปิดใช้งาน (enabled === false) ให้ยกเลิกการทำงานทันที
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
         return;
@@ -59,7 +58,6 @@ function createBotInstance(username, delayMs = 0) {
     setTimeout(() => {
         if (!botStatusMap[username]?.enabled) return;
 
-        // ล้าง Instance เก่าหากมีค้างอยู่
         stopBotInstance(username);
 
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
@@ -78,7 +76,6 @@ function createBotInstance(username, delayMs = 0) {
         activeBots[username] = bot;
         bot.flowState = 0;
 
-        // 🔍 1. ดักจับข้อความ Chat ที่เซิร์ฟเวอร์ส่งมาให้บอท
         bot.on('message', (jsonMsg) => {
             const strMsg = jsonMsg.toString().trim();
             if (strMsg && !strMsg.includes('AFK') && !strMsg.includes('เข้าร่วม')) {
@@ -86,14 +83,13 @@ function createBotInstance(username, delayMs = 0) {
             }
         });
 
-        // 🔍 2. ดักจับเหตุการณ์โดน Kick ออกจากเซิร์ฟเวอร์
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
             try {
                 kickReasonStr = JSON.parse(reason).text || reason;
             } catch (e) {}
             
-            console.error(`[🚨 KICKED] [${username}] โดนเตะออกจากเซิร์ฟเวอร์! เหตุผล: ${kickReasonStr}`);
+            console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
             updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
         });
 
@@ -156,7 +152,6 @@ function createBotInstance(username, delayMs = 0) {
             console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
-        // 🔍 3. ดักจับ Error
         bot.on('error', (err) => {
             console.error(`[❌ Error] [${username}]: ${err.message}`);
             updateStatus(username, 'Error', err.message, err.message);
@@ -178,20 +173,18 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ==========================================
-// Web Server + REST API ควบคุมเปิด-ปิดรายตัว
+// Web Server + REST API
 // ==========================================
 const server = http.createServer((req, res) => {
     const urlParts = req.url.split('?');
     const path = urlParts[0];
 
-    // API: ดึงสถานะ
     if (path === '/api/status') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(botStatusMap));
         return;
     }
 
-    // API: ควบคุมบอทรายตัว (/api/control?name=obs1&action=start)
     if (path === '/api/control') {
         const params = new URLSearchParams(urlParts[1]);
         const name = params.get('name');
@@ -200,7 +193,8 @@ const server = http.createServer((req, res) => {
         if (action === 'start-all') {
             BOT_NAMES.forEach((bName, idx) => {
                 botStatusMap[bName].enabled = true;
-                createBotInstance(bName, idx * 5000);
+                // สั่งทยอยรันห่างกันตัวละ 15 วินาที
+                createBotInstance(bName, idx * 15000);
             });
         } else if (action === 'stop-all') {
             BOT_NAMES.forEach(bName => {
@@ -225,7 +219,6 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // หน้าเว็บ Dashboard
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`
 <!DOCTYPE html>
@@ -355,14 +348,11 @@ function getLocalIP() {
 
 function printStartupLogs(ipAddress) {
     console.log('==================================================');
-    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SYSTEM WITH CONTROL`);
+    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (STANDBY)`);
     console.log('==================================================');
     console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
+    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (สถานะ: พร้อมรัน)`);
     console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
     console.log('==================================================');
-
-    BOT_NAMES.forEach((name, index) => {
-        createBotInstance(name, index * DELAY_BETWEEN_BOTS);
-    });
+    console.log(`[System] ระบบเปิดทำงานแล้ว สามารถเข้าหน้าเว็บเพื่อกดเปิดบอทได้เลยครับ`);
 }
