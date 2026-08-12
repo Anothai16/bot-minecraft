@@ -87,6 +87,15 @@ async function useCompass(bot, username) {
 }
 
 function createBotInstance(username, delayMs = 0) {
+    // 🛡️ ป้องกันการตีกัน: ถ้าบอทตัวนี้รันอยู่แล้ว หรือกำลังทำงานอยู่ ให้มองข้ามทันที
+    const currentStatus = botStatusMap[username]?.status || 'Stopped';
+    const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
+
+    if (isAlreadyRunning) {
+        console.log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
+        return;
+    }
+
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
         return;
@@ -144,7 +153,6 @@ function createBotInstance(username, delayMs = 0) {
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
                                 updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
 
-                                // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าห้องโถงนิ่งๆ ก่อนเปิดเข็มทิศ
                                 setTimeout(() => useCompass(bot, username), 10000);
                             }
                         }, 3500);
@@ -180,14 +188,13 @@ function createBotInstance(username, delayMs = 0) {
                         await bot.clickWindow(2, 0, 0);
                         updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
 
-                        // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าห้องโถงนิ่งๆ ก่อนเปิดเข็มทิศ
                         setTimeout(() => useCompass(bot, username), 10000);
 
                     } catch (e) {}
                 }, 1500);
             }
 
-            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10) ➔ ไม่เพิ่มเวลาตรงนี้ กดทันที!
+            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
                 console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
@@ -199,7 +206,6 @@ function createBotInstance(username, delayMs = 0) {
                         console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 10 วินาที...)`);
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
-                        // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าโลก Survival เสร็จ 100% ค่อยพิมพ์ /afk
                         setTimeout(() => {
                             bot.chat('/afk');
                             console.log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
@@ -232,6 +238,7 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('end', (reason) => {
             if (bot.afkInterval) clearInterval(bot.afkInterval);
+            delete activeBots[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
@@ -267,16 +274,26 @@ const server = http.createServer((req, res) => {
         if (action === 'start-all') {
             BOT_NAMES.forEach((bName, idx) => {
                 botStatusMap[bName].enabled = true;
-                createBotInstance(bName, idx * 15000);
+                createBotInstance(bName, idx * 10000);
             });
         } else if (action === 'start-range') {
             const start = parseInt(params.get('start')) || 0;
             const end = parseInt(params.get('end')) || BOT_NAMES.length;
             
             const targetBots = BOT_NAMES.slice(start, end);
-            targetBots.forEach((bName, idx) => {
+            let launchIndex = 0;
+
+            targetBots.forEach((bName) => {
                 botStatusMap[bName].enabled = true;
-                createBotInstance(bName, idx * 15000);
+                
+                // เช็คว่าถ้าตัวไหนไม่ได้ออนอยู่ ค่อยสั่งเปิดโดยรันห่างกันตัวละ 10 วิ
+                const currStatus = botStatusMap[bName]?.status || 'Stopped';
+                const isRunning = activeBots[bName] && (currStatus.includes('Online') || currStatus === 'Connecting' || currStatus === 'Logging in' || currStatus === 'In Lobby');
+
+                if (!isRunning) {
+                    createBotInstance(bName, launchIndex * 10000);
+                    launchIndex++;
+                }
             });
         } else if (action === 'stop-all') {
             BOT_NAMES.forEach(bName => {
