@@ -68,6 +68,24 @@ function stopBotInstance(username) {
     }
 }
 
+// ฟังก์ชันช่วยสแกนถือและเปิดใช้เข็มทิศ
+async function useCompass(bot, username) {
+    updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
+    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    const compass = bot.inventory.items().find(i => i.name.includes('compass'));
+    if (compass) {
+        try {
+            await bot.equip(compass, 'hand');
+            await bot.sleep(500);
+            bot.activateItem();
+        } catch (e) {
+            bot.activateItem();
+        }
+    } else {
+        try { bot.activateItem(); } catch (e) {}
+    }
+}
+
 function createBotInstance(username, delayMs = 0) {
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
@@ -118,25 +136,16 @@ function createBotInstance(username, delayMs = 0) {
                     try {
                         await bot.clickWindow(1, 0, 0);
 
+                        // Fallback กรณี Anvil ไม่เด้งเปิดใน 3.5 วินาที
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
                                 console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
-                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
+                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
 
-                                setTimeout(async () => {
-                                    const compass = bot.inventory.items().find(i => i.name.includes('compass'));
-                                    if (compass) {
-                                        try {
-                                            await bot.equip(compass, 'hand');
-                                            await bot.sleep(500);
-                                            bot.activateItem();
-                                        } catch (e) { bot.activateItem(); }
-                                    } else {
-                                        try { bot.activateItem(); } catch (e) {}
-                                    }
-                                }, 6000);
+                                // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าห้องโถงนิ่งๆ ก่อนเปิดเข็มทิศ
+                                setTimeout(() => useCompass(bot, username), 10000);
                             }
                         }, 3500);
 
@@ -169,29 +178,16 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
 
-                        setTimeout(async () => {
-                            updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
-                            const compass = bot.inventory.items().find(i => i.name.includes('compass'));
-                            if (compass) {
-                                try {
-                                    await bot.equip(compass, 'hand');
-                                    await bot.sleep(500);
-                                    bot.activateItem();
-                                } catch (e) {
-                                    bot.activateItem();
-                                }
-                            } else {
-                                try { bot.activateItem(); } catch (e) {}
-                            }
-                        }, 6000);
+                        // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าห้องโถงนิ่งๆ ก่อนเปิดเข็มทิศ
+                        setTimeout(() => useCompass(bot, username), 10000);
 
                     } catch (e) {}
                 }, 1500);
             }
 
-            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10) -> รอ 7 วินาที แล้วพิมพ์ /afk
+            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10) ➔ ไม่เพิ่มเวลาตรงนี้ กดทันที!
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
                 console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
@@ -200,16 +196,15 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 7 วินาที...)`);
-                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 7s)');
+                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 10 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
-                        // ⏱️ หน่วงเวลา 7 วินาทีให้ตัวละครวาร์ปสลับโลกและโหลดปลั๊กอิน AFK ครบถ้วน
+                        // ⏳ หน่วงเวลา 10 วินาที ให้วาร์ปเข้าโลก Survival เสร็จ 100% ค่อยพิมพ์ /afk
                         setTimeout(() => {
                             bot.chat('/afk');
                             console.log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
                             updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
 
-                            // เสริม Anti-AFK หมุนมุมมองสายตาทุกๆ 60 วินาที
                             if (bot.afkInterval) clearInterval(bot.afkInterval);
                             bot.afkInterval = setInterval(() => {
                                 try {
@@ -217,7 +212,7 @@ function createBotInstance(username, delayMs = 0) {
                                 } catch (e) {}
                             }, 60000);
 
-                        }, 7000);
+                        }, 10000);
 
                     } catch (err) {
                         console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
