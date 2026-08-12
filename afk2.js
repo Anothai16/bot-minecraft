@@ -8,44 +8,60 @@ const SERVER_PORT = 25565;
 const BOT_PASSWORD = '112233';
 const MC_VERSION = '1.20.1';
 const WEB_PORT = 3000;
-const DELAY_BETWEEN_BOTS = 20000; // เว้นระยะปล่อยบอทตัวละ 20 วินาที
+const DELAY_BETWEEN_BOTS = 20000;
 
 const sharedData = minecraftData(MC_VERSION);
 
 const BOT_NAMES = [
     'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz', 'quast', 'Geyman',
-    'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456',  'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
+    'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456', 'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
 ];
 
-// เก็บสถานะบอท Real-time
+// เก็บ Instance ของบอทที่รันอยู่
+const activeBots = {};
+
+// เก็บสถานะและ Log ของบอทแต่ละตัว
 const botStatusMap = {};
 BOT_NAMES.forEach(name => {
-    botStatusMap[name] = { status: 'Offline', step: 'รอคิวเชื่อมต่อ...', lastUpdate: new Date().toLocaleTimeString('th-TH') };
+    botStatusMap[name] = { 
+        status: 'Stopped', 
+        step: 'ระงับการทำงาน', 
+        lastUpdate: new Date().toLocaleTimeString('th-TH'),
+        lastError: '-',
+        enabled: true // สถานะเปิด/ปิดเปิดใช้งานรายตัว
+    };
 });
 
-function updateStatus(name, status, step) {
-    botStatusMap[name] = {
-        status,
-        step: step || botStatusMap[name]?.step || '-',
-        lastUpdate: new Date().toLocaleTimeString('th-TH')
-    };
+function updateStatus(name, status, step, errorReason = null) {
+    if (!botStatusMap[name]) return;
+    botStatusMap[name].status = status;
+    if (step) botStatusMap[name].step = step;
+    if (errorReason) botStatusMap[name].lastError = errorReason;
+    botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH');
 }
 
-// ฟังก์ชันดึง Local IP ของเครื่อง VPS
-function getLocalIP() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
+function stopBotInstance(username) {
+    if (activeBots[username]) {
+        try {
+            activeBots[username].quit();
+        } catch (e) {}
+        delete activeBots[username];
     }
-    return '127.0.0.1';
 }
 
-function createBotInstance(username, delayMs) {
+function createBotInstance(username, delayMs = 0) {
+    // ถ้าบอทตัวนี้ถูกสั่งปิดจากหน้าเว็บ ไม่ต้องสร้างขึ้นมา
+    if (!botStatusMap[username]?.enabled) {
+        updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
+        return;
+    }
+
     setTimeout(() => {
+        if (!botStatusMap[username]?.enabled) return;
+
+        // ล้าง Instance เก่าหากมีค้างอยู่
+        stopBotInstance(username);
+
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
         updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
 
@@ -59,7 +75,27 @@ function createBotInstance(username, delayMs) {
             checkTimeoutInterval: 60000
         });
 
+        activeBots[username] = bot;
         bot.flowState = 0;
+
+        // 🔍 1. ดักจับข้อความ Chat ที่เซิร์ฟเวอร์ส่งมาให้บอท
+        bot.on('message', (jsonMsg) => {
+            const strMsg = jsonMsg.toString().trim();
+            if (strMsg && !strMsg.includes('AFK') && !strMsg.includes('เข้าร่วม')) {
+                console.log(`[💬 Log] [${username}]: ${strMsg}`);
+            }
+        });
+
+        // 🔍 2. ดักจับเหตุการณ์โดน Kick ออกจากเซิร์ฟเวอร์
+        bot.on('kicked', (reason) => {
+            let kickReasonStr = reason;
+            try {
+                kickReasonStr = JSON.parse(reason).text || reason;
+            } catch (e) {}
+            
+            console.error(`[🚨 KICKED] [${username}] โดนเตะออกจากเซิร์ฟเวอร์! เหตุผล: ${kickReasonStr}`);
+            updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
+        });
 
         bot.on('windowOpen', async (window) => {
             if (window.type === 'minecraft:generic_9x3' && bot.flowState === 0) {
@@ -70,13 +106,10 @@ function createBotInstance(username, delayMs) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        console.log(`[✓] [${username}] กดเข้าสู่ระบบเรียบร้อย! (กำลังวาร์ปไปห้องโถง...)`);
                         updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
 
                         setTimeout(async () => {
-                            console.log(`[2/3] [${username}] ถึงห้องโถงแล้ว -> กำลังสแกนถือเข็มทิศ...`);
                             updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
-                            
                             const compass = bot.inventory.items().find(i => i.name.includes('compass'));
                             if (compass) {
                                 try {
@@ -89,7 +122,6 @@ function createBotInstance(username, delayMs) {
                             } else {
                                 try { bot.activateItem(); } catch (e) {}
                             }
-
                         }, 6000);
 
                     } catch (err) {
@@ -105,7 +137,6 @@ function createBotInstance(username, delayMs) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] เลือกโหมด Survival เรียบร้อย!`);
                         updateStatus(username, 'Entering Survival', 'กำลังเข้าโลก Survival');
 
                         setTimeout(() => {
@@ -125,25 +156,76 @@ function createBotInstance(username, delayMs) {
             console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
-        bot.on('error', () => {});
+        // 🔍 3. ดักจับ Error
+        bot.on('error', (err) => {
+            console.error(`[❌ Error] [${username}]: ${err.message}`);
+            updateStatus(username, 'Error', err.message, err.message);
+        });
 
         bot.on('end', (reason) => {
-            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason}) -> จะต่อใหม่ใน 20 วินาที...`);
-            updateStatus(username, 'Offline', `หลุด (${reason})`);
-            createBotInstance(username, 20000);
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
+            
+            if (botStatusMap[username]?.enabled) {
+                updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
+                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
+                createBotInstance(username, 25000);
+            } else {
+                updateStatus(username, 'Stopped', 'ระงับการทำงาน');
+            }
         });
 
     }, delayMs);
 }
 
-// Web Dashboard
+// ==========================================
+// Web Server + REST API ควบคุมเปิด-ปิดรายตัว
+// ==========================================
 const server = http.createServer((req, res) => {
-    if (req.url === '/api/status') {
+    const urlParts = req.url.split('?');
+    const path = urlParts[0];
+
+    // API: ดึงสถานะ
+    if (path === '/api/status') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(botStatusMap));
         return;
     }
 
+    // API: ควบคุมบอทรายตัว (/api/control?name=obs1&action=start)
+    if (path === '/api/control') {
+        const params = new URLSearchParams(urlParts[1]);
+        const name = params.get('name');
+        const action = params.get('action');
+
+        if (action === 'start-all') {
+            BOT_NAMES.forEach((bName, idx) => {
+                botStatusMap[bName].enabled = true;
+                createBotInstance(bName, idx * 5000);
+            });
+        } else if (action === 'stop-all') {
+            BOT_NAMES.forEach(bName => {
+                botStatusMap[bName].enabled = false;
+                stopBotInstance(bName);
+                updateStatus(bName, 'Stopped', 'ระงับการทำงาน');
+            });
+        } else if (name && botStatusMap[name]) {
+            if (action === 'start') {
+                botStatusMap[name].enabled = true;
+                botStatusMap[name].lastError = '-';
+                createBotInstance(name, 0);
+            } else if (action === 'stop') {
+                botStatusMap[name].enabled = false;
+                stopBotInstance(name);
+                updateStatus(name, 'Stopped', 'ระงับการทำงาน (User Disabled)');
+            }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true }));
+        return;
+    }
+
+    // หน้าเว็บ Dashboard
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`
 <!DOCTYPE html>
@@ -151,21 +233,34 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Multi-Bot Status</title>
+    <title>Minecraft Multi-Bot Control Panel</title>
     <style>
-        body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 20px; }
-        h2 { color: #4caf50; margin-bottom: 10px; }
-        .stats { margin-bottom: 15px; font-size: 14px; }
+        body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
+        h2 { color: #4caf50; margin-bottom: 10px; display: inline-block; }
+        .btn-group { margin-bottom: 15px; float: right; }
+        button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button:hover { background: #444; }
+        .btn-start { background: #2e7d32; border-color: #4caf50; }
+        .btn-stop { background: #c62828; border-color: #ef5350; }
+        .stats { margin-bottom: 15px; font-size: 14px; clear: both; }
         table { width: 100%; border-collapse: collapse; background: #1e1e1e; font-size: 13px; }
         th, td { border: 1px solid #333; padding: 6px 10px; text-align: left; }
         th { background: #2a2a2a; color: #aaa; }
         .Online { color: #4caf50; font-weight: bold; }
         .Connecting, .Logging, .Selecting, .In { color: #ffeb3b; }
-        .Offline { color: #f44336; }
+        .Offline, .Kicked, .Error { color: #f44336; }
+        .Stopped { color: #757575; }
+        .err-log { color: #ff9800; font-size: 11px; max-width: 250px; word-break: break-all; }
     </style>
 </head>
 <body>
-    <h2>🤖 Minecraft Multi-Bot Dashboard</h2>
+    <div>
+        <h2>🤖 Minecraft Multi-Bot Dashboard</h2>
+        <div class="btn-group">
+            <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
+            <button class="btn-stop" onclick="controlBot('', 'stop-all')">⏹ Stop All</button>
+        </div>
+    </div>
     <div class="stats" id="summary">กำลังโหลดข้อมูล...</div>
     <table>
         <thead>
@@ -174,13 +269,20 @@ const server = http.createServer((req, res) => {
                 <th>ชื่อบอท</th>
                 <th>สถานะ</th>
                 <th>ขั้นตอนล่าสุด</th>
+                <th>ข้อผิดพลาดจากเซิร์ฟ (Error Log)</th>
                 <th>อัปเดตเมื่อ</th>
+                <th>จัดการ</th>
             </tr>
         </thead>
         <tbody id="bot-table"></tbody>
     </table>
 
     <script>
+        async function controlBot(name, action) {
+            await fetch(\`/api/control?name=\${name}&action=\${action}\`);
+            fetchStatus();
+        }
+
         async function fetchStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -199,14 +301,21 @@ const server = http.createServer((req, res) => {
 
                     let statusClass = 'Offline';
                     if (isOnline) statusClass = 'Online';
+                    else if (bot.status === 'Stopped') statusClass = 'Stopped';
                     else if (bot.status !== 'Offline') statusClass = 'Connecting';
+
+                    const toggleBtn = bot.enabled ? 
+                        \`<button class="btn-stop" onclick="controlBot('\${name}', 'stop')">Stop</button>\` : 
+                        \`<button class="btn-start" onclick="controlBot('\${name}', 'start')">Start</button>\`;
 
                     html += \`<tr>
                         <td>\${index + 1}</td>
                         <td><b>\${name}</b></td>
                         <td class="\${statusClass}">\${bot.status}</td>
                         <td>\${bot.step}</td>
+                        <td class="err-log">\${bot.lastError}</td>
                         <td>\${bot.lastUpdate}</td>
+                        <td>\${toggleBtn}</td>
                     </tr>\`;
                 });
 
@@ -225,7 +334,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(WEB_PORT, () => {
-    // ดึง Public IP ของ VPS มาแสดงบน Log
     http.get('http://api.ipify.org', (res) => {
         let publicIp = '';
         res.on('data', chunk => publicIp += chunk);
@@ -235,19 +343,25 @@ server.listen(WEB_PORT, () => {
     });
 });
 
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+        }
+    }
+    return '127.0.0.1';
+}
+
 function printStartupLogs(ipAddress) {
     console.log('==================================================');
-    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SYSTEM`);
+    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SYSTEM WITH CONTROL`);
     console.log('==================================================');
     console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    console.log(` [+] Minecraft Ver.  : ${MC_VERSION}`);
     console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
-    console.log(` [+] Delay / Bot     : ${DELAY_BETWEEN_BOTS / 1000} วินาที`);
     console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
-    console.log(` [🌐] Local Access   : http://localhost:${WEB_PORT}`);
     console.log('==================================================');
 
-    // เริ่มปล่อยบอททีละตัว
     BOT_NAMES.forEach((name, index) => {
         createBotInstance(name, index * DELAY_BETWEEN_BOTS);
     });
