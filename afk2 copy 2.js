@@ -100,7 +100,7 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('message', (jsonMsg) => {
             const strMsg = jsonMsg.toString().trim();
-            if (strMsg && !strMsg.includes('AFK') && !strMsg.includes('เข้าร่วม') && !strMsg.startsWith('§')) {
+            if (strMsg && !strMsg.includes('AFK') && !strMsg.includes('เข้าร่วม')) {
                 console.log(`[💬 Log] [${username}]: ${strMsg}`);
             }
         });
@@ -114,48 +114,23 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('windowOpen', async (window) => {
-            
-            // STAGE 0: เจอ GUI หน้าแรก -> กด Slot 1 เปิด Anvil
+            // STAGE 0: หน้าต่างแรก -> กด Slot 1 เปิด Anvil
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
-                console.log(`[1/5] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
+                console.log(`[1/5] [${username}] พบ GUI ล็อกอินหลัก -> กด Slot 1 (สมุดรหัสผ่าน)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
-
-                        // ⚡ ระบบการันตีแก้ค้าง: ถ้าผ่านไป 3.5 วินาที Anvil ไม่เปิดขึ้นมา ให้ลองดันไปกด Slot 2 เลย
-                        setTimeout(async () => {
-                            if (bot.authStage === 1) {
-                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยันทันที...`);
-                                bot.authStage = 3;
-                                await bot.clickWindow(2, 0, 0).catch(() => {});
-                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
-
-                                setTimeout(async () => {
-                                    const compass = bot.inventory.items().find(i => i.name.includes('compass'));
-                                    if (compass) {
-                                        try {
-                                            await bot.equip(compass, 'hand');
-                                            await bot.sleep(500);
-                                            bot.activateItem();
-                                        } catch (e) { bot.activateItem(); }
-                                    } else {
-                                        try { bot.activateItem(); } catch (e) {}
-                                    }
-                                }, 6000);
-                            }
-                        }, 3500);
-
                     } catch (e) {}
-                }, 2000);
+                }, 1500);
             }
 
             // STAGE 1: Anvil เปิด -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`[2/5] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
+                console.log(`[2/5] [${username}] Anvil เปิดแล้ว -> พิมพ์รหัสผ่าน ${botPassword}...`);
                 updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน ${botPassword}`);
 
                 setTimeout(() => {
@@ -168,7 +143,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1200);
             }
 
-            // STAGE 2: กลับมาจาก Anvil -> กด Slot 2 ยืนยัน
+            // STAGE 2: กลับมารคัดเลือกเข้าสู่ระบบ -> กด Slot 2
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/5] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
@@ -202,7 +177,7 @@ function createBotInstance(username, delayMs = 0) {
             // STAGE 3: เข็มทิศเปิด -> กด Slot 10 (Survival)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
-                console.log(`[4/5] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
+                console.log(`[4/5] [${username}] GUI เข็มทิศเปิดขึ้นมาแล้ว -> กดเลือก Survival (Slot 10)...`);
                 updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
@@ -212,8 +187,8 @@ function createBotInstance(username, delayMs = 0) {
 
                         setTimeout(() => {
                             bot.chat('/afk');
-                            console.log(`[✓] [✓] [${username}] ออนไลน์ในเซิร์ฟเวอร์หลักสมบูรณ์!`);
-                            updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+                            console.log(`[✓] [✓] [${username}] พิมพ์ /afk สำเร็จ! (ออนไลน์สมบูรณ์)`);
+                            updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
                         }, 8000);
 
                     } catch (err) {
@@ -269,15 +244,6 @@ const server = http.createServer((req, res) => {
                 botStatusMap[bName].enabled = true;
                 createBotInstance(bName, idx * 15000);
             });
-        } else if (action === 'start-range') {
-            const start = parseInt(params.get('start')) || 0;
-            const end = parseInt(params.get('end')) || BOT_NAMES.length;
-            
-            const targetBots = BOT_NAMES.slice(start, end);
-            targetBots.forEach((bName, idx) => {
-                botStatusMap[bName].enabled = true;
-                createBotInstance(bName, idx * 15000);
-            });
         } else if (action === 'stop-all') {
             BOT_NAMES.forEach(bName => {
                 botStatusMap[bName].enabled = false;
@@ -312,11 +278,10 @@ const server = http.createServer((req, res) => {
     <style>
         body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
         h2 { color: #4caf50; margin-bottom: 10px; display: inline-block; }
-        .btn-group { margin-bottom: 15px; float: right; display: flex; gap: 5px; flex-wrap: wrap; }
-        button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .btn-group { margin-bottom: 15px; float: right; }
+        button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:hover { background: #444; }
         .btn-start { background: #2e7d32; border-color: #4caf50; }
-        .btn-batch { background: #1565c0; border-color: #42a5f5; }
         .btn-stop { background: #c62828; border-color: #ef5350; }
         .stats { margin-bottom: 15px; font-size: 14px; clear: both; }
         table { width: 100%; border-collapse: collapse; background: #1e1e1e; font-size: 13px; }
@@ -333,9 +298,6 @@ const server = http.createServer((req, res) => {
     <div>
         <h2>🤖 Minecraft Multi-Bot Dashboard</h2>
         <div class="btn-group">
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 1-10</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=25')">▶ 21-25</button>
             <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
             <button class="btn-stop" onclick="controlBot('', 'stop-all')">⏹ Stop All</button>
         </div>
@@ -412,6 +374,7 @@ const server = http.createServer((req, res) => {
     `);
 });
 
+// ✅ แก้ไขฟังก์ชัน getLocalIP ให้เขียนแบบปลอดภัย
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
