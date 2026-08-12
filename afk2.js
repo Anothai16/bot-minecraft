@@ -96,8 +96,6 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         activeBots[username] = bot;
-
-        // 0: หน้าหลัก, 1: รอ Anvil, 2: รอกดยืนยัน (Slot 2), 3: รอใช้เข็มทิศ, 4: สำเร็จ
         bot.authStage = 0;
 
         bot.on('message', (jsonMsg) => {
@@ -116,8 +114,7 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('windowOpen', async (window) => {
-            
-            // STAGE 0: เจอ GUI หน้าแรก -> กด Slot 1 (สมุดรหัสผ่าน) เพื่อเรียก Anvil
+            // STAGE 0: หน้าต่างแรก -> กด Slot 1 เปิด Anvil
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
                 console.log(`[1/5] [${username}] พบ GUI ล็อกอินหลัก -> กด Slot 1 (สมุดรหัสผ่าน)...`);
@@ -130,23 +127,23 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1500);
             }
 
-            // STAGE 1: เจอ Anvil -> พิมพ์รหัสผ่าน
+            // STAGE 1: Anvil เปิด -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`[2/5] [${username}] Anvil เปิดแล้ว -> กำลังพิมพ์รหัสผ่าน ${botPassword}...`);
+                console.log(`[2/5] [${username}] Anvil เปิดแล้ว -> พิมพ์รหัสผ่าน ${botPassword}...`);
                 updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน ${botPassword}`);
 
                 setTimeout(() => {
                     try {
                         bot._client.write('name_item', { name: botPassword });
                         setTimeout(async () => {
-                            await bot.clickWindow(2, 0, 0); // หยิบผลลัพธ์ Anvil
+                            await bot.clickWindow(2, 0, 0);
                         }, 800);
                     } catch (e) {}
                 }, 1200);
             }
 
-            // STAGE 2: กลับมาหน้า GUI หลักหลังพิมพ์ Anvil -> กด Slot 2 (ปุ่มเข้าสู่ระบบ)
+            // STAGE 2: กลับมารคัดเลือกเข้าสู่ระบบ -> กด Slot 2
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/5] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
@@ -157,7 +154,6 @@ function createBotInstance(username, delayMs = 0) {
                         await bot.clickWindow(2, 0, 0);
                         updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
 
-                        // รอ 6 วินาทีให้วาร์ปเข้าห้องโถง แล้วสแกนใช้เข็มทิศ
                         setTimeout(async () => {
                             updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
                             const compass = bot.inventory.items().find(i => i.name.includes('compass'));
@@ -178,7 +174,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1500);
             }
 
-            // STAGE 3: เมนูเข็มทิศเปิดขึ้นมา -> กด Slot 10 (Survival)
+            // STAGE 3: เข็มทิศเปิด -> กด Slot 10 (Survival)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
                 console.log(`[4/5] [${username}] GUI เข็มทิศเปิดขึ้นมาแล้ว -> กดเลือก Survival (Slot 10)...`);
@@ -213,7 +209,6 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('end', (reason) => {
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
-            
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
                 console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
@@ -379,21 +374,14 @@ const server = http.createServer((req, res) => {
     `);
 });
 
-server.listen(WEB_PORT, () => {
-    http.get('http://api.ipify.org', (res) => {
-        let publicIp = '';
-        res.on('data', chunk => publicIp += chunk);
-        res.on('end', () => printStartupLogs(publicIp.trim()));
-    }).on('error', () => {
-        printStartupLogs(getLocalIP());
-    });
-});
-
+// ✅ แก้ไขฟังก์ชัน getLocalIP ให้เขียนแบบปลอดภัย
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
-        for (const iface = interfaces[name]; ; ) {
-            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
         }
     }
     return '127.0.0.1';
@@ -407,4 +395,14 @@ function printStartupLogs(ipAddress) {
     console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
     console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
     console.log('==================================================');
-}t
+}
+
+server.listen(WEB_PORT, () => {
+    http.get('http://api.ipify.org', (res) => {
+        let publicIp = '';
+        res.on('data', chunk => publicIp += chunk);
+        res.on('end', () => printStartupLogs(publicIp.trim()));
+    }).on('error', () => {
+        printStartupLogs(getLocalIP());
+    });
+});
