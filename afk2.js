@@ -5,21 +5,44 @@ const minecraftData = require('minecraft-data');
 
 const SERVER_HOST = 'play.amorycraft.com';
 const SERVER_PORT = 25565;
-const BOT_PASSWORD = '112233';
+const DEFAULT_PASSWORD = '112233'; // รหัสผ่านหลัก
 const MC_VERSION = '1.20.1';
 const WEB_PORT = 3000;
 
 const sharedData = minecraftData(MC_VERSION);
 
-const BOT_NAMES = [
-    'obs1', 'Morgan05', 'Domertown', 'Nattanon09', 'Nanepez', 'Sudlorkayeejai', 'Wood_Skel', 'sindirt', 'Pompamz',  'quast', 'Geyman',
-    'Jolibee', 'Posma2', 'Rxzy3', 'mecular', 'Iron34', 'd456', 'Ixcw2534', 'ShadowEmpress', 'gulnwza007', 'Monosox', 'twenty29', '0zow29'
+// กำหนดบอทพร้อมรหัสผ่านรายตัว (ถ้าตัวไหนใช้ 112233 ไม่ต้องใส่เพิ่ม)
+const BOT_CONFIGS = [
+    { name: 'obs1', pass: '112233' },
+    { name: 'Morgan05', pass: '112233' },
+    { name: 'Domertown', pass: '112233' },
+    { name: 'Nattanon09', pass: '112233' },
+    { name: 'Nanepez', pass: '112233' },
+    { name: 'Sudlorkayeejai', pass: '112233' },
+    { name: 'Wood_Skel', pass: '112233' },
+    { name: 'sindirt', pass: '112233' },
+    { name: 'Pompamz', pass: '112233' },
+    { name: 'Netherboy', pass: '112233' },
+    { name: 'quast', pass: '112233' },
+    { name: 'Geyman', pass: '112233' },
+    { name: 'Jolibee', pass: '112233' },
+    { name: 'Posma2', pass: '112233' },
+    { name: 'Rxzy3', pass: '112233' },
+    { name: 'mecular', pass: '112233' },
+    { name: 'Iron34', pass: '112233' },
+    { name: 'd456', pass: '112233' },
+    { name: 'llMasterll', pass: '112233' },
+    { name: 'Ixcw2534', pass: '112233' },
+    { name: 'ShadowEmpress', pass: '112233' },
+    { name: 'gulnwza007', pass: '112233' },
+    { name: 'Monosox', pass: '112233' },
+    { name: 'twenty29', pass: '112233' },
+    { name: '0zow29', pass: '112233' }
 ];
 
-// เก็บ Instance ของบอทที่กำลังทำงาน
+const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 
-// ตั้งค่าเริ่มต้นให้บอททุกตัวอยู่ในสถานะ "ปิดใช้งาน" (enabled = false)
 const botStatusMap = {};
 BOT_NAMES.forEach(name => {
     botStatusMap[name] = { 
@@ -27,7 +50,7 @@ BOT_NAMES.forEach(name => {
         step: 'รอสั่งเปิดจากหน้าเว็บ...', 
         lastUpdate: new Date().toLocaleTimeString('th-TH'),
         lastError: '-',
-        enabled: false // 🔥 ปิดไว้ก่อนตอนรันโค้ดครั้งแรก
+        enabled: false 
     };
 });
 
@@ -41,15 +64,12 @@ function updateStatus(name, status, step, errorReason = null) {
 
 function stopBotInstance(username) {
     if (activeBots[username]) {
-        try {
-            activeBots[username].quit();
-        } catch (e) {}
+        try { activeBots[username].quit(); } catch (e) {}
         delete activeBots[username];
     }
 }
 
 function createBotInstance(username, delayMs = 0) {
-    // ถ้าบอทไม่ได้เปิดใช้งาน (enabled === false) ให้ยกเลิกการทำงานทันที
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
         return;
@@ -62,6 +82,9 @@ function createBotInstance(username, delayMs = 0) {
 
         console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
         updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
+
+        const botConfig = BOT_CONFIGS.find(b => b.name === username);
+        const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
 
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
@@ -85,15 +108,14 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
-            try {
-                kickReasonStr = JSON.parse(reason).text || reason;
-            } catch (e) {}
+            try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
             
             console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
             updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
         });
 
         bot.on('windowOpen', async (window) => {
+            // STEP 1: หน้าต่าง GUI ล็อกอินแรกเปิดขึ้นมา
             if (window.type === 'minecraft:generic_9x3' && bot.flowState === 0) {
                 bot.flowState = 1;
                 console.log(`[1/3] [${username}] พบ GUI ล็อกอิน -> กำลังกดปุ่มเข้าสู่ระบบ (Slot 2)...`);
@@ -101,6 +123,7 @@ function createBotInstance(username, delayMs = 0) {
 
                 setTimeout(async () => {
                     try {
+                        // เว้นระยะหน่วง 2 วินาทีให้เซิร์ฟเวอร์โหลดข้อมูลไอดีครบก่อนคลิก
                         await bot.clickWindow(2, 0, 0);
                         updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
 
@@ -123,8 +146,9 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (err) {
                         console.error(`[-] [${username}] กดเข้าสู่ระบบพลาด: ${err.message}`);
                     }
-                }, 1500);
+                }, 2000);
             }
+            // STEP 2: หน้าต่างเข็มทิศเปิดขึ้นมา -> กด Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && bot.flowState === 1) {
                 bot.flowState = 2;
                 console.log(`[3/3] [${username}] GUI เข็มทิศเปิดขึ้นมาแล้ว! -> กำลังกดเลือก Survival (Slot 10)...`);
@@ -159,7 +183,6 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('end', (reason) => {
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
-            
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
                 console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
@@ -193,7 +216,6 @@ const server = http.createServer((req, res) => {
         if (action === 'start-all') {
             BOT_NAMES.forEach((bName, idx) => {
                 botStatusMap[bName].enabled = true;
-                // สั่งทยอยรันห่างกันตัวละ 15 วินาที
                 createBotInstance(bName, idx * 15000);
             });
         } else if (action === 'stop-all') {
@@ -351,8 +373,7 @@ function printStartupLogs(ipAddress) {
     console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (STANDBY)`);
     console.log('==================================================');
     console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (สถานะ: พร้อมรัน)`);
+    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
     console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
     console.log('==================================================');
-    console.log(`[System] ระบบเปิดทำงานแล้ว สามารถเข้าหน้าเว็บเพื่อกดเปิดบอทได้เลยครับ`);
 }
