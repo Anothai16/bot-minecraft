@@ -98,13 +98,7 @@ function createBotInstance(username, delayMs = 0) {
         activeBots[username] = bot;
         bot.authStage = 0;
 
-        bot.on('message', (jsonMsg) => {
-            const strMsg = jsonMsg.toString().trim();
-            if (strMsg && !strMsg.includes('AFK') && !strMsg.includes('เข้าร่วม') && !strMsg.startsWith('§')) {
-                console.log(`[💬 Log] [${username}]: ${strMsg}`);
-            }
-        });
-
+        // ดักจับเหตุการณ์โดน Kick
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
             try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
@@ -115,20 +109,20 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('windowOpen', async (window) => {
             
-            // STAGE 0: เจอ GUI หน้าแรก -> กด Slot 1 เปิด Anvil
+            // STAGE 0: หน้า GUI ล็อกอินหลัก -> กด Slot 1 (สมุด)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
-                console.log(`[1/5] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
+                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
 
-                        // ⚡ ระบบการันตีแก้ค้าง: ถ้าผ่านไป 3.5 วินาที Anvil ไม่เปิดขึ้นมา ให้ลองดันไปกด Slot 2 เลย
+                        // ระบบป้องกันค้าง: หาก Anvil ไม่เด้งใน 3.5 วินาที ให้ข้ามไปกด Slot 2
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
-                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยันทันที...`);
+                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
                                 updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
@@ -155,7 +149,7 @@ function createBotInstance(username, delayMs = 0) {
             // STAGE 1: Anvil เปิด -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`[2/5] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
+                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
                 updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน ${botPassword}`);
 
                 setTimeout(() => {
@@ -171,7 +165,7 @@ function createBotInstance(username, delayMs = 0) {
             // STAGE 2: กลับมาจาก Anvil -> กด Slot 2 ยืนยัน
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
-                console.log(`[3/5] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
+                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยันเข้าสู่ระบบ');
 
                 setTimeout(async () => {
@@ -202,7 +196,7 @@ function createBotInstance(username, delayMs = 0) {
             // STAGE 3: เข็มทิศเปิด -> กด Slot 10 (Survival)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
-                console.log(`[4/5] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
+                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
                 updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
@@ -210,10 +204,19 @@ function createBotInstance(username, delayMs = 0) {
                         await bot.clickWindow(10, 0, 0);
                         updateStatus(username, 'Entering Survival', 'กำลังเข้าโลก Survival');
 
+                        // เข้าสู่โลกหลักเรียบร้อย
                         setTimeout(() => {
-                            bot.chat('/afk');
-                            console.log(`[✓] [✓] [${username}] ออนไลน์ในเซิร์ฟเวอร์หลักสมบูรณ์!`);
+                            console.log(`[✓] [✓] [${username}] เข้าออนไลน์โลก Survival สมบูรณ์แบบ!`);
                             updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+
+                            // ระบบจำลองการขยับตัวทุกๆ 60 วินาที เพื่อป้องกัน AFK Kick
+                            if (bot.afkInterval) clearInterval(bot.afkInterval);
+                            bot.afkInterval = setInterval(() => {
+                                try {
+                                    bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                } catch (e) {}
+                            }, 60000);
+
                         }, 8000);
 
                     } catch (err) {
@@ -233,7 +236,9 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('end', (reason) => {
+            if (bot.afkInterval) clearInterval(bot.afkInterval);
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
+            
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
                 console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
