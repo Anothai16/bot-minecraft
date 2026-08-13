@@ -21,7 +21,7 @@ const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bots are running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// List รายการ Packet ที่จะทำการ Drop ทิ้งเพื่อประหยัด CPU/RAM สูงสุด
+// List รายการ Packet ที่จะทำการ Drop ทิ้งเพื่อประหยัด CPU/RAM
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect', 'entity_destroy',
@@ -33,12 +33,10 @@ const DROP_PACKETS = [
 ];
 
 // ====================================================================
-// 🔍 CHECK PLAYERS ONLINE FUNCTION (ป้องกัน Crash)
+// 🔍 CHECK PLAYERS ONLINE FUNCTION
 // ====================================================================
 function areRequiredPlayersOnline() {
-    if (!botLever || !botLever.players) {
-        return { isReady: false, hasK555: false, hasK666: false };
-    }
+    if (!botLever || !botLever.players) return false;
 
     const onlinePlayerNames = Object.keys(botLever.players);
     const hasK555 = onlinePlayerNames.includes('K555');
@@ -86,29 +84,26 @@ async function clickLever() {
 }
 
 async function triggerLeverCycle() {
-    console.log(`🔍 [CHECK ONLINE]: กำลังตรวจสอบผู้เล่น K555 และ K666 ในเซิร์ฟเวอร์...`);
-    
-    // 🔄 เช็กผู้เล่นทุกครั้งก่อนเริ่มสับคันโยก
-    while (true) {
-        const check = areRequiredPlayersOnline();
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
 
-        if (check.isReady) {
-            console.log(`✅ [CHECK ONLINE]: พบผู้เล่น K555 และ K666 อยู่ในเซิร์ฟเวอร์ครบถ้วน!`);
-            break;
-        } else {
-            console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
-            
-            // ถ้า K666 ไม่อยู่ สั่งรีคอนเนกต์/เข้าเซิร์ฟเวอร์ใหม่ให้ K666 ทันที
-            if (!check.hasK666 && !isReconnectingK666) {
-                console.log(`🔄 [AUTO RECONNECT]: ไม่พบ K666 ในเซิร์ฟเวอร์ สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
-                if (botK666) {
-                    try { botK666.quit(); } catch (e) {}
-                }
-                startAFKBot();
+    // 🕒 เช็กเงื่อนไขเวลา: หลัง 18:30 น. เป็นต้นไป (18:30 - 23:59 น. และ 00:00 - 05:44 น.)
+    const isAfter1830 = (hour > 18) || (hour === 18 && minute >= 30) || (hour < 5) || (hour === 5 && minute < 45);
+
+    if (isAfter1830) {
+        console.log(`🔍 [CHECK ONLINE]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. (หลัง 18:30) ตรวจสอบผู้เล่น K555 และ K666...`);
+        
+        while (true) {
+            const check = areRequiredPlayersOnline();
+
+            if (check.isReady) {
+                console.log(`✅ [CHECK ONLINE]: พบผู้เล่น K555 และ K666 อยู่ในเซิร์ฟเวอร์ครบถ้วน!`);
+                break;
+            } else {
+                console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) -> รอ 1 นาทีแล้วเช็กใหม่...`);
+                await sleep(60000); // รอ 1 นาทีแล้ววนลูปเช็กใหม่
             }
-
-            console.log(`⏱️ รอ 1 นาทีเพื่อให้ K666 โหลดเข้าเซิร์ฟเวอร์ แล้วจะเช็กใหม่อีกครั้ง...`);
-            await sleep(60000); // รอ 1 นาทีแล้ววนลูปเช็กใหม่
         }
     }
 
@@ -126,7 +121,6 @@ async function triggerLeverCycle() {
 }
 
 function initScheduler() {
-    // CRON SYNTAX: 'วินาที นาที ชั่วโมง วัน เดือน วันในสัปดาห์'
     const CRON_PATTERN = '0 3,9,15,21,27,33,39,45,51,57 * * * *';
 
     cron.schedule(CRON_PATTERN, async () => {
@@ -134,11 +128,9 @@ function initScheduler() {
         const hour = now.getHours();
         const minute = now.getMinutes();
 
-        // 🛑 เว้นช่วงเวลาพักระหว่าง 05:35 น. ถึง 07:00 น.
-        // - ตี 5 ตั้งแต่นาทีที่ 35 เป็นต้นไป (hour === 5 && minute >= 35)
-        // - ตี 6 ทั้งชั่วโมง (hour === 6)
-        if ((hour === 5 && minute >= 35) || hour === 6) {
-            console.log(`⏸️ [SCHEDULER SKIP]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพัก (05:35 - 07:00) ข้ามการทำงานรอบนี้`);
+        // 🛑 เว้นช่วงเวลาพักระหว่าง 05:45 น. ถึง 07:00 น.
+        if ((hour === 5 && minute >= 45) || hour === 6) {
+            console.log(`⏸️ [SCHEDULER SKIP]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพัก (05:45 - 07:00) ข้ามการทำงานรอบนี้`);
             return;
         }
 
@@ -146,7 +138,7 @@ function initScheduler() {
         await triggerLeverCycle();
     });
 
-    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบอัตโนมัติทุกนาทีที่ 3,9,15,21,27,33,39,45,51,57 (เว้นช่วงพัก 05:35 - 07:00 น.)`);
+    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับปิด-เปิด อัตโนมัติทุกนาทีที่ 3,9,15,21,27,33,39,45,51,57 (เว้นช่วง 05:45 - 07:00 น.)`);
 }
 
 function startLeverBot() {
@@ -264,7 +256,6 @@ function startAFKBot() {
 initScheduler();
 startLeverBot();
 
-// หน่วงเวลา 5 วินาทีแล้วรัน K666 ตามเข้าเซิร์ฟเวอร์
 setTimeout(() => {
     startAFKBot();
 }, 5000);
