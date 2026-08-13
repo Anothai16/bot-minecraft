@@ -9,6 +9,12 @@ const { setupAmoryLogin } = require('./login');
 
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
+// ====================================================================
+// ⏱️ ตัวแปรตั้งเวลาสับเปิดอย่างเดียว (CRON SYNTAX: 'วินาที นาที ชั่วโมง * * *')
+// ====================================================================
+const CRON_ON_TIME = '0 35 5 * * *'; // ตัวอย่าง: 05:35:00 น.
+// ====================================================================
+
 let bot;
 let isReconnecting = false;
 
@@ -18,13 +24,15 @@ const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bot is running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// 🕹️ ฟังก์ชันโยกคันโยก (สับ 1 ครั้ง)
-async function clickLever() {
-    if (!bot || !bot._client || bot._client.ended) return false;
+// 🕹️ ฟังก์ชันโยกคันโยกแบบไม่คำนวณฟิสิกส์ (Zero Physics Lever Action)
+async function turnLeverOn() {
+    if (!bot || !bot._client || bot._client.ended) return;
 
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
+        console.log(`🕹️ [LEVER ACTION]: กำลังสั่งโยกคันโยกด่วนที่พิกัด X:10428 Y:74 Z:-5054...`);
+        
         // หันไปที่คันโยกโดยตรง
         await bot.lookAt(leverPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
         await sleep(100);
@@ -34,6 +42,7 @@ async function clickLever() {
 
         if (leverBlock) {
             await bot.activateBlock(leverBlock);
+            console.log(`🟢 [LEVER ACTION]: ส่ง Packet สับคันโยกเรียบร้อย!`);
         } else {
             // สำรอง: ยิง Packet พิกัดคันโยกตรงๆ หากมองไม่เห็น Object
             bot._client.write('block_place', {
@@ -45,53 +54,22 @@ async function clickLever() {
                 cursorZ: 0.5,
                 insideBlock: false
             });
+            console.log(`🟢 [LEVER ACTION]: ยิง Raw Packet สับคันโยกสำรองเรียบร้อย!`);
         }
-        return true;
+
     } catch (err) {
         console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการโยกคันโยก: ${err.message}`);
-        return false;
-    }
-}
-
-// 🔄 ฟังก์ชันวงจร: สับปิด -> รอ 30 วินาที -> สับเปิด
-async function triggerLeverCycle() {
-    console.log(`\n🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-    const successOff = await clickLever();
-    
-    if (successOff) {
-        console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
-        await sleep(30000); // รอ 30 วินาที (30,000 ms)
-        
-        console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยกกลับคืน (ON)...`);
-        await clickLever();
-        console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
     }
 }
 
 // ⏰ ฟังก์ชันตั้งคิวงานอัตโนมัติ Cron Jobs
 function initScheduler() {
-    // CRON SYNTAX: 'วินาที นาที ชั่วโมง วัน เดือน วันในสัปดาห์'
-    // '0 3,9,15,21,27,33,39,45,51,57 * * * *' คือ ทำงานที่วินาทีที่ 0 ของนาทีตามระบุ
-    const CRON_PATTERN = '0 3,9,15,21,27,33,39,45,51,57 * * * *';
-
-    cron.schedule(CRON_PATTERN, async () => {
-        const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-
-        // 🛑 เช็กเงื่อนไขเว้นช่วง 05:45 น. ถึง 07:00 น.
-        // - ตี 5 นาทีที่ 45 เป็นต้นไป (hour === 5 && minute >= 45)
-        // - ตี 6 ทั้งชั่วโมง (hour === 6)
-        if ((hour === 5 && minute >= 45) || hour === 6) {
-            console.log(`⏸️ [SCHEDULER SKIP]: ขณะนี้เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพักเว้นช่วง (05:45 - 07:00) ข้ามการทำงานรอบนี้`);
-            return;
-        }
-
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาทำงานตามรอบ [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
-        await triggerLeverCycle();
+    cron.schedule(CRON_ON_TIME, async () => {
+        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาสับเปิดคันโยกตามกำหนดการ!`);
+        await turnLeverOn();
     });
 
-    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับปิด-เปิด อัตโนมัติทุกนาทีที่ 3,9,15,21,27,33,39,45,51,57 (เว้นช่วง 05:45 - 07:00 น.) เรียบร้อยแล้ว`);
+    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบสับเปิดไว้ที่ [${CRON_ON_TIME}] เรียบร้อยแล้ว`);
 }
 
 function startBot() {
@@ -183,7 +161,7 @@ rl.on('line', async (line) => {
     const input = line.trim();
     
     if (input === 'push') {
-        await triggerLeverCycle();
+        await turnLeverOn();
         return;
     }
 
