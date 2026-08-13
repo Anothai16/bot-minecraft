@@ -33,7 +33,7 @@ const DROP_PACKETS = [
 ];
 
 // ====================================================================
-// 🔍 CHECK PLAYERS ONLINE FUNCTION (ป้องกัน Crash)
+// 🔍 CHECK PLAYERS ONLINE FUNCTION
 // ====================================================================
 function areRequiredPlayersOnline() {
     if (!botLever || !botLever.players) {
@@ -126,7 +126,6 @@ async function triggerLeverCycle() {
 }
 
 function initScheduler() {
-    // CRON SYNTAX: 'วินาที นาที ชั่วโมง วัน เดือน วันในสัปดาห์'
     const CRON_PATTERN = '0 3,9,15,21,27,33,39,45,51,57 * * * *';
 
     cron.schedule(CRON_PATTERN, async () => {
@@ -135,8 +134,6 @@ function initScheduler() {
         const minute = now.getMinutes();
 
         // 🛑 เว้นช่วงเวลาพักระหว่าง 05:35 น. ถึง 07:00 น.
-        // - ตี 5 ตั้งแต่นาทีที่ 35 เป็นต้นไป (hour === 5 && minute >= 35)
-        // - ตี 6 ทั้งชั่วโมง (hour === 6)
         if ((hour === 5 && minute >= 35) || hour === 6) {
             console.log(`⏸️ [SCHEDULER SKIP]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพัก (05:35 - 07:00) ข้ามการทำงานรอบนี้`);
             return;
@@ -168,7 +165,26 @@ function startLeverBot() {
         });
     }
 
+    let isSuccessfullyInSurvival = false;
+
+    // เรียกระบบล็อกอิน
     setupAmoryLogin(botLever);
+
+    // 🕒 Watchdog: ตั้งเวลาเช็ก 30 วินาที หากติดค้างที่ Lobby ให้ Reconnect ทันที
+    const loginTimeout = setTimeout(() => {
+        if (!isSuccessfullyInSurvival && botLever) {
+            console.log(`⚠️ [Lervy_Lever]: เข้า Survival ไม่สำเร็จภายใน 30 วินาที (ติดค้างใน Lobby) สั่ง Reconnect ใหม่ทันที...`);
+            try { botLever.quit(); } catch (e) {}
+        }
+    }, 30000);
+
+    // ดักฟังข้อความเมื่อวาร์ปเข้าบ้าน/Survival สำเร็จ
+    botLever.on('messagestr', (msg) => {
+        if (msg.includes('ล็อกอินสำเร็จ') || msg.includes('บ้านเรียบร้อย') || msg.includes('Survival')) {
+            isSuccessfullyInSurvival = true;
+            clearTimeout(loginTimeout);
+        }
+    });
 
     botLever.once('spawn', () => {
         console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ! (โหมด Zero CPU)');
@@ -192,6 +208,7 @@ function startLeverBot() {
     botLever.on('error', (err) => console.log(`\n❌ [Lervy_Lever Error]: ${err.message}`));
 
     botLever.on('end', () => { 
+        clearTimeout(loginTimeout);
         if (isReconnectingLever) return;
         isReconnectingLever = true;
         console.log(`🔄 [Lervy_Lever] หลุดการเชื่อมต่อ รอ 10 วินาทีเพื่อเชื่อมต่อใหม่...`);
@@ -224,7 +241,24 @@ function startAFKBot() {
         });
     }
 
+    let isK666InSurvival = false;
+
     setupAmoryLogin(botK666);
+
+    // 🕒 Watchdog สำหรับ K666: เช็ก 30 วินาที
+    const k666LoginTimeout = setTimeout(() => {
+        if (!isK666InSurvival && botK666) {
+            console.log(`⚠️ [K666]: เข้า Survival ไม่สำเร็จภายใน 30 วินาที สั่ง Reconnect ใหม่ทันที...`);
+            try { botK666.quit(); } catch (e) {}
+        }
+    }, 30000);
+
+    botK666.on('messagestr', (msg) => {
+        if (msg.includes('ล็อกอินสำเร็จ') || msg.includes('บ้านเรียบร้อย') || msg.includes('Survival')) {
+            isK666InSurvival = true;
+            clearTimeout(k666LoginTimeout);
+        }
+    });
 
     botK666.once('spawn', () => {
         console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Zero CPU)');
@@ -248,6 +282,7 @@ function startAFKBot() {
     botK666.on('error', (err) => console.log(`\n❌ [K666 Error]: ${err.message}`));
 
     botK666.on('end', () => { 
+        clearTimeout(k666LoginTimeout);
         if (isReconnectingK666) return;
         isReconnectingK666 = true;
         console.log(`🔄 [K666] หลุดการเชื่อมต่อ รอ 10 วินาทีเพื่อเชื่อมต่อใหม่...`);

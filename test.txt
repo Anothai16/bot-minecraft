@@ -6,7 +6,7 @@
 dritestudio
 
 pm2 start main.py --name "afk-bot" --interpreter python3
-pm2 start smat6.js --name "afk-kelp"
+pm2 start lever4.js --name "lever-kelp"
 pm2 start start_all.sh --name "mcc-bots"
 
 farm -2718 83 14543 
