@@ -167,23 +167,28 @@ function startLeverBot() {
 
     let isSuccessfullyInSurvival = false;
 
-    // เรียกระบบล็อกอิน
-    setupAmoryLogin(botLever);
-
-    // 🕒 Watchdog: ตั้งเวลาเช็ก 30 วินาที หากติดค้างที่ Lobby ให้ Reconnect ทันที
+    // 🕒 Watchdog: ตั้งเวลาเช็ก 30 วินาที หากติดค้างใน Lobby ให้ Reconnect ทันที
     const loginTimeout = setTimeout(() => {
         if (!isSuccessfullyInSurvival && botLever) {
-            console.log(`⚠️ [Lervy_Lever]: เข้า Survival ไม่สำเร็จภายใน 30 วินาที (ติดค้างใน Lobby) สั่ง Reconnect ใหม่ทันที...`);
+            console.log(`⚠️ [Lervy_Lever]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
             try { botLever.quit(); } catch (e) {}
         }
     }, 30000);
 
-    // ดักฟังข้อความเมื่อวาร์ปเข้าบ้าน/Survival สำเร็จ
-    botLever.on('messagestr', (msg) => {
-        if (msg.includes('ล็อกอินสำเร็จ') || msg.includes('บ้านเรียบร้อย') || msg.includes('Survival')) {
-            isSuccessfullyInSurvival = true;
-            clearTimeout(loginTimeout);
-        }
+    // เรียกระบบล็อกอิน
+    setupAmoryLogin(botLever, () => {
+        isSuccessfullyInSurvival = true;
+        clearTimeout(loginTimeout);
+    });
+
+    // 🎯 ยกเลิก Timeout เมื่อสปอว์นเข้าฉาก/โลกสำเร็จ
+    botLever.on('spawn', () => {
+        setTimeout(() => {
+            if (botLever && botLever.username) {
+                isSuccessfullyInSurvival = true;
+                clearTimeout(loginTimeout);
+            }
+        }, 12000);
     });
 
     botLever.once('spawn', () => {
@@ -243,21 +248,26 @@ function startAFKBot() {
 
     let isK666InSurvival = false;
 
-    setupAmoryLogin(botK666);
-
     // 🕒 Watchdog สำหรับ K666: เช็ก 30 วินาที
     const k666LoginTimeout = setTimeout(() => {
         if (!isK666InSurvival && botK666) {
-            console.log(`⚠️ [K666]: เข้า Survival ไม่สำเร็จภายใน 30 วินาที สั่ง Reconnect ใหม่ทันที...`);
+            console.log(`⚠️ [K666]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
             try { botK666.quit(); } catch (e) {}
         }
     }, 30000);
 
-    botK666.on('messagestr', (msg) => {
-        if (msg.includes('ล็อกอินสำเร็จ') || msg.includes('บ้านเรียบร้อย') || msg.includes('Survival')) {
-            isK666InSurvival = true;
-            clearTimeout(k666LoginTimeout);
-        }
+    setupAmoryLogin(botK666, () => {
+        isK666InSurvival = true;
+        clearTimeout(k666LoginTimeout);
+    });
+
+    botK666.on('spawn', () => {
+        setTimeout(() => {
+            if (botK666 && botK666.username) {
+                isK666InSurvival = true;
+                clearTimeout(k666LoginTimeout);
+            }
+        }, 12000);
     });
 
     botK666.once('spawn', () => {
