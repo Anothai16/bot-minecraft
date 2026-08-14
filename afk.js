@@ -1,9 +1,8 @@
 const mineflayer = require('mineflayer');
 
-// 🎯 เหลือแค่ไอดี tutipong ตัวเดียวเน้นๆ ตามสั่งพี่ครับ
-const username = 'tutipong';
+// 🎯 รับชื่อบอทจากพารามิเตอร์ที่ Python ส่งมา (ถ้าไม่มีให้ตั้ง default เป็น tutipong)
+const username = process.argv[2] || 'tutipong';
 let bot;
-let botStatus = "OFFLINE";
 
 process.on('uncaughtException', (err) => {
     if (!err) return;

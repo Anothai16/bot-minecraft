@@ -21,7 +21,7 @@ const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bots are running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// List รายการ Packet ที่จะทำการ Drop ทิ้งเพื่อประหยัด CPU/RAM สูงสุด
+// List รายการ Packet ที่ทำการ Drop ทิ้งเพื่อประหยัด CPU/RAM สูงสุด
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect', 'entity_destroy',
@@ -33,54 +33,47 @@ const DROP_PACKETS = [
 ];
 
 // ====================================================================
-// 🔍 CHECK PLAYERS ONLINE FUNCTION
+// 🔍 CHECK PLAYERS ONLINE FUNCTIONS (ระบบเช็กสองทาง)
 // ====================================================================
-function areRequiredPlayersOnline() {
+function checkPlayersFromLever() {
     if (!botLever || !botLever.players) {
         return { isReady: false, hasK555: false, hasK666: false };
     }
-
     const onlinePlayerNames = Object.keys(botLever.players);
     const hasK555 = onlinePlayerNames.includes('K555');
     const hasK666 = onlinePlayerNames.includes('K666');
 
-    return {
-        isReady: hasK555 && hasK666,
-        hasK555,
-        hasK666
-    };
+    return { isReady: hasK555 && hasK666, hasK555, hasK666 };
+}
+
+// K666 ใช้เช็กว่า Lervy_Lever ยังอยู่ในเซิร์ฟเวอร์ไหม
+function isLeverBotOnline() {
+    if (!botK666 || !botK666.players) return false;
+    return Object.keys(botK666.players).includes('Lervy_Lever');
 }
 
 // ====================================================================
-// 🕹️ LEVER BOT (Lervy_Lever)
+// 🕹️ LEVER BOT (Lervy_Lever - โหมด Raw Packet สับคันโยก Zero CPU)
 // ====================================================================
-async function clickLever() {
+function clickLeverRaw() {
     if (!botLever || !botLever._client || botLever._client.ended) return false;
 
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        await botLever.lookAt(leverPos.plus(new Vec3(0.5, 0.5, 0.5)), true);
-        await sleep(100);
-
-        const leverBlock = botLever.blockAt(leverPos, false);
-
-        if (leverBlock) {
-            await botLever.activateBlock(leverBlock);
-        } else {
-            botLever._client.write('block_place', {
-                location: leverPos,
-                direction: 1,
-                hand: 0,
-                cursorX: 0.5,
-                cursorY: 0.5,
-                cursorZ: 0.5,
-                insideBlock: false
-            });
-        }
+        // ⚡ ยิง Raw Packet ตรงไปที่พิกัดคันโยกโดยไม่ต้อง lookAt หรืออ่าน Chunk (ไม่กิน CPU / ไม่ทำให้หลุด)
+        botLever._client.write('block_place', {
+            location: leverPos,
+            direction: 1,
+            hand: 0,
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false
+        });
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการโยกคันโยก: ${err.message}`);
+        console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการส่ง Packet คันโยก: ${err.message}`);
         return false;
     }
 }
@@ -88,9 +81,8 @@ async function clickLever() {
 async function triggerLeverCycle() {
     console.log(`🔍 [CHECK ONLINE]: กำลังตรวจสอบผู้เล่น K555 และ K666 ในเซิร์ฟเวอร์...`);
     
-    // 🔄 เช็กผู้เล่นทุกครั้งก่อนเริ่มสับคันโยก
     while (true) {
-        const check = areRequiredPlayersOnline();
+        const check = checkPlayersFromLever();
 
         if (check.isReady) {
             console.log(`✅ [CHECK ONLINE]: พบผู้เล่น K555 และ K666 อยู่ในเซิร์ฟเวอร์ครบถ้วน!`);
@@ -98,29 +90,27 @@ async function triggerLeverCycle() {
         } else {
             console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
             
-            // ถ้า K666 ไม่อยู่ สั่งรีคอนเนกต์/เข้าเซิร์ฟเวอร์ใหม่ให้ K666 ทันที
+            // ถ้า K666 ไม่อยู่ สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ
             if (!check.hasK666 && !isReconnectingK666) {
-                console.log(`🔄 [AUTO RECONNECT]: ไม่พบ K666 ในเซิร์ฟเวอร์ สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
-                if (botK666) {
-                    try { botK666.quit(); } catch (e) {}
-                }
+                console.log(`🔄 [AUTO RECONNECT K666]: ไม่พบ K666 สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
+                if (botK666) { try { botK666.quit(); } catch (e) {} }
                 startAFKBot();
             }
 
-            console.log(`⏱️ รอ 1 นาทีเพื่อให้ K666 โหลดเข้าเซิร์ฟเวอร์ แล้วจะเช็กใหม่อีกครั้ง...`);
-            await sleep(60000); // รอ 1 นาทีแล้ววนลูปเช็กใหม่
+            console.log(`⏱️ รอ 1 นาทีเพื่อให้ผู้เล่นเข้าเซิร์ฟเวอร์ครบ แล้วจะเช็กใหม่อีกครั้ง...`);
+            await sleep(60000);
         }
     }
 
     console.log(`\n🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-    const successOff = await clickLever();
+    const successOff = clickLeverRaw();
     
     if (successOff) {
         console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
         await sleep(30000);
         
         console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยกกลับคืน (ON)...`);
-        await clickLever();
+        clickLeverRaw();
         console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
     }
 }
@@ -167,7 +157,6 @@ function startLeverBot() {
 
     let isSuccessfullyInSurvival = false;
 
-    // 🕒 Watchdog: ตั้งเวลาเช็ก 30 วินาที หากติดค้างใน Lobby ให้ Reconnect ทันที
     const loginTimeout = setTimeout(() => {
         if (!isSuccessfullyInSurvival && botLever) {
             console.log(`⚠️ [Lervy_Lever]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
@@ -175,13 +164,11 @@ function startLeverBot() {
         }
     }, 30000);
 
-    // เรียกระบบล็อกอิน
     setupAmoryLogin(botLever, () => {
         isSuccessfullyInSurvival = true;
         clearTimeout(loginTimeout);
     });
 
-    // 🎯 ยกเลิก Timeout เมื่อสปอว์นเข้าฉาก/โลกสำเร็จ
     botLever.on('spawn', () => {
         setTimeout(() => {
             if (botLever && botLever.username) {
@@ -225,7 +212,7 @@ function startLeverBot() {
 }
 
 // ====================================================================
-// 🤖 AFK BOT (K666)
+// 🤖 AFK BOT (K666) + Cross Watchdog คอยเฝ้า Lervy_Lever
 // ====================================================================
 function startAFKBot() {
     console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
@@ -248,7 +235,6 @@ function startAFKBot() {
 
     let isK666InSurvival = false;
 
-    // 🕒 Watchdog สำหรับ K666: เช็ก 30 วินาที
     const k666LoginTimeout = setTimeout(() => {
         if (!isK666InSurvival && botK666) {
             console.log(`⚠️ [K666]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
@@ -286,12 +272,23 @@ function startAFKBot() {
         botK666.eventNames().forEach(eventName => {
             if (!keepEvents.includes(eventName)) botK666.removeAllListeners(eventName);
         });
+
+        // 🛡️ [CROSS WATCHDOG]: K666 คอยตรวจดู Lervy_Lever ทุกๆ 2 นาที
+        if (botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
+        botK666.watchdogInterval = setInterval(() => {
+            if (isK666InSurvival && !isLeverBotOnline() && !isReconnectingLever) {
+                console.log(`⚠️ [K666 WATCHDOG]: ไม่พบ Lervy_Lever ในเซิร์ฟเวอร์! สั่งช่วย Reconnect Lervy_Lever ทันที...`);
+                if (botLever) { try { botLever.quit(); } catch (e) {} }
+                startLeverBot();
+            }
+        }, 120000); // วนเช็กทุก 2 นาที
     });
 
     botK666.on('kicked', (reason) => console.log(`\n🚨 [K666]: โดนเตะออก!!`));
     botK666.on('error', (err) => console.log(`\n❌ [K666 Error]: ${err.message}`));
 
     botK666.on('end', () => { 
+        if (botK666 && botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
         clearTimeout(k666LoginTimeout);
         if (isReconnectingK666) return;
         isReconnectingK666 = true;
@@ -309,7 +306,6 @@ function startAFKBot() {
 initScheduler();
 startLeverBot();
 
-// หน่วงเวลา 5 วินาทีแล้วรัน K666 ตามเข้าเซิร์ฟเวอร์
 setTimeout(() => {
     startAFKBot();
 }, 5000);
