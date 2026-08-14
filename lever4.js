@@ -1,3 +1,10 @@
+// 🔇 1. ซ่อน Warning รกจอทันทีตั้งแต่เริ่มรัน
+const originalWarn = console.warn;
+console.warn = (...args) => {
+    if (args[0] && typeof args[0] === 'string' && args[0].includes('Ignoring block entities')) return;
+    originalWarn(...args);
+};
+
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const cron = require('node-cron');
@@ -21,24 +28,22 @@ const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bots are running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// ⚡ List รายการ Packet ที่ Drop ทิ้งทั้งหมด (แทบไม่เหลือการโหลดอะไรเลย)
+// ⚡ Drop Packets ขยะทิ้งทั้งหมด
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect', 'entity_destroy',
     'rel_entity_move', 'entity_move_look', 'entity_teleport',
     'entity_head_rotation', 'animation', 'entity_metadata',
     'block_change', 'multi_block_change', 'block_action', 
-    'block_entity_data', 'update_time', 'set_passengers', 'lighting',
+    'block_entity_data', 'tile_entity_data', 'update_time', 'set_passengers', 'lighting',
     'map_chunk', 'world_event', 'spawn_entity', 'spawn_entity_experience_orb',
     'entity_velocity', 'entity_equipment', 'game_state_change'
 ];
 
-// ⚡ ฟังก์ชันทำลาย Engine ประมวลผลภายใน เพื่อหยุดการกิน CPU 100%
 function neuterBotEngine(bot) {
     bot.physicsEnabled = false;
     if (bot.physics) bot.physics.stopped = true;
     
-    // เคลียร์ความจำเรื่องโลกและม็อบ
     if (bot.world) {
         bot.world.columns = {};
         bot.world.setBlockStateId = () => {};
@@ -47,7 +52,6 @@ function neuterBotEngine(bot) {
     }
     bot.entities = {};
 
-    // ลบ Event Listeners ภายในที่ไม่จำเป็นออก
     const keepEvents = ['kicked', 'error', 'end', 'spawn', 'windowOpen', 'messagestr'];
     bot.eventNames().forEach(eventName => {
         if (!keepEvents.includes(eventName)) bot.removeAllListeners(eventName);
@@ -82,7 +86,6 @@ function clickLeverRaw() {
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        // ยิง Raw Packet ตรงไปที่พิกัดคันโยก โดยไม่ผ่าน Mineflayer Engine (CPU 0%)
         botLever._client.write('block_place', {
             location: leverPos,
             direction: 1,
@@ -200,7 +203,7 @@ function startLeverBot() {
 
     botLever.once('spawn', () => {
         console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ! (โหมด Extreme Low-CPU)');
-        neuterBotEngine(botLever); // ⚡ ปิด Engine ประมวลผลในตัวทันที
+        neuterBotEngine(botLever);
     });
 
     botLever.on('kicked', (reason) => console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!!`));
@@ -266,7 +269,7 @@ function startAFKBot() {
 
     botK666.once('spawn', () => {
         console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Extreme Low-CPU)');
-        neuterBotEngine(botK666); // ⚡ ปิด Engine ประมวลผลในตัวทันที
+        neuterBotEngine(botK666);
 
         if (botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
         botK666.watchdogInterval = setInterval(() => {
