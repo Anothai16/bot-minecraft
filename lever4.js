@@ -21,7 +21,7 @@ const port = process.env.PORT || 8083;
 app.get('/', (req, res) => res.send('Bots are running 24/7!'));
 app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// List รายการ Packet ที่ทำการ Drop ทิ้งเพื่อประหยัด CPU/RAM สูงสุด
+// ⚡ List รายการ Packet ที่ Drop ทิ้งทั้งหมด (แทบไม่เหลือการโหลดอะไรเลย)
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect', 'entity_destroy',
@@ -29,11 +29,33 @@ const DROP_PACKETS = [
     'entity_head_rotation', 'animation', 'entity_metadata',
     'block_change', 'multi_block_change', 'block_action', 
     'block_entity_data', 'update_time', 'set_passengers', 'lighting',
-    'map_chunk'
+    'map_chunk', 'world_event', 'spawn_entity', 'spawn_entity_experience_orb',
+    'entity_velocity', 'entity_equipment', 'game_state_change'
 ];
 
+// ⚡ ฟังก์ชันทำลาย Engine ประมวลผลภายใน เพื่อหยุดการกิน CPU 100%
+function neuterBotEngine(bot) {
+    bot.physicsEnabled = false;
+    if (bot.physics) bot.physics.stopped = true;
+    
+    // เคลียร์ความจำเรื่องโลกและม็อบ
+    if (bot.world) {
+        bot.world.columns = {};
+        bot.world.setBlockStateId = () => {};
+        bot.world.getBlock = () => null;
+        bot.world.getColumn = () => null;
+    }
+    bot.entities = {};
+
+    // ลบ Event Listeners ภายในที่ไม่จำเป็นออก
+    const keepEvents = ['kicked', 'error', 'end', 'spawn', 'windowOpen', 'messagestr'];
+    bot.eventNames().forEach(eventName => {
+        if (!keepEvents.includes(eventName)) bot.removeAllListeners(eventName);
+    });
+}
+
 // ====================================================================
-// 🔍 CHECK PLAYERS ONLINE FUNCTIONS (ระบบเช็กสองทาง)
+// 🔍 CHECK PLAYERS ONLINE FUNCTIONS
 // ====================================================================
 function checkPlayersFromLever() {
     if (!botLever || !botLever.players) {
@@ -46,14 +68,13 @@ function checkPlayersFromLever() {
     return { isReady: hasK555 && hasK666, hasK555, hasK666 };
 }
 
-// K666 ใช้เช็กว่า Lervy_Lever ยังอยู่ในเซิร์ฟเวอร์ไหม
 function isLeverBotOnline() {
     if (!botK666 || !botK666.players) return false;
     return Object.keys(botK666.players).includes('Lervy_Lever');
 }
 
 // ====================================================================
-// 🕹️ LEVER BOT (Lervy_Lever - โหมด Raw Packet สับคันโยก Zero CPU)
+// 🕹️ LEVER BOT (Lervy_Lever - Direct Raw Packet)
 // ====================================================================
 function clickLeverRaw() {
     if (!botLever || !botLever._client || botLever._client.ended) return false;
@@ -61,7 +82,7 @@ function clickLeverRaw() {
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        // ⚡ ยิง Raw Packet ตรงไปที่พิกัดคันโยกโดยไม่ต้อง lookAt หรืออ่าน Chunk (ไม่กิน CPU / ไม่ทำให้หลุด)
+        // ยิง Raw Packet ตรงไปที่พิกัดคันโยก โดยไม่ผ่าน Mineflayer Engine (CPU 0%)
         botLever._client.write('block_place', {
             location: leverPos,
             direction: 1,
@@ -90,7 +111,6 @@ async function triggerLeverCycle() {
         } else {
             console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
             
-            // ถ้า K666 ไม่อยู่ สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ
             if (!check.hasK666 && !isReconnectingK666) {
                 console.log(`🔄 [AUTO RECONNECT K666]: ไม่พบ K666 สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
                 if (botK666) { try { botK666.quit(); } catch (e) {} }
@@ -123,7 +143,6 @@ function initScheduler() {
         const hour = now.getHours();
         const minute = now.getMinutes();
 
-        // 🛑 เว้นช่วงเวลาพักระหว่าง 05:35 น. ถึง 07:00 น.
         if ((hour === 5 && minute >= 35) || hour === 6) {
             console.log(`⏸️ [SCHEDULER SKIP]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพัก (05:35 - 07:00) ข้ามการทำงานรอบนี้`);
             return;
@@ -145,7 +164,8 @@ function startLeverBot() {
         version: '1.21.11',
         viewDistance: 1,
         checkTimeoutInterval: 60000,
-        noResetWorld: true
+        noResetWorld: true,
+        physicsEnabled: false
     });
 
     if (botLever._client) {
@@ -179,21 +199,8 @@ function startLeverBot() {
     });
 
     botLever.once('spawn', () => {
-        console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ! (โหมด Zero CPU)');
-
-        botLever.physicsEnabled = false;
-        if (botLever.physics) botLever.physics.stopped = true;
-        if (botLever.world) {
-            botLever.world.columns = {};
-            botLever.world.setBlockStateId = () => {};
-            botLever.world.getBlock = () => null;
-        }
-        if (botLever.entities) botLever.entities = {};
-
-        const keepEvents = ['kicked', 'error', 'end', 'spawn', 'windowOpen', 'messagestr'];
-        botLever.eventNames().forEach(eventName => {
-            if (!keepEvents.includes(eventName)) botLever.removeAllListeners(eventName);
-        });
+        console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ! (โหมด Extreme Low-CPU)');
+        neuterBotEngine(botLever); // ⚡ ปิด Engine ประมวลผลในตัวทันที
     });
 
     botLever.on('kicked', (reason) => console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!!`));
@@ -212,7 +219,7 @@ function startLeverBot() {
 }
 
 // ====================================================================
-// 🤖 AFK BOT (K666) + Cross Watchdog คอยเฝ้า Lervy_Lever
+// 🤖 AFK BOT (K666)
 // ====================================================================
 function startAFKBot() {
     console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
@@ -223,7 +230,8 @@ function startAFKBot() {
         version: '1.21.11',
         viewDistance: 1,
         checkTimeoutInterval: 60000,
-        noResetWorld: true
+        noResetWorld: true,
+        physicsEnabled: false
     });
 
     if (botK666._client) {
@@ -257,23 +265,9 @@ function startAFKBot() {
     });
 
     botK666.once('spawn', () => {
-        console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Zero CPU)');
+        console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Extreme Low-CPU)');
+        neuterBotEngine(botK666); // ⚡ ปิด Engine ประมวลผลในตัวทันที
 
-        botK666.physicsEnabled = false;
-        if (botK666.physics) botK666.physics.stopped = true;
-        if (botK666.world) {
-            botK666.world.columns = {};
-            botK666.world.setBlockStateId = () => {};
-            botK666.world.getBlock = () => null;
-        }
-        if (botK666.entities) botK666.entities = {};
-
-        const keepEvents = ['kicked', 'error', 'end', 'spawn', 'windowOpen', 'messagestr'];
-        botK666.eventNames().forEach(eventName => {
-            if (!keepEvents.includes(eventName)) botK666.removeAllListeners(eventName);
-        });
-
-        // 🛡️ [CROSS WATCHDOG]: K666 คอยตรวจดู Lervy_Lever ทุกๆ 2 นาที
         if (botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
         botK666.watchdogInterval = setInterval(() => {
             if (isK666InSurvival && !isLeverBotOnline() && !isReconnectingLever) {
@@ -281,7 +275,7 @@ function startAFKBot() {
                 if (botLever) { try { botLever.quit(); } catch (e) {} }
                 startLeverBot();
             }
-        }, 120000); // วนเช็กทุก 2 นาที
+        }, 120000);
     });
 
     botK666.on('kicked', (reason) => console.log(`\n🚨 [K666]: โดนเตะออก!!`));
