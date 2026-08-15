@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Auto Compass-Fix & AFK Controller</div>
+        <div class="title">⚡ Stable Native Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -104,72 +104,6 @@ setInterval(() => {
 
     console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
 }, 5000);
-
-// ====================================================================
-// 🛡️ SAFE AFK OPTIMIZATION
-// ====================================================================
-function setupSafeAfkBot(bot, username) {
-    if (bot._client && bot._client.socket) {
-        bot._client.socket.setKeepAlive(true, 10000);
-        bot._client.socket.setNoDelay(true);
-    }
-
-    bot._client.on('keep_alive', (packet) => {
-        try {
-            bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
-        } catch (e) {}
-    });
-
-    bot._client.on('ping', (packet) => {
-        try {
-            bot._client.write('pong', { id: packet.id });
-        } catch (e) {}
-    });
-
-    const trashEvents = [
-        'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
-        'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience', 'move'
-    ];
-    trashEvents.forEach(evt => bot.removeAllListeners(evt));
-
-    if (bot._client && bot._client.deserializer) {
-        const deserializer = bot._client.deserializer;
-        const origParse = deserializer.parsePacketBuffer.bind(deserializer);
-
-        const dropPacketNames = new Set([
-            'rel_entity_move', 'entity_velocity', 'entity_metadata',
-            'entity_teleport', 'entity_look', 'entity_move_look',
-            'entity_head_rotation', 'world_particles', 'sound_effect',
-            'named_sound_effect', 'sound_effect_entity', 'damage_event',
-            'animation', 'entity_equipment'
-        ]);
-
-        deserializer.parsePacketBuffer = function (buffer) {
-            try {
-                const res = origParse(buffer);
-                if (res && res.metadata && dropPacketNames.has(res.metadata.name)) {
-                    return {
-                        data: { name: 'ignored', params: {} },
-                        metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
-                        buffer
-                    };
-                }
-                return res;
-            } catch (e) {
-                return {
-                    data: { name: 'ignored', params: {} },
-                    metadata: { name: 'ignored', state: 'play', size: buffer.length },
-                    buffer
-                };
-            }
-        };
-    }
-
-    bot.physicsEnabled = false;
-    bot.entities = {};
-    console.log(`⚡ [${username}] เปิดระบบ Safe AFK ประจำการเรียบร้อย`);
-}
 
 // ====================================================================
 // 🤖 BOT MANAGEMENT & QUEUE ENGINE
@@ -236,13 +170,18 @@ function launchBotPipeline(username) {
 
         const isAfk = username !== 'Lervy_Lever';
 
+        // ปิด Plugins ที่ไม่จำเป็นเพื่อลด CPU ให้อยู่ระดับต่ำที่สุด
+        const disabledPlugins = isAfk 
+            ? ['sound', 'rain', 'particle', 'raycast', 'physics', 'villager', 'chest', 'tablist', 'experience']
+            : ['sound', 'rain', 'particle', 'raycast', 'experience'];
+
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 2,
             checkTimeoutInterval: 180000,
-            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
+            disabledPlugins: disabledPlugins
         });
 
         bot.physicsEnabled = true;
@@ -261,7 +200,7 @@ function launchBotPipeline(username) {
                 resolve(false);
                 queueBot(username, 15000);
             }
-        }, 55000);
+        }, 60000);
 
         const finalizeLogin = async () => {
             if (isCompleted) return;
@@ -271,7 +210,11 @@ function launchBotPipeline(username) {
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
             if (isAfk) {
-                setupSafeAfkBot(bot, username);
+                bot.physicsEnabled = false;
+                bot.removeAllListeners('entityMoved');
+                bot.removeAllListeners('entitySpawn');
+                bot.removeAllListeners('blockUpdate');
+                bot.entities = {};
             } else {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
@@ -295,9 +238,8 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            // ลูปกดเข็มทิศ
             for (let i = 0; i < 20; i++) {
-                await sleep(1000);
+                await sleep(1200);
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
                 try {
@@ -308,8 +250,6 @@ function launchBotPipeline(username) {
                         bot.setQuickBarSlot(0);
                     }
 
-                    // ขยับมุมมองเล็กน้อยเพื่อให้เซิร์ฟเวอร์รับ Event Interaction
-                    await bot.look(bot.entity.yaw, 0.2, true);
                     await bot.activateItem();
                     if (bot.swingArm) bot.swingArm('right');
 
@@ -349,7 +289,7 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                        // รอโหลดโลก Survival 8 วินาที แล้วจบการทำงานทันที (ไม่พิมพ์ /home home)
+                        // รอโหลดโลก Survival ให้เสร็จสมบูรณ์
                         await sleep(8000);
                         if (bot && !bot._client.ended) {
                             finalizeLogin();
@@ -504,7 +444,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Auto Compass-Fix & AFK Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Native Multi-Bot Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
