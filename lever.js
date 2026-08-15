@@ -156,26 +156,6 @@ function launchBotPipeline(username) {
         });
 
         bot.physicsEnabled = false;
-
-        // 🛑 ดักตัด Packet ปริมาณมหาศาลทิ้งตั้งแต่ระดับ Network Client
-        const heavyPackets = [
-            'rel_entity_move',
-            'entity_velocity',
-            'entity_metadata',
-            'entity_teleport',
-            'entity_look',
-            'entity_move_look',
-            'entity_head_rotation',
-            'world_particles',
-            'sound_effect',
-            'named_sound_effect',
-            'block_action'
-        ];
-
-        heavyPackets.forEach(pName => {
-            bot._client.on(pName, () => {}); // ใส่ no-op เพื่อไม่ให้ Library รันคำนวณต่อ
-        });
-
         bots[username].instance = bot;
         bots[username].ready = false;
 
@@ -186,15 +166,31 @@ function launchBotPipeline(username) {
             if (isCompleted) return;
             isCompleted = true;
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เปิดโหมด Extreme Low-CPU)`);
+            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (ตัดโหลด CPU ทันที)`);
 
-            // ⚡ ล้าง Listener หนักๆ ออกจาก Node.js Event Loop
-            bot.removeAllListeners('blockUpdate');
-            bot.removeAllListeners('chunkColumnLoad');
-            bot.removeAllListeners('entityMoved');
-            bot.removeAllListeners('entitySpawn');
+            // ⚡ ปลด Event Listener ทั้งหมดของ Entity และ Block
+            const blockedEvents = [
+                'entityMoved', 'entitySpawn', 'entityGone', 'entityUpdate',
+                'blockUpdate', 'chunkColumnLoad', 'chunkColumnUnload',
+                'soundEffect', 'hardcodedSoundEffect', 'particle'
+            ];
+            blockedEvents.forEach(evt => bot.removeAllListeners(evt));
 
-            // สำหรับ AFK Bot (K666/K555) ตัด Chunk Storage ไม่ให้เปลือง RAM และ CPU
+            // ปิดการประมวลผล Packet ที่กินทรัพยากรสูงในระดับ Client Parser
+            const heavyPackets = [
+                'rel_entity_move', 'entity_velocity', 'entity_metadata',
+                'entity_teleport', 'entity_look', 'entity_move_look',
+                'entity_head_rotation', 'world_particles', 'sound_effect',
+                'named_sound_effect', 'block_action', 'multi_block_change'
+            ];
+            heavyPackets.forEach(p => {
+                bot._client.removeAllListeners(p);
+            });
+
+            // ล้างแคช Entities ไม่ให้บวมในหน่วยความจำ
+            bot.entities = {};
+
+            // สำหรับ AFK Bot (K666/K555) ตัด Chunk Storage ออกเพื่อประหยัด RAM/CPU
             if (username !== 'Lervy_Lever' && bot.world) {
                 bot.world.columns = {};
             }
@@ -202,7 +198,7 @@ function launchBotPipeline(username) {
             resolve(true);
         };
 
-        // 1. รหัสผ่านและเข็มทิศ
+        // 1. จัดการรหัสผ่านและเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -228,7 +224,7 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. จิ้มเลือก Survival
+        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกไอเทมตัวเลือกเซิร์ฟเวอร์
         bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
@@ -257,7 +253,6 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                        // รอโหลดข้ามมิติ 9 วินาที แล้ววาร์ปเข้าบ้าน
                         await sleep(9000);
                         if (bot && !bot._client.ended) {
                             bot.chat('/home home');
@@ -385,7 +380,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ (Extreme Low-CPU Enabled)...");
+console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ Extreme Low-CPU (Single Process)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
