@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Dynamic Lever Shield (Locked &lt; 15% CPU)</div>
+        <div class="title">⚡ Home2-Relocation Lever Controller (10s Cycle)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -66,11 +66,11 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Dynamic Shield)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,13 +106,9 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 DYNAMIC BUFFER SHIELD ENGINE
+// 🛑 AFK BUFFER FILTER (สำหรับ K666 / K555)
 // ====================================================================
-let isLeverActiveState = false;
-
-function applyDynamicShield(bot, username) {
-    const isAfk = username !== 'Lervy_Lever';
-
+function setupAfkMute(bot, username) {
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -126,10 +122,6 @@ function applyDynamicShield(bot, username) {
 
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                if (!isAfk && isLeverActiveState) {
-                    return origParse(buffer);
-                }
-
                 if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
@@ -148,15 +140,12 @@ function applyDynamicShield(bot, username) {
         };
     }
 
-    if (isAfk) {
-        bot.entities = {};
-        if (bot.world) {
-            bot.world.columns = {};
-            bot.world.getBlock = () => null;
-        }
+    bot.entities = {};
+    if (bot.world) {
+        bot.world.columns = {};
+        bot.world.getBlock = () => null;
     }
-
-    console.log(`⚡ [${username}] ติดตั้งระบบ Dynamic Shield เรียบร้อย`);
+    console.log(`⚡ [${username}] เปิดระบบ AFK Mute สำเร็จ (CPU 0%)`);
 }
 
 // ====================================================================
@@ -251,14 +240,24 @@ function launchBotPipeline(username) {
             }
         }, 50000);
 
-        const finalizeLogin = () => {
+        const finalizeLogin = async () => {
             if (isCompleted) return;
             isCompleted = true;
             clearTimeout(pipelineTimeout);
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
+            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
-            applyDynamicShield(bot, username);
+            if (isAfk) {
+                setupAfkMute(bot, username);
+            } else {
+                bot.removeAllListeners('soundEffect');
+                bot.removeAllListeners('particle');
+                bot.removeAllListeners('entityMoved');
+                // สั่ง Lever วาร์ปไปพักที่ home2 ทันทีหลังจากล็อกอินเสร็จ
+                await sleep(2000);
+                console.log(`🚀 [Lervy_Lever] วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU...`);
+                bot.chat('/home home2');
+            }
             resolve(true);
         };
 
@@ -323,8 +322,10 @@ function launchBotPipeline(username) {
 
                         await sleep(9000);
                         if (bot && !bot._client.ended) {
-                            bot.chat('/home home');
-                            await sleep(3000);
+                            if (isAfk) {
+                                bot.chat('/home home');
+                                await sleep(3000);
+                            }
                             finalizeLogin();
                         }
                     } catch (e) {
@@ -366,7 +367,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับแบบ Dynamic Sync)
+// 🕹️ LEVER LOGIC (Safe Interaction)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -379,19 +380,16 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
-    if (distance > 4) {
-        console.log(`⚠️ [LEVER LOG] บอทไม่ได้อยู่หน้าคันโยก กำลังวาร์ป /home home...`);
+    // ถ้าไม่อยู่หน้าคันโยก ให้วาร์ปกลับมาหน้าคันโยก
+    if (distance > 3) {
+        console.log(`🚀 [LEVER LOG] วาร์ปกลับเข้าบ้าน (/home home) เพื่อสับคันโยก...`);
         leverBot.chat('/home home');
         await sleep(3500);
     }
 
     try {
-        // ⚡ 1. เปิดรับข้อมูลบล็อกชั่วคราวเพื่อซิงก์ State
-        isLeverActiveState = true;
-        await sleep(400);
-
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(200);
+        await sleep(250);
 
         let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
         if (!block) {
@@ -402,19 +400,13 @@ async function clickLeverSafe(actionName) {
             };
         }
 
-        // ⚡ 2. สั่งคลิกขวาสับคันโยก
         await leverBot.activateBlock(block);
         if (leverBot.swingArm) leverBot.swingArm('right');
-        console.log(`✨ [LEVER LOG] สั่งสับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
         await sleep(300);
-
-        // ⚡ 3. ปิดการประมวลผลกลับเข้าสู่ Low-CPU ทันที
-        isLeverActiveState = false;
-        leverBot.entities = {};
         return true;
     } catch (err) {
-        isLeverActiveState = false;
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
@@ -438,18 +430,28 @@ async function triggerLeverCycle() {
         const okClose = await clickLeverSafe('ปิดคันโยก (OFF)');
 
         if (okClose) {
-            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอทำงาน 30 วินาที...`);
-            await sleep(30000);
+            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาที...`);
+            await sleep(10000); // ⚡ ปรับเหลือรอ 10 วินาที
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
-            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย สมบูรณ์แบบ!\n`);
+            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
+
+            // ⚡ สับเปิดเสร็จปุ๊บ วาร์ปหนีฟาร์มไปที่ /home home2 ทันที
+            await sleep(1000);
+            console.log(`🚀 [LEVER CYCLE]: วาร์ปหนีฟาร์ม (/home home2) เพื่อประหยัด CPU...`);
+            bots.Lervy_Lever.instance.chat('/home home2');
         }
     } finally {
         isLeverCycleRunning = false;
     }
 }
 
+// ====================================================================
+// ⏰ SCHEDULE ENGINE
+// ====================================================================
+
+// 1. Cron สับคันโยก: ทุกๆ นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -464,10 +466,24 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     await triggerLeverCycle();
 });
 
+// 2. Cron ล่วงหน้า 1 นาที: วาร์ปกลับมารอที่คันโยก (/home home) ในนาทีที่ 2, 8, 14, 20, 26, 32, 38, 44, 50, 56
+cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    if ((hour === 5 && minute >= 34) || hour === 6) return;
+
+    if (isBotOnline('Lervy_Lever')) {
+        console.log(`\n🚶 [PRE-WARP 1 MIN]: ถึงเวลาเตรียมตัว วาร์ปกลับบ้าน (/home home) มารอหน้าคันโยก [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
+        bots.Lervy_Lever.instance.chat('/home home');
+    }
+});
+
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Dynamic Lever Shield Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Home2-Relocation Lever Controller (10s Cycle)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
