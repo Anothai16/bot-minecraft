@@ -123,6 +123,7 @@ const DROP_PACKETS = [
 
 function destroyBot(botInstance) {
     if (!botInstance) return;
+    if (botInstance.afkHeartbeat) clearInterval(botInstance.afkHeartbeat);
     try {
         botInstance.removeAllListeners();
         if (botInstance._client) {
@@ -137,8 +138,24 @@ function isBotActive(bot) {
     return bot && bot._client && !bot._client.ended && bot.isInSurvival;
 }
 
+// 💓 รักษาสถานะการเชื่อมต่อสำหรับบอท AFK ไม่ให้ Server Timeout ตอนฟาร์มขยับ
+function keepAfkAlive(bot) {
+    if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
+    bot.afkHeartbeat = setInterval(() => {
+        if (bot && bot._client && !bot._client.ended && bot.isInSurvival) {
+            try {
+                bot._client.write('player_rotation', {
+                    yaw: (bot.entity?.yaw || 0) + 0.001,
+                    pitch: bot.entity?.pitch || 0,
+                    onGround: true
+                });
+            } catch (e) {}
+        }
+    }, 10000);
+}
+
 // ====================================================================
-// 🕹️ LEVER ACTION (สับคันโยกแบบ Native ปลอดภัย 100%)
+// 🕹️ LEVER ACTION
 // ====================================================================
 async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
@@ -261,6 +278,7 @@ function startLeverBot() {
                 isResolved = true;
                 bot.isInSurvival = true;
                 isReconnectingLever = false;
+                keepAfkAlive(bot);
                 resolve(true);
             }
         };
@@ -275,6 +293,7 @@ function startLeverBot() {
 
         bot.on('end', () => { 
             bot.isInSurvival = false;
+            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
             if (!isResolved) {
                 isResolved = true;
                 resolve(false);
@@ -310,7 +329,7 @@ function startK666Bot() {
             host: 'play.amorycraft.com', 
             username: 'K666',
             version: '1.21.11',
-            viewDistance: 1,
+            viewDistance: 2,
             checkTimeoutInterval: 120000,
             noResetWorld: false
         });
@@ -331,6 +350,7 @@ function startK666Bot() {
                 isResolved = true;
                 bot.isInSurvival = true;
                 isReconnectingK666 = false;
+                keepAfkAlive(bot);
                 resolve(true);
             }
         };
@@ -345,6 +365,7 @@ function startK666Bot() {
 
         bot.on('end', () => { 
             bot.isInSurvival = false;
+            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
             if (!isResolved) {
                 isResolved = true;
                 resolve(false);
@@ -380,7 +401,7 @@ function startK555Bot() {
             host: 'play.amorycraft.com', 
             username: 'K555',
             version: '1.21.11',
-            viewDistance: 1,
+            viewDistance: 2,
             checkTimeoutInterval: 120000,
             noResetWorld: false
         });
@@ -401,6 +422,7 @@ function startK555Bot() {
                 isResolved = true;
                 bot.isInSurvival = true;
                 isReconnectingK555 = false;
+                keepAfkAlive(bot);
                 resolve(true);
             }
         };
@@ -415,6 +437,7 @@ function startK555Bot() {
 
         bot.on('end', () => { 
             bot.isInSurvival = false;
+            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
             if (!isResolved) {
                 isResolved = true;
                 resolve(false);
@@ -439,7 +462,7 @@ function handleK555Reconnect() {
 async function launchAllBotsSequentially() {
     initScheduler();
 
-    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัว...");
+    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัวแบบรอถึงบ้าน...");
 
     await startLeverBot();
     console.log("⏳ [QUEUE]: Lervy_Lever เข้าสู่บ้านแล้ว รอ 12 วินาทีก่อนปล่อยตัวถัดไป...");
