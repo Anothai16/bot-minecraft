@@ -207,25 +207,30 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และรอจนกว่าไอเทมจะโหลดเสร็จ
+        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกไอเทมตัวเลือกเซิร์ฟเวอร์
         bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
 
             const clickWhenReady = async () => {
-                // วนลูปเช็กสูงสุด 10 วินาที เพื่อรอให้ไอเทมในหน้าต่างส่งมาถึงบอทจริงๆ
                 for (let i = 0; i < 20; i++) {
                     await sleep(500);
                     if (!bot || bot._client.ended) return;
 
-                    const grass = window.items().find(item => item.name.includes('grass') && item.slot < 27);
-                    if (grass) {
-                        console.log(`📦 [${username}] พบเซิร์ฟเวอร์ Survival ที่ Slot ${grass.slot} (${grass.name})`);
-                        await sleep(800); // หน่วงนิดนึงให้ State ID นิ่ง
-                        await bot.clickWindow(grass.slot, 0, 0);
-                        console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
+                    const menuItems = window.items().filter(item => item.slot < 27);
 
-                        // รอโหลดข้ามมิติ 9 วินาที แล้ววาร์ปเข้าบ้าน
+                    if (menuItems.length > 0) {
+                        const itemNames = menuItems.map(it => `[Slot ${it.slot}: ${it.name}]`).join(', ');
+                        console.log(`📦 [${username}] ไอเทมในเมนู: ${itemNames}`);
+
+                        const target = menuItems.find(it => it.name.includes('grass')) || 
+                                       menuItems.find(it => it.slot === 10) || 
+                                       menuItems[0];
+
+                        await sleep(800);
+                        await bot.clickWindow(target.slot, 0, 0);
+                        console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟเวอร์ที่ Slot ${target.slot} (${target.name}) เรียบร้อย`);
+
                         await sleep(9000);
                         if (bot && !bot._client.ended) {
                             bot.chat('/home home');
@@ -235,7 +240,7 @@ function launchBotPipeline(username) {
                         return;
                     }
                 }
-                console.log(`⚠️ [${username}] ไม่พบไอเทม Survival ใน GUI ภายในเวลาที่กำหนด`);
+                console.log(`⚠️ [${username}] เมนู GUI ว่างเปล่า ลองเปิดเข็มทิศใหม่อีกครั้ง...`);
             };
 
             clickWhenReady();
