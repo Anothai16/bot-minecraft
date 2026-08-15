@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Entity-Stripped AFK Controller (Locked &lt; 15% CPU)</div>
+        <div class="title">⚡ Home2-Relocation Lever Controller (10s Cycle)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Zero-Lag AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Zero-Lag AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,48 +106,46 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛡️ ZERO-LAG AFK STRIPPER (สกัดภาระฟาร์มของบอท AFK อย่างสมบูรณ์)
+// 🛑 AFK BUFFER FILTER (สำหรับ K666 / K555)
 // ====================================================================
-function stripAfkFarmLoad(bot, username) {
-    bot.physicsEnabled = false;
-
-    // 1. ถอด Event Emitters ที่ Mineflayer ประมวลผลหนักทั้งหมด
-    const heavyEvents = [
+function setupAfkMute(bot, username) {
+    const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience', 'move', 'forcedMove'
+        'soundEffect', 'particle', 'experience', 'move'
     ];
-    heavyEvents.forEach(evt => bot.removeAllListeners(evt));
+    trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    // 2. ดักข้ามการประมวลผล Entity Tracking ในระดับ Client Dispatcher
-    const dropPackets = new Set([
-        'rel_entity_move', 'entity_velocity', 'entity_metadata',
-        'entity_teleport', 'entity_look', 'entity_move_look',
-        'entity_head_rotation', 'world_particles', 'sound_effect',
-        'named_sound_effect', 'sound_effect_entity', 'damage_event',
-        'animation', 'entity_equipment', 'spawn_entity'
-    ]);
+    if (bot._client && bot._client.deserializer) {
+        const deserializer = bot._client.deserializer;
+        const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
-    const origEmit = bot._client.emit;
-    bot._client.emit = function (event, ...args) {
-        if (event === 'packet') {
-            const packetName = args[1]?.name;
-            if (packetName && dropPackets.has(packetName)) {
-                return false; // ข้ามการคำนวณของ Mineflayer ทันที
+        deserializer.parsePacketBuffer = function (buffer) {
+            try {
+                if (buffer.length > 24) {
+                    return {
+                        data: { name: 'ignored', params: {} },
+                        metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
+                        buffer
+                    };
+                }
+                return origParse(buffer);
+            } catch (e) {
+                return {
+                    data: { name: 'ignored', params: {} },
+                    metadata: { name: 'ignored', state: 'play', size: buffer.length },
+                    buffer
+                };
             }
-        }
-        return origEmit.apply(this, [event, ...args]);
-    };
+        };
+    }
 
-    // ล้างและล็อก Entity Pool ให้เป็นค่าว่าง
     bot.entities = {};
-    setInterval(() => {
-        if (bot && !bot._client.ended) {
-            bot.entities = {};
-        }
-    }, 10000);
-
-    console.log(`⚡ [${username}] เปิดใช้งาน Zero-Lag AFK Mode สำเร็จ (ตัดโหลดฟาร์ม 100%)`);
+    if (bot.world) {
+        bot.world.columns = {};
+        bot.world.getBlock = () => null;
+    }
+    console.log(`⚡ [${username}] เปิดระบบ AFK Mute สำเร็จ (CPU 0%)`);
 }
 
 // ====================================================================
@@ -215,17 +213,13 @@ function launchBotPipeline(username) {
 
         const isAfk = username !== 'Lervy_Lever';
 
-        const disabledPlugins = isAfk 
-            ? ['sound', 'rain', 'particle', 'raycast', 'physics', 'villager', 'chest', 'tablist', 'experience']
-            : ['sound', 'rain', 'particle', 'raycast', 'experience'];
-
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 2,
-            checkTimeoutInterval: 180000,
-            disabledPlugins: disabledPlugins
+            checkTimeoutInterval: 120000,
+            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
         });
 
         bot.physicsEnabled = true;
@@ -244,7 +238,7 @@ function launchBotPipeline(username) {
                 resolve(false);
                 queueBot(username, 15000);
             }
-        }, 60000);
+        }, 50000);
 
         const finalizeLogin = async () => {
             if (isCompleted) return;
@@ -254,19 +248,20 @@ function launchBotPipeline(username) {
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
             if (isAfk) {
-                stripAfkFarmLoad(bot, username);
+                setupAfkMute(bot, username);
             } else {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
                 bot.removeAllListeners('entityMoved');
-                await sleep(1500);
+                // สั่ง Lever วาร์ปไปพักที่ home2 ทันทีหลังจากล็อกอินเสร็จ
+                await sleep(2000);
                 console.log(`🚀 [Lervy_Lever] วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU...`);
                 bot.chat('/home home2');
             }
             resolve(true);
         };
 
-        // 1. ยิงรหัสผ่าน และวนลูปกดเข็มทิศ
+        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -278,23 +273,19 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            for (let i = 0; i < 20; i++) {
-                await sleep(1200);
+            for (let i = 0; i < 15; i++) {
+                await sleep(2500);
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
-                try {
-                    const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
-                    if (comp) {
+                const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
+                if (comp) {
+                    try {
                         await bot.equip(comp, 'hand');
-                    } else {
-                        bot.setQuickBarSlot(0);
-                    }
-
-                    await bot.activateItem();
-                    if (bot.swingArm) bot.swingArm('right');
-
-                    console.log(`🧭 [${username}] คลิกใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
-                } catch (e) {}
+                        await sleep(500);
+                        await bot.activateItem();
+                        console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (ครั้งที่ ${i + 1})...`);
+                    } catch (e) {}
+                }
             }
         });
 
@@ -329,8 +320,12 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                        await sleep(8000);
+                        await sleep(9000);
                         if (bot && !bot._client.ended) {
+                            if (isAfk) {
+                                bot.chat('/home home');
+                                await sleep(3000);
+                            }
                             finalizeLogin();
                         }
                     } catch (e) {
@@ -358,21 +353,21 @@ function launchBotPipeline(username) {
             console.log(`❌ [${username}] Error: ${err.message}`);
         });
 
-        bot.on('end', (reason) => {
+        bot.on('end', () => {
             bots[username].ready = false;
             if (!isCompleted) {
                 isCompleted = true;
                 clearTimeout(pipelineTimeout);
                 resolve(false);
             }
-            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ (Reason: ${reason || 'Closed'}) เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
+            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
             queueBot(username, 25000);
         });
     });
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC
+// 🕹️ LEVER LOGIC (Safe Interaction)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -385,6 +380,7 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
+    // ถ้าไม่อยู่หน้าคันโยก ให้วาร์ปกลับมาหน้าคันโยก
     if (distance > 3) {
         console.log(`🚀 [LEVER LOG] วาร์ปกลับเข้าบ้าน (/home home) เพื่อสับคันโยก...`);
         leverBot.chat('/home home');
@@ -435,12 +431,13 @@ async function triggerLeverCycle() {
 
         if (okClose) {
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาที...`);
-            await sleep(10000);
+            await sleep(10000); // ⚡ ปรับเหลือรอ 10 วินาที
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
             console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
 
+            // ⚡ สับเปิดเสร็จปุ๊บ วาร์ปหนีฟาร์มไปที่ /home home2 ทันที
             await sleep(1000);
             console.log(`🚀 [LEVER CYCLE]: วาร์ปหนีฟาร์ม (/home home2) เพื่อประหยัด CPU...`);
             bots.Lervy_Lever.instance.chat('/home home2');
@@ -453,6 +450,8 @@ async function triggerLeverCycle() {
 // ====================================================================
 // ⏰ SCHEDULE ENGINE
 // ====================================================================
+
+// 1. Cron สับคันโยก: ทุกๆ นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -467,6 +466,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     await triggerLeverCycle();
 });
 
+// 2. Cron ล่วงหน้า 1 นาที: วาร์ปกลับมารอที่คันโยก (/home home) ในนาทีที่ 2, 8, 14, 20, 26, 32, 38, 44, 50, 56
 cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -483,7 +483,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Zero-Lag AFK Multi-Bot Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Home2-Relocation Lever Controller (10s Cycle)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
