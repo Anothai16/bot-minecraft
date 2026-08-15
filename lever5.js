@@ -27,7 +27,7 @@ let isReconnectingK555 = false;
 let isLeverCycleRunning = false;
 
 // ====================================================================
-// 🌐 WEB DASHBOARD & LOGS (Port 3001 - Smooth AJAX / No Page Refresh)
+// 🌐 WEB DASHBOARD & LOGS (Port 3001)
 // ====================================================================
 const logsBuffer = [];
 const MAX_LOGS = 100;
@@ -115,12 +115,22 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => console.log(`🌍 Web Logs Dashboard รันอยู่ที่พอร์ต http://localhost:${port}`));
 
-// ⚡ ดร็อปเฉพาะเอฟเฟกต์/เสียง/แอนิเมชันที่ไม่จำเป็น
+// ⚡ ดร็อป Packet หนักๆ ออก เพื่อประหยัด CPU 100%
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
-    'named_sound_effect', 'sound_effect',
-    'animation'
+    'named_sound_effect', 'sound_effect', 'entity_destroy',
+    'rel_entity_move', 'entity_move_look', 'entity_teleport',
+    'entity_head_rotation', 'animation', 'entity_metadata',
+    'map_chunk', 'world_event', 'spawn_entity', 'spawn_entity_experience_orb',
+    'entity_velocity', 'entity_equipment'
 ];
+
+function optimizeBot(bot) {
+    bot.physicsEnabled = false;
+    if (bot.physics) bot.physics.stopped = true;
+    if (bot.world) bot.world.columns = {};
+    bot.entities = {};
+}
 
 function destroyBot(botInstance) {
     if (!botInstance) return;
@@ -139,43 +149,28 @@ function isBotActive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION (สับคันโยก 1.21 Native Method)
+// 🕹️ LEVER ACTION (Direct Packet - CPU 0% ไร้ Raycast)
 // ====================================================================
-async function clickLeverSafe() {
+function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
 
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        let targetBlock = botLever.blockAt ? botLever.blockAt(leverPos) : null;
-
-        if (!targetBlock) {
-            targetBlock = {
-                position: leverPos,
-                name: 'lever',
-                shapes: [[[0, 0, 0, 1, 1, 1]]]
-            };
-        }
-
-        if (botLever.activateBlock) {
-            await botLever.activateBlock(targetBlock);
-        } else {
-            botLever._client.write('use_item_on', {
-                hand: 0,
-                location: leverPos,
-                direction: 1,
-                cursorX: 0.5,
-                cursorY: 0.5,
-                cursorZ: 0.5,
-                insideBlock: false,
-                sequence: 0
-            });
-            botLever._client.write('arm_animation', { hand: 0 });
-        }
-
+        // ยิง Direct Packet ตรงไปที่คันโยก (CPU 0% ไม่มีการคำนวณฟิสิกส์หรือเส้นสายตา)
+        botLever._client.write('use_item_on', {
+            hand: 0,
+            location: leverPos,
+            direction: 1,
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false,
+            sequence: 0
+        });
+        botLever._client.write('arm_animation', { hand: 0 });
         return true;
     } catch (err) {
-        if (err.message && (err.message.includes('block') || err.message.includes('distance'))) return true;
         console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดตอนสับคันโยก: ${err.message}`);
         return false;
     }
@@ -201,14 +196,14 @@ async function triggerLeverCycle() {
         }
 
         console.log(`\n🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-        const successOff = await clickLeverSafe();
+        const successOff = clickLeverSafe();
         
         if (successOff) {
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
             await sleep(30000);
             
             console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยกกลับคืน (ON)...`);
-            await clickLeverSafe();
+            clickLeverSafe();
             console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
         }
     } finally {
@@ -252,9 +247,10 @@ function startLeverBot() {
         host: 'play.amorycraft.com', 
         username: 'Lervy_Lever',
         version: '1.21.11',
-        viewDistance: 2,
+        viewDistance: 1,
         checkTimeoutInterval: 120000,
-        noResetWorld: false
+        noResetWorld: true,
+        physicsEnabled: false
     });
 
     botLever = bot;
@@ -269,7 +265,8 @@ function startLeverBot() {
     setupAmoryLogin(bot);
 
     bot.on('spawn', () => {
-        console.log('Glory! 🛰️ บอท [Lervy_Lever] สปอว์นเข้าฉากเรียบร้อย!');
+        console.log('Glory! 🛰️ บอท [Lervy_Lever] สปอว์นเข้าฉากเรียบร้อย! (Low-CPU)');
+        optimizeBot(bot);
         isReconnectingLever = false;
     });
 
@@ -286,11 +283,12 @@ function startLeverBot() {
 
 function handleLeverReconnect() {
     if (!isReconnectingLever) isReconnectingLever = true;
-    console.log(`🔄 [Lervy_Lever] รอ 15 วินาทีเพื่อเชื่อมต่อใหม่...`);
+    const delay = Math.floor(18000 + Math.random() * 8000);
+    console.log(`🔄 [Lervy_Lever] รอ ${Math.round(delay / 1000)} วินาทีเพื่อเชื่อมต่อใหม่...`);
     setTimeout(() => {
         isReconnectingLever = false;
         startLeverBot();
-    }, 15000);
+    }, delay);
 }
 
 // ====================================================================
@@ -311,7 +309,8 @@ function startK666Bot() {
         version: '1.21.11',
         viewDistance: 1,
         checkTimeoutInterval: 120000,
-        noResetWorld: false
+        noResetWorld: true,
+        physicsEnabled: false
     });
 
     botK666 = bot;
@@ -326,7 +325,8 @@ function startK666Bot() {
     setupAmoryLogin(bot);
 
     bot.on('spawn', () => {
-        console.log('Glory! 🛰️ บอท [K666] สปอว์นเข้าฉากเรียบร้อย!');
+        console.log('Glory! 🛰️ บอท [K666] สปอว์นเข้าฉากเรียบร้อย! (Low-CPU)');
+        optimizeBot(bot);
         isReconnectingK666 = false;
     });
 
@@ -343,11 +343,12 @@ function startK666Bot() {
 
 function handleK666Reconnect() {
     if (!isReconnectingK666) isReconnectingK666 = true;
-    console.log(`🔄 [K666] รอ 15 วินาทีเพื่อเชื่อมต่อใหม่...`);
+    const delay = Math.floor(22000 + Math.random() * 8000);
+    console.log(`🔄 [K666] รอ ${Math.round(delay / 1000)} วินาทีเพื่อเชื่อมต่อใหม่...`);
     setTimeout(() => {
         isReconnectingK666 = false;
         startK666Bot();
-    }, 15000);
+    }, delay);
 }
 
 // ====================================================================
@@ -368,7 +369,8 @@ function startK555Bot() {
         version: '1.21.11',
         viewDistance: 1,
         checkTimeoutInterval: 120000,
-        noResetWorld: false
+        noResetWorld: true,
+        physicsEnabled: false
     });
 
     botK555 = bot;
@@ -383,7 +385,8 @@ function startK555Bot() {
     setupAmoryLogin(bot);
 
     bot.on('spawn', () => {
-        console.log('Glory! 🛰️ บอท [K555] สปอว์นเข้าฉากเรียบร้อย!');
+        console.log('Glory! 🛰️ บอท [K555] สปอว์นเข้าฉากเรียบร้อย! (Low-CPU)');
+        optimizeBot(bot);
         isReconnectingK555 = false;
     });
 
@@ -400,15 +403,16 @@ function startK555Bot() {
 
 function handleK555Reconnect() {
     if (!isReconnectingK555) isReconnectingK555 = true;
-    console.log(`🔄 [K555] รอ 15 วินาทีเพื่อเชื่อมต่อใหม่...`);
+    const delay = Math.floor(26000 + Math.random() * 8000);
+    console.log(`🔄 [K555] รอ ${Math.round(delay / 1000)} วินาทีเพื่อเชื่อมต่อใหม่...`);
     setTimeout(() => {
         isReconnectingK555 = false;
         startK555Bot();
-    }, 15000);
+    }, delay);
 }
 
 // ====================================================================
-// 🚀 ปล่อยบอทเข้าทีละตัว (เว้นระยะ 20 วินาที)
+// 🚀 ปล่อยบอทเข้าทีละตัว
 // ====================================================================
 async function launchAllBotsSequentially() {
     initScheduler();
@@ -416,10 +420,10 @@ async function launchAllBotsSequentially() {
     console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัว...");
 
     startLeverBot();
-    await sleep(20000);
+    await sleep(22000);
 
     startK666Bot();
-    await sleep(20000);
+    await sleep(22000);
 
     startK555Bot();
     
