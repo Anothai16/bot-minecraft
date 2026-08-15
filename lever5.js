@@ -30,7 +30,7 @@ let isLeverCycleRunning = false;
 // 🌐 WEB DASHBOARD & LOGS (Port 3001 - Smooth AJAX / No Page Refresh)
 // ====================================================================
 const logsBuffer = [];
-const MAX_LOGS = 100; // เก็บ 100 บรรทัดล่าสุดในหน่วยความจำ
+const MAX_LOGS = 100;
 
 const originalLog = console.log;
 console.log = (...args) => {
@@ -44,7 +44,6 @@ console.log = (...args) => {
 const app = express();
 const port = 3001;
 
-// API สำหรับดึงสถานะและ Logs แบบเงียบๆ
 app.get('/api/status', (req, res) => {
     res.json({
         lever: isBotActive(botLever),
@@ -140,7 +139,7 @@ function isBotActive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION (สับคันโยก Protocol 1.21.x)
+// 🕹️ LEVER ACTION (สับคันโยก 1.21 Native Method)
 // ====================================================================
 async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
@@ -148,19 +147,35 @@ async function clickLeverSafe() {
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        botLever._client.write('use_item_on', {
-            hand: 0,
-            location: leverPos,
-            direction: 1,
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            sequence: 1
-        });
-        botLever._client.write('arm_animation', { hand: 0 });
+        let targetBlock = botLever.blockAt ? botLever.blockAt(leverPos) : null;
+
+        if (!targetBlock) {
+            targetBlock = {
+                position: leverPos,
+                name: 'lever',
+                shapes: [[[0, 0, 0, 1, 1, 1]]]
+            };
+        }
+
+        if (botLever.activateBlock) {
+            await botLever.activateBlock(targetBlock);
+        } else {
+            botLever._client.write('use_item_on', {
+                hand: 0,
+                location: leverPos,
+                direction: 1,
+                cursorX: 0.5,
+                cursorY: 0.5,
+                cursorZ: 0.5,
+                insideBlock: false,
+                sequence: 0
+            });
+            botLever._client.write('arm_animation', { hand: 0 });
+        }
+
         return true;
     } catch (err) {
+        if (err.message && (err.message.includes('block') || err.message.includes('distance'))) return true;
         console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดตอนสับคันโยก: ${err.message}`);
         return false;
     }
@@ -237,7 +252,7 @@ function startLeverBot() {
         host: 'play.amorycraft.com', 
         username: 'Lervy_Lever',
         version: '1.21.11',
-        viewDistance: 1,
+        viewDistance: 2,
         checkTimeoutInterval: 120000,
         noResetWorld: false
     });
