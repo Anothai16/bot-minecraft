@@ -13,6 +13,7 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 let bot = null;
 let isReady = false;
 let isReconnecting = false;
+let hasNavigated = false;
 
 // ================= Web Dashboard (Port 3001) =================
 const app = express();
@@ -84,6 +85,7 @@ function reconnect(delayMs = 15000) {
     if (isReconnecting) return;
     isReconnecting = true;
     isReady = false;
+    hasNavigated = false;
     logger.setStatus(false);
 
     if (bot) {
@@ -107,6 +109,7 @@ function reconnect(delayMs = 15000) {
 
 function startBot() {
     isReady = false;
+    hasNavigated = false;
     logger.setStatus(false);
     logger.log('กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
 
@@ -131,19 +134,46 @@ function startBot() {
         bot.chat('/login 112233');
         logger.log('ยิงรหัสผ่านรอบที่ 2');
 
-        await sleep(4500);
+        await sleep(4000);
         if (!bot || bot._client.ended) return;
 
-        logger.log('กำลังย้ายเข้า Survival ผ่านคำสั่ง...');
-        bot.chat('/server survival');
+        const comp = bot.inventory?.items().find(i => i.name.includes('compass'));
+        if (comp) {
+            try {
+                await bot.equip(comp, 'hand');
+                await sleep(1500);
+                await bot.activateItem();
+                logger.log('กดใช้งานเข็มทิศเปิดเมนูเรียบร้อย');
+            } catch (e) {}
+        }
+    });
 
-        await sleep(10000);
-        if (bot && !bot._client.ended) {
-            bot.chat('/home home');
-            await sleep(2000);
-            isReady = true;
-            logger.setStatus(true);
-            logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+    bot.on('windowOpen', async (window) => {
+        if (hasNavigated) return;
+        hasNavigated = true;
+
+        await sleep(2500);
+        if (!bot || bot._client.ended) return;
+
+        try {
+            // หา slot ของ grass_block หรือกดที่ช่อง 10
+            const grassItem = window.items().find(i => i.name.includes('grass'));
+            const targetSlot = grassItem ? grassItem.slot : 10;
+
+            await bot.simpleClick.leftMouse(targetSlot);
+            logger.log(`จิ้มเมนูเลือกเซิร์ฟ Survival (Slot ${targetSlot}) เรียบร้อย`);
+
+            // รอ 9 วินาทีให้โหลดข้ามมิติไปยัง Survival
+            await sleep(9000);
+            if (bot && !bot._client.ended) {
+                bot.chat('/home home');
+                await sleep(2000);
+                isReady = true;
+                logger.setStatus(true);
+                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+            }
+        } catch (err) {
+            logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);
         }
     });
 
