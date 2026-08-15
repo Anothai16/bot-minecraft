@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Verified Lever Click & Low-CPU Controller</div>
+        <div class="title">⚡ Stable Anti-Kick Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Filter)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Filter)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,11 +106,9 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 PRECISE PACKET FILTER (กรองเฉพาะขยะฟาร์ม ไม่แตะ Protocol สำคัญ)
+// 🛑 FULL MUTE PIPELINE ENGINE (สำหรับ AFK Bots)
 // ====================================================================
-function applyPreciseFilter(bot, username) {
-    const isAfk = username !== 'Lervy_Lever';
-
+function muteInboundStream(bot, username) {
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -122,25 +120,16 @@ function applyPreciseFilter(bot, username) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
-        const blockedPacketNames = new Set([
-            'rel_entity_move', 'entity_velocity', 'entity_metadata',
-            'entity_teleport', 'entity_look', 'entity_move_look',
-            'entity_head_rotation', 'world_particles', 'sound_effect',
-            'named_sound_effect', 'sound_effect_entity', 'block_action',
-            'multi_block_change', 'damage_event', 'animation', 'entity_equipment'
-        ]);
-
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                const res = origParse(buffer);
-                if (res && res.metadata && blockedPacketNames.has(res.metadata.name)) {
+                if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
                         metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
                         buffer
                     };
                 }
-                return res;
+                return origParse(buffer);
             } catch (e) {
                 return {
                     data: { name: 'ignored', params: {} },
@@ -151,15 +140,11 @@ function applyPreciseFilter(bot, username) {
         };
     }
 
-    if (isAfk) {
-        bot.entities = {};
-        if (bot.world) {
-            bot.world.columns = {};
-            bot.world.getBlock = () => null;
-        }
+    bot.entities = {};
+    if (bot.world) {
+        bot.world.columns = {};
+        bot.world.getBlock = () => null;
     }
-
-    console.log(`⚡ [${username}] ติดตั้ง Precise Filter เรียบร้อย`);
 }
 
 // ====================================================================
@@ -261,7 +246,14 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            applyPreciseFilter(bot, username);
+            if (isAfk) {
+                muteInboundStream(bot, username);
+            } else {
+                // สำหรับ Lever: ปิดเฉพาะ Entity และปิด Physics ตอนยืนนิ่ง
+                bot.removeAllListeners('entityMoved');
+                bot.removeAllListeners('entitySpawn');
+                bot.entities = {};
+            }
             resolve(true);
         };
 
@@ -369,7 +361,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยกแบบ Full-State Interaction)
+// 🕹️ LEVER LOGIC (Safe Interaction with Physics Sync)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -382,17 +374,24 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
+    // หากไม่อยู่หน้าคันโยก ให้วาร์ปกลับบ้านก่อน
     if (distance > 4) {
-        console.log(`⚠️ [LEVER LOG] บอทไม่ได้อยู่หน้าคันโยก กำลังวาร์ป /home home...`);
+        console.log(`⚠️ [LEVER LOG] บอทไม่ได้อยู่หน้าคันโยก (ระยะ: ${distance.toFixed(1)} บล็อก) กำลังวาร์ป /home home...`);
         leverBot.chat('/home home');
         await sleep(3500);
+        currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
+        distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
     }
 
+    console.log(`🎯 [LEVER LOG] ยืนที่ (${currentPos?.x}, ${currentPos?.y}, ${currentPos?.z}) | ระยะห่าง: ${distance.toFixed(2)} บล็อก`);
+
     try {
+        // ⚡ 1. เปิด Physics และมองไปที่คันโยกเพื่อซิงก์พิกัดและมุมมองกับเซิร์ฟเวอร์
         leverBot.physicsEnabled = true;
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(250);
+        await sleep(300);
 
+        // ⚡ 2. หาบล็อกจริง หรือใช้ Proxy Block Object
         let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
         if (!block) {
             block = {
@@ -402,17 +401,12 @@ async function clickLeverSafe(actionName) {
             };
         }
 
-        // ดำเนินการสับคันโยกผ่าน activateBlock
+        // ⚡ 3. สับคันโยกผ่าน activateBlock มาตรฐาน
         await leverBot.activateBlock(block);
-        
-        // ส่ง Animation ยืนยัน
-        if (leverBot.swingArm) {
-            leverBot.swingArm('right');
-        }
-
         console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
         await sleep(200);
+        // ⚡ 4. ปิด Physics กลับคืนเพื่อประหยัด CPU ทันที
         leverBot.physicsEnabled = false;
         return true;
     } catch (err) {
@@ -432,7 +426,7 @@ async function triggerLeverCycle() {
         const hasK555 = isBotOnline('K555');
 
         if (!hasLever || !hasK666 || !hasK555) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้`);
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lever: ${hasLever ? '🟢' : '❌'}, K666: ${hasK666 ? '🟢' : '❌'}, K555: ${hasK555 ? '🟢' : '❌'}) ข้ามรอบนี้`);
             return;
         }
 
@@ -469,7 +463,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Verified Lever Click & Low-CPU Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Anti-Kick Lever Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
