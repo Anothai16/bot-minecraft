@@ -27,10 +27,10 @@ let isReconnectingK555 = false;
 let isLeverCycleRunning = false;
 
 // ====================================================================
-// 🌐 WEB DASHBOARD & LOGS (Port 3001 - Ultra Lightweight)
+// 🌐 WEB DASHBOARD & LOGS (Port 3001 - Smooth AJAX / No Page Refresh)
 // ====================================================================
 const logsBuffer = [];
-const MAX_LOGS = 100; // เก็บแค่ 100 บรรทัดล่าสุด ประหยัด RAM ขั้นสุด
+const MAX_LOGS = 100; // เก็บ 100 บรรทัดล่าสุดในหน่วยความจำ
 
 const originalLog = console.log;
 console.log = (...args) => {
@@ -44,11 +44,17 @@ console.log = (...args) => {
 const app = express();
 const port = 3001;
 
-app.get('/', (req, res) => {
-    const hasLever = isBotActive(botLever);
-    const hasK666 = isBotActive(botK666);
-    const hasK555 = isBotActive(botK555);
+// API สำหรับดึงสถานะและ Logs แบบเงียบๆ
+app.get('/api/status', (req, res) => {
+    res.json({
+        lever: isBotActive(botLever),
+        k666: isBotActive(botK666),
+        k555: isBotActive(botK555),
+        logs: logsBuffer.slice().reverse().join('\n')
+    });
+});
 
+app.get('/', (req, res) => {
     const html = `
     <!DOCTYPE html>
     <html lang="th">
@@ -56,7 +62,6 @@ app.get('/', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Minecraft Bots Status & Logs</title>
-        <meta http-equiv="refresh" content="3">
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -65,17 +70,44 @@ app.get('/', (req, res) => {
             .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
             .offline { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
             .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; height: 70vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; }
+            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; }
+            .badge { font-size: 12px; background: #0369a1; color: #fff; padding: 4px 8px; border-radius: 4px; font-weight: normal; }
         </style>
     </head>
     <body>
-        <h2 class="title">🤖 Bot Controller Dashboard (Auto-refresh 3s)</h2>
-        <div class="header">
-            <div class="card"><span class="dot ${hasLever ? 'online' : 'offline'}"></span> <b>Lervy_Lever:</b> ${hasLever ? 'ออนไลน์' : 'ออฟไลน์'}</div>
-            <div class="card"><span class="dot ${hasK666 ? 'online' : 'offline'}"></span> <b>K666:</b> ${hasK666 ? 'ออนไลน์' : 'ออฟไลน์'}</div>
-            <div class="card"><span class="dot ${hasK555 ? 'online' : 'offline'}"></span> <b>K555:</b> ${hasK555 ? 'ออนไลน์' : 'ออฟไลน์'}</div>
+        <div class="title">
+            <span>🤖 Bot Controller Dashboard</span>
+            <span class="badge">Live Logs</span>
         </div>
-        <div class="log-box" id="logs">${logsBuffer.slice().reverse().join('\n')}</div>
+        <div class="header">
+            <div class="card"><span id="dot-lever" class="dot offline"></span> <b>Lervy_Lever:</b> <span id="txt-lever">กำลังโหลด...</span></div>
+            <div class="card"><span id="dot-k666" class="dot offline"></span> <b>K666:</b> <span id="txt-k666">กำลังโหลด...</span></div>
+            <div class="card"><span id="dot-k555" class="dot offline"></span> <b>K555:</b> <span id="txt-k555">กำลังโหลด...</span></div>
+        </div>
+        <div class="log-box" id="logs">กำลังดึง Logs...</div>
+
+        <script>
+            async function updateDashboard() {
+                try {
+                    const res = await fetch('/api/status');
+                    const data = await res.json();
+
+                    document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
+
+                    document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์' : 'ออฟไลน์';
+
+                    document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์' : 'ออฟไลน์';
+
+                    document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
+                } catch (err) {}
+            }
+
+            updateDashboard();
+            setInterval(updateDashboard, 2500);
+        </script>
     </body>
     </html>
     `;
@@ -108,7 +140,7 @@ function isBotActive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION (สับคันโยก)
+// 🕹️ LEVER ACTION (สับคันโยก Protocol 1.21.x)
 // ====================================================================
 async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
