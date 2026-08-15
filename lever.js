@@ -207,29 +207,34 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกไอเทมตัวเลือกเซิร์ฟเวอร์
+        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกทันทีที่มีการส่งไอเทมเข้ามาในช่อง
         bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
 
-            const clickWhenReady = async () => {
-                for (let i = 0; i < 20; i++) {
-                    await sleep(500);
-                    if (!bot || bot._client.ended) return;
+            let clicked = false;
 
-                    const menuItems = window.items().filter(item => item.slot < 27);
+            const tryClickMenu = async () => {
+                if (clicked || !bot || bot._client.ended) return;
 
-                    if (menuItems.length > 0) {
-                        const itemNames = menuItems.map(it => `[Slot ${it.slot}: ${it.name}]`).join(', ');
-                        console.log(`📦 [${username}] ไอเทมในเมนู: ${itemNames}`);
+                const currentWin = bot.currentWindow || window;
+                if (!currentWin || !currentWin.slots) return;
 
-                        const target = menuItems.find(it => it.name.includes('grass')) || 
-                                       menuItems.find(it => it.slot === 10) || 
-                                       menuItems[0];
+                const menuItems = currentWin.slots.slice(0, 27).filter(it => it !== null && it !== undefined);
 
-                        await sleep(800);
+                if (menuItems.length > 0) {
+                    clicked = true;
+                    
+                    const target = menuItems.find(it => it.name.includes('grass')) || 
+                                   menuItems.find(it => it.slot === 10) || 
+                                   menuItems[0];
+
+                    console.log(`📦 [${username}] พบไอเทมในเมนู: ${target.name} (Slot ${target.slot})`);
+                    
+                    await sleep(1000);
+                    try {
                         await bot.clickWindow(target.slot, 0, 0);
-                        console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟเวอร์ที่ Slot ${target.slot} (${target.name}) เรียบร้อย`);
+                        console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
                         await sleep(9000);
                         if (bot && !bot._client.ended) {
@@ -237,13 +242,25 @@ function launchBotPipeline(username) {
                             await sleep(3000);
                             finalizeLogin();
                         }
-                        return;
+                    } catch (e) {
+                        console.log(`❌ [${username}] ข้อผิดพลาดตอนคลิก: ${e.message}`);
                     }
                 }
-                console.log(`⚠️ [${username}] เมนู GUI ว่างเปล่า ลองเปิดเข็มทิศใหม่อีกครั้ง...`);
             };
 
-            clickWhenReady();
+            window.on('updateSlot', () => {
+                tryClickMenu();
+            });
+
+            for (let i = 0; i < 20; i++) {
+                if (clicked) break;
+                await sleep(500);
+                await tryClickMenu();
+            }
+
+            if (!clicked) {
+                console.log(`⚠️ [${username}] ไม่สามารถคลิกเมนูได้ภายในเวลาที่กำหนด`);
+            }
         });
 
         bot.on('kicked', (reason) => {
@@ -346,7 +363,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบบอทคิวเดี่ยว (Event-Driven GUI)...");
+console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบบอทคิวเดี่ยว (Packet-Based GUI & Low-CPU)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
