@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Safe Anti-Drop Controller (CPU &lt; 10%)</div>
+        <div class="title">⚡ Auto Compass-Fix & AFK Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Safe AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Safe AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,7 +106,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛡️ SAFE AFK OPTIMIZATION (ไม่ทำลาย Socket & Protocol Sync)
+// 🛡️ SAFE AFK OPTIMIZATION
 // ====================================================================
 function setupSafeAfkBot(bot, username) {
     if (bot._client && bot._client.socket) {
@@ -114,7 +114,6 @@ function setupSafeAfkBot(bot, username) {
         bot._client.socket.setNoDelay(true);
     }
 
-    // Auto Heartbeat Reply
     bot._client.on('keep_alive', (packet) => {
         try {
             bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
@@ -127,7 +126,6 @@ function setupSafeAfkBot(bot, username) {
         } catch (e) {}
     });
 
-    // ปิด Event หนักทั้งหมด
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -135,7 +133,6 @@ function setupSafeAfkBot(bot, username) {
     ];
     trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    // กรองเฉพาะ Packet ขยะฟาร์ม แต่คง State Chunk/Protocol ไว้
     if (bot._client && bot._client.deserializer) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
@@ -171,7 +168,7 @@ function setupSafeAfkBot(bot, username) {
 
     bot.physicsEnabled = false;
     bot.entities = {};
-    console.log(`⚡ [${username}] เปิดระบบ Safe AFK ประจำการเรียบร้อย (Sync ปกติ ไม่หลุด)`);
+    console.log(`⚡ [${username}] เปิดระบบ Safe AFK ประจำการเรียบร้อย`);
 }
 
 // ====================================================================
@@ -298,25 +295,30 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            for (let i = 0; i < 15; i++) {
-                await sleep(2000);
+            // ลูปกดเข็มทิศ
+            for (let i = 0; i < 20; i++) {
+                await sleep(1000);
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
-                const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
                 try {
+                    const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
                     if (comp) {
                         await bot.equip(comp, 'hand');
                     } else {
-                        bot.setQuickBarSlot(i % 9);
+                        bot.setQuickBarSlot(0);
                     }
+
+                    // ขยับมุมมองเล็กน้อยเพื่อให้เซิร์ฟเวอร์รับ Event Interaction
+                    await bot.look(bot.entity.yaw, 0.2, true);
                     await bot.activateItem();
                     if (bot.swingArm) bot.swingArm('right');
-                    console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
+
+                    console.log(`🧭 [${username}] คลิกใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
                 } catch (e) {}
             }
         });
 
-        // 2. จิ้มเลือก Survival และสั่งวาร์ปเข้าบ้าน
+        // 2. จิ้มเลือก Survival
         bot.on('windowOpen', async (window) => {
             isGuiOpen = true;
             if (isWindowHandled) return;
@@ -347,15 +349,9 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
+                        // รอโหลดโลก Survival 8 วินาที แล้วจบการทำงานทันที (ไม่พิมพ์ /home home)
                         await sleep(8000);
                         if (bot && !bot._client.ended) {
-                            if (isAfk) {
-                                console.log(`🚀 [${username}] กำลังวาร์ปเข้าสู่บ้าน (/home home)...`);
-                                bot.chat('/home home');
-                                await sleep(3000);
-                                bot.chat('/home home');
-                                await sleep(3000);
-                            }
                             finalizeLogin();
                         }
                     } catch (e) {
@@ -508,7 +504,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Safe Anti-Drop Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Auto Compass-Fix & AFK Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
