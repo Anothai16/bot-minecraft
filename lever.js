@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Protocol Bot Controller</div>
+        <div class="title">⚡ Safe Anti-Drop Controller (CPU &lt; 10%)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Safe AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Safe AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,30 +106,28 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛡️ ANTI-TIMEOUT & IMMORTAL KEEP-ALIVE SYSTEM
+// 🛡️ SAFE AFK OPTIMIZATION (ไม่ทำลาย Socket & Protocol Sync)
 // ====================================================================
-function setupImmortalAfkBot(bot, username) {
+function setupSafeAfkBot(bot, username) {
     if (bot._client && bot._client.socket) {
         bot._client.socket.setKeepAlive(true, 10000);
         bot._client.socket.setNoDelay(true);
     }
 
+    // Auto Heartbeat Reply
     bot._client.on('keep_alive', (packet) => {
         try {
-            bot._client.write('keep_alive', {
-                keepAliveId: packet.keepAliveId
-            });
+            bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
         } catch (e) {}
     });
 
     bot._client.on('ping', (packet) => {
         try {
-            bot._client.write('pong', {
-                id: packet.id
-            });
+            bot._client.write('pong', { id: packet.id });
         } catch (e) {}
     });
 
+    // ปิด Event หนักทั้งหมด
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -137,20 +135,30 @@ function setupImmortalAfkBot(bot, username) {
     ];
     trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
+    // กรองเฉพาะ Packet ขยะฟาร์ม แต่คง State Chunk/Protocol ไว้
     if (bot._client && bot._client.deserializer) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
+        const dropPacketNames = new Set([
+            'rel_entity_move', 'entity_velocity', 'entity_metadata',
+            'entity_teleport', 'entity_look', 'entity_move_look',
+            'entity_head_rotation', 'world_particles', 'sound_effect',
+            'named_sound_effect', 'sound_effect_entity', 'damage_event',
+            'animation', 'entity_equipment'
+        ]);
+
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                if (buffer.length > 24) {
+                const res = origParse(buffer);
+                if (res && res.metadata && dropPacketNames.has(res.metadata.name)) {
                     return {
                         data: { name: 'ignored', params: {} },
                         metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
                         buffer
                     };
                 }
-                return origParse(buffer);
+                return res;
             } catch (e) {
                 return {
                     data: { name: 'ignored', params: {} },
@@ -161,12 +169,9 @@ function setupImmortalAfkBot(bot, username) {
         };
     }
 
+    bot.physicsEnabled = false;
     bot.entities = {};
-    if (bot.world) {
-        bot.world.columns = {};
-        bot.world.getBlock = () => null;
-    }
-    console.log(`⚡ [${username}] ติดตั้งเกราะ Immortal AFK Mode สำเร็จ (ประจำการที่บ้าน)`);
+    console.log(`⚡ [${username}] เปิดระบบ Safe AFK ประจำการเรียบร้อย (Sync ปกติ ไม่หลุด)`);
 }
 
 // ====================================================================
@@ -269,7 +274,7 @@ function launchBotPipeline(username) {
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
             if (isAfk) {
-                setupImmortalAfkBot(bot, username);
+                setupSafeAfkBot(bot, username);
             } else {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
@@ -281,7 +286,7 @@ function launchBotPipeline(username) {
             resolve(true);
         };
 
-        // 1. ยิงรหัสผ่าน และวนลูปกดเข็มทิศแบบ Safe Native
+        // 1. ยิงรหัสผ่าน และวนลูปกดเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -298,17 +303,14 @@ function launchBotPipeline(username) {
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
                 const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
-                
                 try {
                     if (comp) {
                         await bot.equip(comp, 'hand');
                     } else {
                         bot.setQuickBarSlot(i % 9);
                     }
-
                     await bot.activateItem();
                     if (bot.swingArm) bot.swingArm('right');
-
                     console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
                 } catch (e) {}
             }
@@ -381,14 +383,14 @@ function launchBotPipeline(username) {
             console.log(`❌ [${username}] Error: ${err.message}`);
         });
 
-        bot.on('end', () => {
+        bot.on('end', (reason) => {
             bots[username].ready = false;
             if (!isCompleted) {
                 isCompleted = true;
                 clearTimeout(pipelineTimeout);
                 resolve(false);
             }
-            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
+            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ (Reason: ${reason || 'Closed'}) เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
             queueBot(username, 25000);
         });
     });
@@ -506,7 +508,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Protocol Bot Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Safe Anti-Drop Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
