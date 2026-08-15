@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 // 🌐 WEB DASHBOARD & LOGS (Port 3001)
 // ====================================================================
 const logsBuffer = [];
-const MAX_LOGS = 80;
+const MAX_LOGS = 100;
 
 const originalLog = console.log;
 console.log = (...args) => {
@@ -40,20 +40,20 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bots Controller</title>
+        <title>Minecraft Bot Resource Controller</title>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; }
+            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
             .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
             .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
             .offline { background: #ef4444; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
             .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div class="title">🤖 Minecraft Bot Automation Dashboard</div>
+        <div class="title">⚡ Minecraft Bot Controller & Resource Profiler</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -83,6 +83,35 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
+
+// ====================================================================
+// 📊 RESOURCE & PACKET PROFILER ENGINE
+// ====================================================================
+const packetStats = {
+    total: 0,
+    byType: {}
+};
+
+setInterval(() => {
+    if (packetStats.total === 0) return;
+
+    const mem = process.memoryUsage();
+    const rssMB = Math.round(mem.rss / 1024 / 1024);
+    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+
+    // เรียง 3 อันดับ Packet ที่ส่งเข้ามามากที่สุด
+    const topPackets = Object.entries(packetStats.byType)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, count]) => `${name}: ${count}/10s`)
+        .join(', ');
+
+    console.log(`📊 [PROFILER] RAM: ${rssMB}MB (Heap: ${heapMB}MB) | Packet Rate: ${packetStats.total}/10s | อันดับสูงสุด: [${topPackets}]`);
+
+    // Reset สถิติ
+    packetStats.total = 0;
+    packetStats.byType = {};
+}, 10000);
 
 // ====================================================================
 // 🤖 BOT MANAGEMENT & QUEUE ENGINE
@@ -151,10 +180,11 @@ function launchBotPipeline(username) {
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
-            viewDistance: 2,
+            viewDistance: 1, // ปรับลด View Distance เหลือต่ำสุด
             checkTimeoutInterval: 120000
         });
 
+        // 🛑 ปิดฟิสิกส์ตั้งแต่เริ่มเพื่อไม่กิน CPU
         bot.physicsEnabled = false;
 
         bots[username].instance = bot;
@@ -163,19 +193,38 @@ function launchBotPipeline(username) {
         let isCompleted = false;
         let isWindowHandled = false;
 
+        // ⚡ Packet Interceptor: ดักจับสถิติและตัด Packet ขยะทิ้ง
+        bot._client.on('packet', (data, metadata) => {
+            if (!metadata || !metadata.name) return;
+            const name = metadata.name;
+
+            packetStats.total++;
+            packetStats.byType[name] = (packetStats.byType[name] || 0) + 1;
+
+            // ทิ้ง Particle และ Sound ทันที
+            if (name === 'world_particles' || name === 'sound_effect' || name === 'named_sound_effect') {
+                return;
+            }
+        });
+
         const finalizeLogin = () => {
             if (isCompleted) return;
             isCompleted = true;
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
+            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เปิดโหมด Low-CPU)`);
 
+            // ⚡ ปลด Event หนักๆ ทิ้งทันทีเมื่อเข้าบ้านสำเร็จ
             bot.removeAllListeners('blockUpdate');
             bot.removeAllListeners('chunkColumnLoad');
+            bot.removeAllListeners('entityMoved');
+            bot.removeAllListeners('entitySpawn');
 
-            if (username !== 'Lervy_Lever') {
-                bot.on('entitySpawn', (entity) => {
-                    delete bot.entities[entity.id];
-                });
+            // ล้างแคช Entities ไม่ให้สะสมในหน่วยความจำ
+            bot.entities = {};
+
+            // สำหรับ AFK Bot (K666/K555) ตัด Chunk Storage ไม่ให้เปลือง RAM และ CPU
+            if (username !== 'Lervy_Lever' && bot.world) {
+                bot.world.columns = {};
             }
 
             resolve(true);
@@ -236,6 +285,7 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
+                        // รอโหลดข้ามมิติ 9 วินาที แล้ววาร์ปเข้าบ้าน
                         await sleep(9000);
                         if (bot && !bot._client.ended) {
                             bot.chat('/home home');
@@ -363,7 +413,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบบอทคิวเดี่ยว (Packet-Based GUI & Low-CPU)...");
+console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ (พร้อม Profiler & Low-CPU)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
