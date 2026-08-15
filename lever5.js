@@ -27,7 +27,7 @@ let isReconnectingK555 = false;
 let isLeverCycleRunning = false;
 
 // ====================================================================
-// 🌐 WEB DASHBOARD & LOGS (Port 3001)
+// 🌐 WEB DASHBOARD & LOGS (Port 3001 - Smooth AJAX / No Page Refresh)
 // ====================================================================
 const logsBuffer = [];
 const MAX_LOGS = 100;
@@ -115,7 +115,6 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => console.log(`🌍 Web Logs Dashboard รันอยู่ที่พอร์ต http://localhost:${port}`));
 
-// ⚡ ดร็อป Packet หนักๆ ออก เพื่อประหยัด CPU 100%
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect', 'entity_destroy',
@@ -149,15 +148,33 @@ function isBotActive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION (Direct Packet - CPU 0% ไร้ Raycast)
+// 🕹️ LEVER ACTION (Sync Rotation ก่อนคลิก ป้องกัน Desync 100%)
 // ====================================================================
-function clickLeverSafe() {
+async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
 
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        // ยิง Direct Packet ตรงไปที่คันโยก (CPU 0% ไม่มีการคำนวณฟิสิกส์หรือเส้นสายตา)
+        // 1. Sync Rotation ให้เซิร์ฟเวอร์รับรู้ว่าบอทยืนเล็งคันโยกอยู่จริง
+        if (botLever.entity && botLever.entity.position) {
+            const dx = leverPos.x + 0.5 - botLever.entity.position.x;
+            const dy = leverPos.y + 0.5 - (botLever.entity.position.y + 1.62);
+            const dz = leverPos.z + 0.5 - botLever.entity.position.z;
+            const yaw = Math.atan2(-dx, -dz);
+            const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
+
+            botLever._client.write('player_rotation', {
+                yaw: yaw * (180 / Math.PI),
+                pitch: -pitch * (180 / Math.PI),
+                onGround: true
+            });
+        }
+
+        // เว้นจังหวะ 50ms (1 Server Tick) ให้ State บันทึก
+        await sleep(50);
+
+        // 2. ส่ง Interaction Packet
         botLever._client.write('use_item_on', {
             hand: 0,
             location: leverPos,
@@ -168,6 +185,8 @@ function clickLeverSafe() {
             insideBlock: false,
             sequence: 0
         });
+
+        // 3. ขยับแขนยืนยัน Interaction
         botLever._client.write('arm_animation', { hand: 0 });
         return true;
     } catch (err) {
@@ -196,14 +215,14 @@ async function triggerLeverCycle() {
         }
 
         console.log(`\n🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-        const successOff = clickLeverSafe();
+        const successOff = await clickLeverSafe();
         
         if (successOff) {
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
             await sleep(30000);
             
             console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยกกลับคืน (ON)...`);
-            clickLeverSafe();
+            await clickLeverSafe();
             console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
         }
     } finally {
