@@ -1,76 +1,96 @@
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-function setupAmoryLogin(bot, onComplete) {
-    const username = bot.username;
-    let hasCompleted = false;
+/**
+ * ฟังก์ชันจัดการระบบออโต้ล็อกอิน ฝ่าด่านสมุดหนังสือ และเข้าเซิร์ฟเวอร์ย่อย AmoryCraft
+ * @param {import('mineflayer').Bot} botInstance ตัวแปร bot ของ Mineflayer
+ * @param {Function} [onComplete] Callback เมื่อเข้าสู่บ้านเสร็จสมบูรณ์
+ */
+function setupAmoryLogin(botInstance, onComplete) {
+    const username = botInstance.username || (botInstance.options && botInstance.options.username) || 'Bot';
+    let isBookProcessed = false; 
 
-    const finishLogin = () => {
-        if (!hasCompleted) {
-            hasCompleted = true;
-            console.log(`🏠 [${username}]: ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อยครับพี่!`);
-            if (typeof onComplete === 'function') {
-                onComplete();
-            }
-        }
-    };
+    if (!botInstance._client) return;
 
-    bot.on('windowOpen', async (window) => {
-        try {
-            const title = window.title ? window.title.toString() : '';
+    // 🎯 [เรดาร์ชั้นที่ 1]: ดักฟังแพ็คเก็ตเครือข่ายดิบ ทะลวงด่าน Book UI
+    botInstance._client.on('packet', (data, metadata) => {
+        if (!metadata || !metadata.name) return;
 
-            // ด่านที่ 1: ตรวจสอบด่านสมุด
-            if (title.includes('Book') || title.includes('สมุด') || window.type === 'minecraft:inventory') {
-                console.log(`🚨 [${username}]: ตรวจพบด่านสมุดล็อกหน้าจอ กำลังแก้ทาง...`);
-                await sleep(2000);
-                
-                // ยิงรหัสผ่านรอบที่ 1
-                console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 1 [/login 112233]`);
-                bot.chat('/login 112233');
-                console.log(`✅ [${username}]: ปลดล็อกด่านตรวจสมุดสำเร็จ!`);
+        if (metadata.name === 'open_book' || metadata.name.includes('book')) {
+            if (isBookProcessed) return; 
+            isBookProcessed = true; 
 
-                // เว้น 12 วินาทีเพื่อรอระบบโหลด
-                await sleep(12000);
+            console.log(`\n🚨 [${username}]: ตรวจพบด่านสมุดล็อกหน้าจอ กำลังแก้ทาง...`);
+            
+            // 1. ยิงรหัสผ่านรอบแรกทันทีที่เจอสมุด
+            setTimeout(() => {
+                if (botInstance && !botInstance._client.ended) {
+                    botInstance.chat('/login 112233');
+                    console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 1 [/login 112233]`);
+                }
+            }, 1000);
 
-                // ยิงรหัสผ่านรอบที่ 2 ซ้ำ
-                console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 2 ซ้ำเพื่อความชัวร์`);
-                bot.chat('/login 112233');
+            // 2. ปิดหน้าต่างสมุดเพื่อปลดล็อก UI (เว้น 2.5 วินาที)
+            setTimeout(() => {
+                if (botInstance && botInstance._client && !botInstance._client.ended) {
+                    try {
+                        botInstance.closeWindow(0); 
+                        console.log(`✅ [${username}]: ปลดล็อกด่านตรวจสมุดสำเร็จ!`);
+                    } catch (e) {}
+                }
+            }, 2500);
 
-                // เว้น 12 วินาที
-                await sleep(12000);
-
-                // กดใช้งานเข็มทิศฟ้า
-                console.log(`🧭 [${username}]: กดใช้งานเข็มทิศฟ้าเรียบร้อย`);
-                bot.setQuickBarSlot(0);
-                bot.activateItem();
-            }
-
-            // ด่านที่ 2: เมนูเลือกเซิร์ฟเวอร์ (บล็อกหญ้า / Survival)
-            if (title.includes('Server') || title.includes('เลือก') || title.includes('Menu') || window.slots.length > 0) {
-                await sleep(2000);
-                console.log(`จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
-                // คลิกสล็อตเลือกเซิร์ฟเวอร์
-                bot.clickWindow(10, 0, 0);
-
-                // เว้น 12 วินาที รอให้โหลดเข้าสู่โลก Survival และสลับ Server ให้เรียบร้อย
-                await sleep(12000);
-
-                // ยิงคำสั่งวาร์ปกลับบ้าน
-                bot.chat('/home home');
-
-                // เว้นอีก 5 วินาทีให้ตำแหน่ง Sync เข้าที่ แล้วประกาศสำเร็จ
-                await sleep(5000);
-                finishLogin();
-            }
-        } catch (err) {
-            console.log(`❌ [${username} Login Error]: ${err.message}`);
+            // 3. ยิงรหัสผ่านรอบที่ 2 ซ้ำ (เว้น 12 วินาที ให้ระบบรับรหัสรอบแรกชัวร์ๆ)
+            setTimeout(() => {
+                if (botInstance && !botInstance._client.ended) {
+                    botInstance.chat('/login 112233');
+                    console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 2 ซ้ำเพื่อความชัวร์`);
+                }
+            }, 12000);
         }
     });
 
-    // สำรองกรณีเซิร์ฟเวอร์ไม่ได้เปิด GUI แต่ใช้คำสั่งแชตปกติ
-    bot.on('messagestr', (msg) => {
-        if (msg.includes('เข้าสู่บ้าน') || msg.includes('ยินดีต้อนรับ') || msg.includes('Survival')) {
-            finishLogin();
-        }
+    // 🛰️ [เรดาร์ชั้นที่ 2]: กลไกคว้าเข็มทิศฟ้าคัดท้ายเข้าเกมหลัก
+    botInstance.once('spawn', () => {
+        // เว้น 24 วินาทีหลังเกิด (รอให้ยิงรหัสผ่านทั้ง 2 รอบเสร็จสมบูรณ์ก่อน)
+        setTimeout(async () => {
+            if (!botInstance || !botInstance.inventory || botInstance._client.ended) return;
+            
+            const blueCompass = botInstance.inventory.items().find(i => i.name === 'recovery_compass');
+            if (blueCompass) {
+                try {
+                    await botInstance.equip(blueCompass, 'hand');
+                    await sleep(1500); 
+                    await botInstance.activateItem();
+                    console.log(`🧭 [${username}]: กดใช้งานเข็มทิศฟ้าเรียบร้อย`);
+                } catch (equipErr) {}
+            } else {
+                botInstance.chat('/server survival');
+            }
+        }, 24000);
+    });
+
+    // 🚨 [เรดาร์ชั้นที่ 3]: หน้าต่างเมนูปกติ (สล็อตเลือกเซิร์ฟย่อยหญ้าไอดี 10)
+    botInstance.on('windowOpen', async (window) => {
+        await sleep(3000); // รอหน้าต่างเมนูโหลดเสร็จ 3 วินาที
+        if (!botInstance || botInstance._client.ended) return;
+
+        const targetSlotID = 10; 
+        try {
+            await botInstance.clickWindow(targetSlotID, 0, 0);
+            console.log(`จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
+            
+            // เว้น 12 วินาที ให้ Proxy สลับห้องและโหลดโลก Survival ให้เสร็จสมบูรณ์
+            setTimeout(() => {
+                if (botInstance && !botInstance._client.ended) {
+                    botInstance.chat('/home home');
+                    console.log(`🏠 [${botInstance.username || username}]: ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อยครับพี่!`);
+                    
+                    if (typeof onComplete === 'function') {
+                        onComplete();
+                    }
+                }
+            }, 12000);
+        } catch (clickErr) {}
     });
 }
 
