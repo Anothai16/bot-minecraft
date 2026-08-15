@@ -26,65 +26,13 @@ let isReconnectingK555 = false;
 
 let isLeverCycleRunning = false;
 
-// ====================================================================
-// 🌐 WEB DASHBOARD & LOGS (Port 3001 - Ultra Lightweight)
-// ====================================================================
-const logsBuffer = [];
-const MAX_LOGS = 100; // เก็บแค่ 100 บรรทัดล่าสุด ประหยัด RAM ขั้นสุด
-
-const originalLog = console.log;
-console.log = (...args) => {
-    const timestamp = new Date().toLocaleTimeString('th-TH');
-    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-    logsBuffer.push(`[${timestamp}] ${message}`);
-    if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
-    originalLog(...args);
-};
-
+// 🌍 Express Server (Health check 24/7)
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 8083;
+app.get('/', (req, res) => res.send('Bots (Lever, K666, K555) are running 24/7!'));
+app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-app.get('/', (req, res) => {
-    const hasLever = isBotActive(botLever);
-    const hasK666 = isBotActive(botK666);
-    const hasK555 = isBotActive(botK555);
-
-    const html = `
-    <!DOCTYPE html>
-    <html lang="th">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bots Status & Logs</title>
-        <meta http-equiv="refresh" content="3">
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-            .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-            .card { background: #1e293b; padding: 14px 20px; border-radius: 8px; border: 1px solid #334155; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-            .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-            .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
-            .offline { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; height: 70vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; }
-        </style>
-    </head>
-    <body>
-        <h2 class="title">🤖 Bot Controller Dashboard (Auto-refresh 3s)</h2>
-        <div class="header">
-            <div class="card"><span class="dot ${hasLever ? 'online' : 'offline'}"></span> <b>Lervy_Lever:</b> ${hasLever ? 'ออนไลน์' : 'ออฟไลน์'}</div>
-            <div class="card"><span class="dot ${hasK666 ? 'online' : 'offline'}"></span> <b>K666:</b> ${hasK666 ? 'ออนไลน์' : 'ออฟไลน์'}</div>
-            <div class="card"><span class="dot ${hasK555 ? 'online' : 'offline'}"></span> <b>K555:</b> ${hasK555 ? 'ออนไลน์' : 'ออฟไลน์'}</div>
-        </div>
-        <div class="log-box" id="logs">${logsBuffer.slice().reverse().join('\n')}</div>
-    </body>
-    </html>
-    `;
-    res.send(html);
-});
-
-app.listen(port, () => console.log(`🌍 Web Logs Dashboard รันอยู่ที่พอร์ต http://localhost:${port}`));
-
-// ⚡ ดร็อปเฉพาะเอฟเฟกต์/เสียง/แอนิเมชันที่ไม่จำเป็น
+// ⚡ ดร็อปเฉพาะเอฟเฟกต์/เสียง/แอนิเมชันที่ไม่จำเป็น (เว้นแพ็กเก็ตระบบไว้)
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect',
@@ -147,9 +95,8 @@ async function triggerLeverCycle() {
         const hasK666 = isBotActive(botK666);
         const hasK555 = isBotActive(botK555);
 
-        // 🛑 ป้องกันไม่ให้สับคันโยกเด็ดขาดถ้า K555 หรือ K666 ไม่อยู่
         if (!hasLever || !hasK666 || !hasK555) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lever: ${hasLever ? '🟢' : '❌'}, K666: ${hasK666 ? '🟢' : '❌'}, K555: ${hasK555 ? '🟢' : '❌'}) ยกเลิกการสับคันโยกรอบนี้!`);
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lever: ${hasLever ? '🟢' : '❌'}, K666: ${hasK666 ? '🟢' : '❌'}, K555: ${hasK555 ? '🟢' : '❌'}) ข้ามรอบนี้เพื่อให้ระบบ Reconnect`);
             return;
         }
 
