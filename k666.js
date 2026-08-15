@@ -88,7 +88,8 @@ function startBot() {
             const grassItem = window.items().find(i => i.name.includes('grass'));
             const targetSlot = grassItem ? grassItem.slot : 10;
 
-            await bot.simpleClick.leftMouse(targetSlot);
+            // ✅ ใช้ฟังก์ชันคลิกมาตรฐานของ Mineflayer
+            await bot.clickWindow(targetSlot, 0, 0);
             logger.log(`จิ้มเมนูเลือกเซิร์ฟ Survival (Slot ${targetSlot}) เรียบร้อย`);
 
             await sleep(9000);
@@ -99,7 +100,12 @@ function startBot() {
                 logger.setStatus(true);
                 logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Low-CPU)');
 
+                // ⚡ 1. ปิดฟิสิกส์
                 bot.physicsEnabled = false;
+
+                // ⚡ 2. ปลดตัวดักจับ Entity/Block รอบตัวตอนฟาร์มขยับ (CPU เหลือ 0%)
+                bot.removeAllListeners('blockUpdate');
+                bot.removeAllListeners('chunkColumnLoad');
             }
         } catch (err) {
             logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);
