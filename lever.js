@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Home2-Relocation Lever Controller (10s Cycle)</div>
+        <div class="title">⚡ Anti-Timeout AFK Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Anti-Kick ON)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Anti-Kick ON)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,9 +106,33 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 AFK BUFFER FILTER (สำหรับ K666 / K555)
+// 🛡️ ANTI-TIMEOUT & IMMORTAL KEEP-ALIVE SYSTEM (สำหรับ AFK Bots)
 // ====================================================================
-function setupAfkMute(bot, username) {
+function setupImmortalAfkBot(bot, username) {
+    // 1. ตรึง TCP Socket Connection ป้องกัน OS ตัดการเชื่อมต่อ
+    if (bot._client && bot._client.socket) {
+        bot._client.socket.setKeepAlive(true, 10000);
+        bot._client.socket.setNoDelay(true);
+    }
+
+    // 2. ตอบกลับ Keep-Alive และ Ping ทันทีในระดับต้นสาย Protocol
+    bot._client.on('keep_alive', (packet) => {
+        try {
+            bot._client.write('keep_alive', {
+                keepAliveId: packet.keepAliveId
+            });
+        } catch (e) {}
+    });
+
+    bot._client.on('ping', (packet) => {
+        try {
+            bot._client.write('pong', {
+                id: packet.id
+            });
+        } catch (e) {}
+    });
+
+    // 3. ทิ้ง Event และ Buffer ขยะฟาร์มทั้งหมดเพื่อไม่ให้กิน CPU
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -145,7 +169,7 @@ function setupAfkMute(bot, username) {
         bot.world.columns = {};
         bot.world.getBlock = () => null;
     }
-    console.log(`⚡ [${username}] เปิดระบบ AFK Mute สำเร็จ (CPU 0%)`);
+    console.log(`⚡ [${username}] เปิดระบบ Immortal AFK Mode เรียบร้อย (ไม่หลุดแม้ CPU 100%)`);
 }
 
 // ====================================================================
@@ -218,7 +242,7 @@ function launchBotPipeline(username) {
             username: username,
             version: '1.21.11',
             viewDistance: 2,
-            checkTimeoutInterval: 120000,
+            checkTimeoutInterval: 180000, // 3 นาที ป้องกัน Kick Timeout ช่วง CPU Peak
             disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
         });
 
@@ -248,12 +272,11 @@ function launchBotPipeline(username) {
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
             if (isAfk) {
-                setupAfkMute(bot, username);
+                setupImmortalAfkBot(bot, username);
             } else {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
                 bot.removeAllListeners('entityMoved');
-                // สั่ง Lever วาร์ปไปพักที่ home2 ทันทีหลังจากล็อกอินเสร็จ
                 await sleep(2000);
                 console.log(`🚀 [Lervy_Lever] วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU...`);
                 bot.chat('/home home2');
@@ -367,7 +390,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Safe Interaction)
+// 🕹️ LEVER LOGIC
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -380,7 +403,6 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
-    // ถ้าไม่อยู่หน้าคันโยก ให้วาร์ปกลับมาหน้าคันโยก
     if (distance > 3) {
         console.log(`🚀 [LEVER LOG] วาร์ปกลับเข้าบ้าน (/home home) เพื่อสับคันโยก...`);
         leverBot.chat('/home home');
@@ -431,13 +453,12 @@ async function triggerLeverCycle() {
 
         if (okClose) {
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาที...`);
-            await sleep(10000); // ⚡ ปรับเหลือรอ 10 วินาที
+            await sleep(10000);
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
             console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
 
-            // ⚡ สับเปิดเสร็จปุ๊บ วาร์ปหนีฟาร์มไปที่ /home home2 ทันที
             await sleep(1000);
             console.log(`🚀 [LEVER CYCLE]: วาร์ปหนีฟาร์ม (/home home2) เพื่อประหยัด CPU...`);
             bots.Lervy_Lever.instance.chat('/home home2');
@@ -450,8 +471,6 @@ async function triggerLeverCycle() {
 // ====================================================================
 // ⏰ SCHEDULE ENGINE
 // ====================================================================
-
-// 1. Cron สับคันโยก: ทุกๆ นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -466,7 +485,6 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     await triggerLeverCycle();
 });
 
-// 2. Cron ล่วงหน้า 1 นาที: วาร์ปกลับมารอที่คันโยก (/home home) ในนาทีที่ 2, 8, 14, 20, 26, 32, 38, 44, 50, 56
 cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -483,7 +501,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Home2-Relocation Lever Controller (10s Cycle)...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Anti-Timeout AFK Bot Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
