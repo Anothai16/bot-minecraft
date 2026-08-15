@@ -13,7 +13,6 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 let bot = null;
 let isReady = false;
 let isReconnecting = false;
-let transferWatchdog = null;
 
 // ================= Web Dashboard (Port 3001) =================
 const app = express();
@@ -86,7 +85,6 @@ function reconnect(delayMs = 15000) {
     isReconnecting = true;
     isReady = false;
     logger.setStatus(false);
-    if (transferWatchdog) clearTimeout(transferWatchdog);
 
     if (bot) {
         try {
@@ -116,12 +114,12 @@ function startBot() {
         host: 'play.amorycraft.com',
         username: 'Lervy_Lever',
         version: '1.21.11',
-        viewDistance: 1,
+        viewDistance: 2,
         checkTimeoutInterval: 120000
     });
 
     bot.once('spawn', async () => {
-        await sleep(3000);
+        await sleep(3500);
         if (!bot || bot._client.ended) return;
 
         bot.chat('/login 112233');
@@ -133,48 +131,20 @@ function startBot() {
         bot.chat('/login 112233');
         logger.log('ยิงรหัสผ่านรอบที่ 2');
 
-        await sleep(4000);
+        await sleep(4500);
         if (!bot || bot._client.ended) return;
 
-        const comp = bot.inventory?.items().find(i => i.name === 'recovery_compass');
-        if (comp) {
-            try {
-                await bot.equip(comp, 'hand');
-                await sleep(1000);
-                await bot.activateItem();
-                logger.log('กดใช้งานเข็มทิศฟ้าเรียบร้อย');
-            } catch (e) {}
-        } else {
-            bot.chat('/server survival');
+        logger.log('กำลังย้ายเข้า Survival ผ่านคำสั่ง...');
+        bot.chat('/server survival');
+
+        await sleep(10000);
+        if (bot && !bot._client.ended) {
+            bot.chat('/home home');
+            await sleep(2000);
+            isReady = true;
+            logger.setStatus(true);
+            logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
         }
-    });
-
-    bot.on('windowOpen', async () => {
-        await sleep(2500);
-        if (!bot || bot._client.ended) return;
-
-        try {
-            await bot.clickWindow(10, 0, 0);
-            logger.log('จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย');
-
-            if (transferWatchdog) clearTimeout(transferWatchdog);
-            transferWatchdog = setTimeout(() => {
-                if (!isReady && bot && !bot._client.ended) {
-                    logger.log('⚠️ ค้างจังหวะย้ายห้องเกิน 15 วินาที สั่งเชื่อมต่อใหม่...');
-                    reconnect(10000);
-                }
-            }, 15000);
-
-            await sleep(8000);
-            if (bot && !bot._client.ended) {
-                bot.chat('/home home');
-                await sleep(2000);
-                isReady = true;
-                if (transferWatchdog) clearTimeout(transferWatchdog);
-                logger.setStatus(true);
-                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
-            }
-        } catch (e) {}
     });
 
     bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
