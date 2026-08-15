@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Full Mute Pipeline Farm (Target &lt; 25% CPU)</div>
+        <div class="title">⚡ Full Mute Pipeline Farm (Compass Retry Mode)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -109,7 +109,6 @@ setInterval(() => {
 // 🛑 FULL MUTE PIPELINE ENGINE (ตัด Buffer ขยะทั้ง 3 บอท)
 // ====================================================================
 function muteInboundStream(bot, username) {
-    // 1. ถอด Event Emitter ออกทั้งหมด
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -117,14 +116,12 @@ function muteInboundStream(bot, username) {
     ];
     trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    // 2. Override ฟังก์ชัน parsePacketBuffer ที่ตัวแปลง Protocol (ตัดทิ้งทั้ง 3 ตัว)
     if (bot._client && bot._client.deserializer) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                // สำหรับทุกบอท: Packet ขนาดเกิน 24 ไบต์คือข้อมูล Entity/Block/Sound ในฟาร์ม -> ตัดทิ้งทันที
                 if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
@@ -143,7 +140,6 @@ function muteInboundStream(bot, username) {
         };
     }
 
-    // ล้าง Objects ในหน่วยความจำ
     bot.entities = {};
     if (bot.world) {
         bot.world.columns = {};
@@ -191,7 +187,7 @@ async function processQueue() {
     } finally {
         isLoginBusy = false;
         if (loginQueue.length > 0) {
-            setTimeout(processQueue, 6000);
+            setTimeout(processQueue, 5000);
         }
     }
 }
@@ -231,19 +227,30 @@ function launchBotPipeline(username) {
 
         let isCompleted = false;
         let isWindowHandled = false;
+        let isGuiOpen = false;
+
+        const pipelineTimeout = setTimeout(() => {
+            if (!isCompleted) {
+                console.log(`⚠️ [${username}] ใช้เวลาล็อกอินนานเกินไป รีเซ็ตเพื่อเชื่อมต่อใหม่...`);
+                isCompleted = true;
+                destroyBot(username);
+                resolve(false);
+                queueBot(username, 15000);
+            }
+        }, 50000);
 
         const finalizeLogin = () => {
             if (isCompleted) return;
             isCompleted = true;
+            clearTimeout(pipelineTimeout);
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            // ⚡ Mute Pipeline ทุกตัว (รวมทั้ง Lervy_Lever)
             muteInboundStream(bot, username);
             resolve(true);
         };
 
-        // 1. จัดการรหัสผ่านและเข็มทิศ
+        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศซ้ำจนกว่า GUI จะเปิด
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -255,25 +262,32 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            await sleep(4500);
-            if (!bot || bot._client.ended) return;
+            // วนลูปหาและกดเข็มทิศซ้ำๆ ทุก 2.5 วินาทีจนกว่า GUI จะเปิด
+            for (let i = 0; i < 15; i++) {
+                await sleep(2500);
+                if (!bot || bot._client.ended || isGuiOpen) break;
 
-            const comp = bot.inventory?.items().find(i => i.name.includes('compass'));
-            if (comp) {
-                try {
-                    await bot.equip(comp, 'hand');
-                    await sleep(1500);
-                    await bot.activateItem();
-                    console.log(`🧭 [${username}] เปิดเมนูเข็มทิศเรียบร้อย`);
-                } catch (e) {}
+                const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
+                if (comp) {
+                    try {
+                        await bot.equip(comp, 'hand');
+                        await sleep(500);
+                        await bot.activateItem();
+                        console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (ครั้งที่ ${i + 1})...`);
+                    } catch (e) {}
+                } else {
+                    console.log(`🔍 [${username}] กำลังค้นหาเข็มทิศในตัว (รอโหลดกระเป๋า)...`);
+                }
             }
         });
 
-        // 2. จิ้มเลือก Survival
+        // 2. จิ้มเลือก Survival เมื่อหน้าต่าง GUI เปิด
         bot.on('windowOpen', async (window) => {
+            isGuiOpen = true;
             if (isWindowHandled) return;
             isWindowHandled = true;
 
+            console.log(`🪟 [${username}] หน้าต่าง GUI เปิดสำเร็จแล้ว!`);
             let clicked = false;
 
             const tryClickMenu = async () => {
@@ -333,6 +347,7 @@ function launchBotPipeline(username) {
             bots[username].ready = false;
             if (!isCompleted) {
                 isCompleted = true;
+                clearTimeout(pipelineTimeout);
                 resolve(false);
             }
             console.log(`🔄 [${username}] หลุดการเชื่อมต่อ เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
@@ -342,7 +357,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยกแบบ Raw Network Packet 1.21)
+// 🕹️ LEVER LOGIC
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -354,7 +369,6 @@ async function clickLeverSafe() {
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
         await sleep(100);
 
-        // ส่ง Interaction จำลองผ่าน Object เสมือน (ไม่ต้องพึ่ง blockAt ที่ปิดไป)
         const mockBlock = {
             position: leverPos,
             name: 'lever',
@@ -419,7 +433,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Full Mute Pipeline...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Full Mute Pipeline (Compass Auto-Retry)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
