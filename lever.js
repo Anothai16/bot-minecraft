@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Reliable Valve Farm Controller (CPU &lt; 15%)</div>
+        <div class="title">⚡ Stable Lever & Hybrid Mute Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -66,7 +66,7 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Valve Ready)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
                     document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
@@ -106,50 +106,59 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 ON-DEMAND VALVE ENGINE
+// 🛑 HYBRID OPTIMIZATION ENGINE
 // ====================================================================
-let isLeverValveOpen = false;
+function applyHybridOptimization(bot, username) {
+    const isAfk = username !== 'Lervy_Lever';
 
-function setupValveFilter(bot, username) {
-    const isLever = username === 'Lervy_Lever';
+    if (isAfk) {
+        // สำหรับ K666 / K555: ตัดท่อ Decoder ทิ้งทั้งหมด 100%
+        const trashEvents = [
+            'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
+            'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
+            'soundEffect', 'particle', 'experience', 'move'
+        ];
+        trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    const trashEvents = [
-        'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
-        'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience', 'move'
-    ];
-    trashEvents.forEach(evt => bot.removeAllListeners(evt));
+        if (bot._client && bot._client.deserializer) {
+            const deserializer = bot._client.deserializer;
+            const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
-    if (bot._client && bot._client.deserializer) {
-        const deserializer = bot._client.deserializer;
-        const origParse = deserializer.parsePacketBuffer.bind(deserializer);
-
-        deserializer.parsePacketBuffer = function (buffer) {
-            try {
-                if (isLever && isLeverValveOpen) {
+            deserializer.parsePacketBuffer = function (buffer) {
+                try {
+                    if (buffer.length > 24) {
+                        return {
+                            data: { name: 'ignored', params: {} },
+                            metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
+                            buffer
+                        };
+                    }
                     return origParse(buffer);
-                }
-
-                if (buffer.length > 24) {
+                } catch (e) {
                     return {
                         data: { name: 'ignored', params: {} },
-                        metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
+                        metadata: { name: 'ignored', state: 'play', size: buffer.length },
                         buffer
                     };
                 }
-                return origParse(buffer);
-            } catch (e) {
-                return {
-                    data: { name: 'ignored', params: {} },
-                    metadata: { name: 'ignored', state: 'play', size: buffer.length },
-                    buffer
-                };
-            }
-        };
-    }
+            };
+        }
 
-    bot.entities = {};
-    console.log(`⚡ [${username}] ติดตั้งระบบ On-Demand Valve Filter เรียบร้อย`);
+        bot.entities = {};
+        if (bot.world) {
+            bot.world.columns = {};
+            bot.world.getBlock = () => null;
+        }
+        console.log(`⚡ [${username}] เปิดระบบ AFK Mute Pipeline เรียบร้อย`);
+    } else {
+        // สำหรับ Lervy_Lever: ตัดเฉพาะ Entity/Sound/Particle แต่คง World/Chunk ไว้ให้ Sequence ไม่เพี้ยน
+        bot.removeAllListeners('entityMoved');
+        bot.removeAllListeners('entitySpawn');
+        bot.removeAllListeners('soundEffect');
+        bot.removeAllListeners('particle');
+        bot.entities = {};
+        console.log(`⚡ [${username}] เปิดระบบ State-Safe Lever Engine เรียบร้อย`);
+    }
 }
 
 // ====================================================================
@@ -215,16 +224,18 @@ function launchBotPipeline(username) {
         destroyBot(username);
         console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
 
+        const isAfk = username !== 'Lervy_Lever';
+
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
-            viewDistance: 1,
+            viewDistance: 2,
             checkTimeoutInterval: 120000,
-            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'physics']
+            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
         });
 
-        bot.physicsEnabled = false;
+        bot.physicsEnabled = true;
         bots[username].instance = bot;
         bots[username].ready = false;
 
@@ -249,7 +260,7 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            setupValveFilter(bot, username);
+            applyHybridOptimization(bot, username);
             resolve(true);
         };
 
@@ -335,29 +346,39 @@ function launchBotPipeline(username) {
             }
         });
 
+        // 🛑 Enhanced Kick & Error Diagnostics
         bot.on('kicked', (reason) => {
-            console.log(`🚨 [${username}] โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+            const reasonStr = typeof reason === 'object' ? JSON.stringify(reason) : String(reason);
+            console.log(`🚨 [${username}] โดนเตะออกจากเซิร์ฟเวอร์! สาเหตุ: ${reasonStr}`);
         });
 
         bot.on('error', (err) => {
-            console.log(`❌ [${username}] Error: ${err.message}`);
+            console.log(`❌ [${username}] Network Error: ${err.message}`);
         });
 
-        bot.on('end', () => {
+        bot._client.on('kick_disconnect', (packet) => {
+            console.log(`🚨 [${username}] Kick Disconnect Packet: ${JSON.stringify(packet.reason)}`);
+        });
+
+        bot._client.on('disconnect', (packet) => {
+            console.log(`🚨 [${username}] Disconnect Packet: ${JSON.stringify(packet.reason)}`);
+        });
+
+        bot.on('end', (reason) => {
             bots[username].ready = false;
             if (!isCompleted) {
                 isCompleted = true;
                 clearTimeout(pipelineTimeout);
                 resolve(false);
             }
-            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
+            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ (End Reason: ${reason || 'Unknown'}) เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
             queueBot(username, 25000);
         });
     });
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Direct Right-Click Packet With Valve)
+// 🕹️ LEVER LOGIC (Safe Full-State Block Activation)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -370,46 +391,41 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
+    console.log(`🎯 [LEVER LOG] สถานะก่อนสับ: บอทยืนที่ (${currentPos?.x}, ${currentPos?.y}, ${currentPos?.z}) | ระยะห่าง: ${distance.toFixed(2)} บล็อก`);
+
     if (distance > 4) {
         console.log(`⚠️ [LEVER LOG] บอทไม่ได้อยู่หน้าคันโยก กำลังวาร์ป /home home...`);
         leverBot.chat('/home home');
         await sleep(3500);
+        currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
+        distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
     }
 
     try {
-        // ⚡ 1. เปิดวาล์วและส่งการมองคันโยก
-        isLeverValveOpen = true;
-        await sleep(300);
-
+        // 1. หันหน้ามองคันโยก
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(150);
+        await sleep(200);
 
-        // ⚡ 2. สั่งคลิกขวาด้วยฟังก์ชันมาตรฐาน หรือ ส่ง packet use_item_on โดยตรง
-        if (leverBot._client) {
-            leverBot._client.write('use_item_on', {
-                hand: 0,
-                location: leverPos,
-                direction: 1, // Face top
-                cursorX: 0.5,
-                cursorY: 0.5,
-                cursorZ: 0.5,
-                insideBlock: false,
-                worldBorderHit: false,
-                sequence: 0
-            });
-            leverBot._client.write('arm_animation', { hand: 0 });
+        // 2. ดึงข้อมูลบล็อกจาก World จริง
+        let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
+        console.log(`🔍 [LEVER LOG] ตรวจสอบบล็อกเป้าหมาย: ${block ? block.name : 'ไม่พบบล็อกใน Cache (สร้างเสมือน)'}`);
+
+        if (!block) {
+            block = {
+                position: leverPos,
+                name: 'lever',
+                shapes: [[[0, 0, 0, 1, 1, 1]]]
+            };
         }
 
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
+        // 3. ดำเนินการสับคันโยกผ่าน activateBlock ปกติ
+        await leverBot.activateBlock(block);
+        if (leverBot.swingArm) leverBot.swingArm('right');
 
+        console.log(`✨ [LEVER LOG] สั่งสับคันโยก ${actionName} สำเร็จ (รอเซิร์ฟเวอร์ตอบรับ)...`);
         await sleep(300);
-
-        // ⚡ 3. ปิดวาล์วกลับคืนทันทีเพื่อรักษา CPU ให้อยู่ระดับต่ำ
-        isLeverValveOpen = false;
-        leverBot.entities = {};
         return true;
     } catch (err) {
-        isLeverValveOpen = false;
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
@@ -425,7 +441,7 @@ async function triggerLeverCycle() {
         const hasK555 = isBotOnline('K555');
 
         if (!hasLever || !hasK666 || !hasK555) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้`);
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lever: ${hasLever ? '🟢' : '❌'}, K666: ${hasK666 ? '🟢' : '❌'}, K555: ${hasK555 ? '🟢' : '❌'}) ข้ามรอบนี้`);
             return;
         }
 
@@ -462,7 +478,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Reliable Valve Farm Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Lever & Hybrid Mute Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
