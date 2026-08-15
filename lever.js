@@ -15,7 +15,7 @@ let isReady = false;
 let isReconnecting = false;
 let hasNavigated = false;
 
-// ================= Web Dashboard (Port 3001) =================
+// ================= Web Dashboard =================
 const app = express();
 app.get('/api/status', (req, res) => {
     const result = { bots: {}, combinedLogs: [] };
@@ -156,21 +156,24 @@ function startBot() {
         if (!bot || bot._client.ended) return;
 
         try {
-            // หา slot ของ grass_block หรือกดที่ช่อง 10
             const grassItem = window.items().find(i => i.name.includes('grass'));
             const targetSlot = grassItem ? grassItem.slot : 10;
 
             await bot.simpleClick.leftMouse(targetSlot);
             logger.log(`จิ้มเมนูเลือกเซิร์ฟ Survival (Slot ${targetSlot}) เรียบร้อย`);
 
-            // รอ 9 วินาทีให้โหลดข้ามมิติไปยัง Survival
             await sleep(9000);
             if (bot && !bot._client.ended) {
                 bot.chat('/home home');
                 await sleep(2000);
                 isReady = true;
                 logger.setStatus(true);
-                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Low-CPU)');
+
+                // ⚡ ตัดโหลด CPU ทันทีที่เข้าบ้านสำเร็จ
+                if (bot.physics) bot.physics.stop();
+                bot.removeAllListeners('blockUpdate');
+                bot.removeAllListeners('chunkColumnLoad');
             }
         } catch (err) {
             logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);

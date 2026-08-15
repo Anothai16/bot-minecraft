@@ -8,14 +8,14 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 let bot = null;
 let isReady = false;
 let isReconnecting = false;
-let transferWatchdog = null;
+let hasNavigated = false;
 
 function reconnect(delayMs = 55000) {
     if (isReconnecting) return;
     isReconnecting = true;
     isReady = false;
+    hasNavigated = false;
     logger.setStatus(false);
-    if (transferWatchdog) clearTimeout(transferWatchdog);
 
     if (bot) {
         try {
@@ -38,6 +38,7 @@ function reconnect(delayMs = 55000) {
 
 function startBot() {
     isReady = false;
+    hasNavigated = false;
     logger.setStatus(false);
     logger.log('กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
 
@@ -46,18 +47,11 @@ function startBot() {
         username: 'K555',
         version: '1.21.11',
         viewDistance: 2,
-        checkTimeoutInterval: 120000,
-        physicsEnabled: false // 👈 ปิด Physics
-    });
-
-    bot.on('entitySpawn', (entity) => {
-        if (entity.name === 'item' || entity.type === 'object') {
-            delete bot.entities[entity.id];
-        }
+        checkTimeoutInterval: 120000
     });
 
     bot.once('spawn', async () => {
-        await sleep(3000);
+        await sleep(3500);
         if (!bot || bot._client.ended) return;
 
         bot.chat('/login 112233');
@@ -72,45 +66,47 @@ function startBot() {
         await sleep(4000);
         if (!bot || bot._client.ended) return;
 
-        const comp = bot.inventory?.items().find(i => i.name === 'recovery_compass');
+        const comp = bot.inventory?.items().find(i => i.name.includes('compass'));
         if (comp) {
             try {
                 await bot.equip(comp, 'hand');
-                await sleep(1000);
+                await sleep(1500);
                 await bot.activateItem();
-                logger.log('กดใช้งานเข็มทิศฟ้าเรียบร้อย');
+                logger.log('กดใช้งานเข็มทิศเปิดเมนูเรียบร้อย');
             } catch (e) {}
-        } else {
-            bot.chat('/server survival');
         }
     });
 
-    bot.on('windowOpen', async () => {
+    bot.on('windowOpen', async (window) => {
+        if (hasNavigated) return;
+        hasNavigated = true;
+
         await sleep(2500);
         if (!bot || bot._client.ended) return;
 
         try {
-            await bot.clickWindow(10, 0, 0);
-            logger.log('จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย');
+            const grassItem = window.items().find(i => i.name.includes('grass'));
+            const targetSlot = grassItem ? grassItem.slot : 10;
 
-            if (transferWatchdog) clearTimeout(transferWatchdog);
-            transferWatchdog = setTimeout(() => {
-                if (!isReady && bot && !bot._client.ended) {
-                    logger.log('⚠️ ค้างจังหวะย้ายห้องเกิน 15 วินาที สั่งเชื่อมต่อใหม่...');
-                    reconnect(10000);
-                }
-            }, 15000);
+            await bot.simpleClick.leftMouse(targetSlot);
+            logger.log(`จิ้มเมนูเลือกเซิร์ฟ Survival (Slot ${targetSlot}) เรียบร้อย`);
 
-            await sleep(8000);
+            await sleep(9000);
             if (bot && !bot._client.ended) {
                 bot.chat('/home home');
                 await sleep(2000);
                 isReady = true;
-                if (transferWatchdog) clearTimeout(transferWatchdog);
                 logger.setStatus(true);
-                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+                logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Low-CPU)');
+
+                // ⚡ ตัดโหลด CPU ทันทีที่เข้าบ้านสำเร็จ
+                if (bot.physics) bot.physics.stop();
+                bot.removeAllListeners('blockUpdate');
+                bot.removeAllListeners('chunkColumnLoad');
             }
-        } catch (e) {}
+        } catch (err) {
+            logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);
+        }
     });
 
     bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
