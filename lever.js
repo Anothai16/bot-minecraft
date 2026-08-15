@@ -7,10 +7,10 @@ const readline = require('readline');
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 // ====================================================================
-// 🌐 WEB DASHBOARD & LOGS (Port 3001)
+// 🌐 WEB DASHBOARD & ADVANCED LOGS (Port 3001)
 // ====================================================================
 const logsBuffer = [];
-const MAX_LOGS = 80;
+const MAX_LOGS = 100;
 
 const originalLog = console.log;
 console.log = (...args) => {
@@ -40,20 +40,20 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bots Controller</title>
+        <title>Minecraft Bots Controller & Diagnostics</title>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; }
+            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
             .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
             .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
             .offline { background: #ef4444; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
             .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div class="title">🤖 Minecraft Bot Automation Dashboard</div>
+        <div class="title">🔍 Minecraft Bot Controller & Diagnostic Stream</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -85,7 +85,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
 
 // ====================================================================
-// 🤖 BOT QUEUE & LIFECYCLE MANAGEMENT
+// 🤖 BOT MANAGEMENT & DIAGNOSTIC ENGINE
 // ====================================================================
 const bots = {
     Lervy_Lever: { instance: null, ready: false },
@@ -99,7 +99,7 @@ let isLeverCycleRunning = false;
 
 function isBotOnline(username) {
     const b = bots[username];
-    return b.instance && b.instance._client && !b.instance._client.ended && b.ready;
+    return b && b.instance && b.instance._client && !b.instance._client.ended && b.ready;
 }
 
 function queueBot(username, delay = 0) {
@@ -118,18 +118,19 @@ async function processQueue() {
     try {
         await launchBotPipeline(username);
     } catch (err) {
-        console.log(`❌ [${username}] Pipeline Error: ${err.message}`);
+        console.log(`❌ [${username}] Pipeline Exception: ${err.message}`);
     } finally {
         isLoginBusy = false;
         if (loginQueue.length > 0) {
-            setTimeout(processQueue, 6000);
+            console.log(`⏳ [QUEUE] รอ 8 วินาที เพื่อให้ Connection เคลียร์ก่อนปล่อยตัวถัดไป...`);
+            setTimeout(processQueue, 8000);
         }
     }
 }
 
 function destroyBot(username) {
     const b = bots[username];
-    if (!b.instance) return;
+    if (!b || !b.instance) return;
     try {
         b.instance.removeAllListeners();
         if (b.instance._client) {
@@ -145,7 +146,7 @@ function destroyBot(username) {
 function launchBotPipeline(username) {
     return new Promise((resolve) => {
         destroyBot(username);
-        console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
+        console.log(`🔌 [${username}] เริ่มต้นกระบวนการเชื่อมต่อ (1.21.11)...`);
 
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
@@ -155,7 +156,7 @@ function launchBotPipeline(username) {
             checkTimeoutInterval: 120000
         });
 
-        // 🛑 ปิดฟิสิกส์ตั้งแต่เริ่ม เพื่อไม่ให้ส่ง Packet ขัดจังหวะ Proxy ตอนย้ายห้อง และกิน CPU 0%
+        // 🛑 ปิดฟิสิกส์เพื่อตัดโหลด CPU และไม่ส่ง Packet พิกัดกวน Proxy
         bot.physicsEnabled = false;
 
         bots[username].instance = bot;
@@ -168,9 +169,9 @@ function launchBotPipeline(username) {
             if (isCompleted) return;
             isCompleted = true;
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
+            console.log(`🏠 [${username}] ยืนยันสถานะ: ล็อกอินสำเร็จและยืนในบ้านเรียบร้อย!`);
 
-            // ⚡ ล้าง Event เพื่อป้องกัน CPU สูงตอนฟาร์มไอเทมหล่น
+            // ⚡ ตัดโหลด CPU ทันที
             bot.removeAllListeners('blockUpdate');
             bot.removeAllListeners('chunkColumnLoad');
 
@@ -183,8 +184,19 @@ function launchBotPipeline(username) {
             resolve(true);
         };
 
+        // 🔍 DIAGNOSTIC: ดักตรวจแพ็กเก็ตสลับมิติ / เปลี่ยนห้อง
+        bot._client.on('packet', (data, metadata) => {
+            if (!metadata || !metadata.name) return;
+
+            if (metadata.name === 'respawn' || metadata.name === 'login') {
+                console.log(`🌐 [${username} DIAGNOSTIC] ได้รับ Packet [${metadata.name}] มิติ: ${data.dimensionType || data.worldName || 'Unknown'}`);
+            }
+        });
+
         // 1. จัดการรหัสผ่านและเข็มทิศ
         bot.once('spawn', async () => {
+            console.log(`✨ [${username} DIAGNOSTIC] Event 'spawn' ครั้งแรกเริ่มทำงาน (พิกัด: ${bot.entity?.position ? bot.entity.position.floored() : 'N/A'})`);
+            
             await sleep(3500);
             if (!bot || bot._client.ended) return;
             bot.chat('/login 112233');
@@ -197,39 +209,58 @@ function launchBotPipeline(username) {
 
             await sleep(4500);
             if (!bot || bot._client.ended) return;
+            
             const comp = bot.inventory?.items().find(i => i.name.includes('compass'));
             if (comp) {
                 try {
+                    console.log(`🧭 [${username} DIAGNOSTIC] พบเข็มทิศ: ${comp.name} ที่ Slot ${comp.slot}`);
                     await bot.equip(comp, 'hand');
                     await sleep(1500);
                     await bot.activateItem();
-                    console.log(`🧭 [${username}] เปิดเมนูเข็มทิศเรียบร้อย`);
-                } catch (e) {}
+                    console.log(`🧭 [${username}] ใช้งานเข็มทิศเปิดเมนูเรียบร้อย`);
+                } catch (e) {
+                    console.log(`⚠️ [${username} DIAGNOSTIC] ไม่สามารถถือเข็มทิศได้: ${e.message}`);
+                }
+            } else {
+                console.log(`⚠️ [${username} DIAGNOSTIC] ไม่พบเข็มทิศในตัว กำลังพยายามพิมพ์ /server survival`);
+                bot.chat('/server survival');
             }
         });
 
-        // 2. จิ้มเลือก Survival (Slot 10) และวาร์ปเข้าบ้าน
-        bot.on('windowOpen', async () => {
+        // 2. จิ้มเลือก Survival และตรวจสอบหน้าต่าง GUI อย่างละเอียด
+        bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
 
+            console.log(`🪟 [${username} DIAGNOSTIC] หน้าต่าง GUI เปิดสำเร็จ (ID: ${window.id}, Title: ${window.title}, Type: ${window.type})`);
+            
+            // รอ 3 วินาทีให้เซิร์ฟเวอร์ส่ง State ID และ Item Slot ทั้งหมดให้ครบ
             await sleep(3000);
             if (!bot || bot._client.ended) return;
 
             try {
-                // จิ้มช่อง 10 ตรงๆ (Survival)
-                await bot.clickWindow(10, 0, 0);
-                console.log(`จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
+                const itemsInWindow = window.items().map(i => `[Slot ${i.slot}: ${i.name}]`).join(', ');
+                console.log(`📦 [${username} DIAGNOSTIC] รายการไอเทมใน GUI: ${itemsInWindow || 'กำลังโหลดไอเทม...'}`);
 
-                // รอโหลดข้ามมิติ 9 วินาที แล้ววาร์ปเข้าบ้าน
-                await sleep(9000);
+                const grass = window.items().find(i => i.name.includes('grass'));
+                const slotToClick = grass ? grass.slot : 10;
+
+                console.log(`👆 [${username}] กำลังคลิกเลือกเซิร์ฟ Survival ที่ช่อง Slot ${slotToClick}...`);
+                
+                // ใช้การคลิกตามมาตรฐาน Mineflayer Window Controller
+                await bot.clickWindow(slotToClick, 0, 0);
+                console.log(`✅ [${username}] ส่ง Packet คลิก Slot ${slotToClick} เรียบร้อยแล้ว (รอโอนย้าย Socket ข้ามมิติ)`);
+
+                // รอ 10 วินาทีให้ Proxy ทำการเชื่อมต่อไปยัง Survival
+                await sleep(10000);
                 if (bot && !bot._client.ended) {
+                    console.log(`📍 [${username}] พิกัดหลังย้ายห้อง: ${bot.entity?.position ? bot.entity.position.floored() : 'N/A'}`);
                     bot.chat('/home home');
                     await sleep(3000);
                     finalizeLogin();
                 }
             } catch (err) {
-                console.log(`❌ [${username}] Error จิ้มเมนู: ${err.message}`);
+                console.log(`❌ [${username} DIAGNOSTIC] คลิกเมนูไม่สำเร็จ: ${err.message}`);
             }
         });
 
@@ -238,7 +269,7 @@ function launchBotPipeline(username) {
         });
 
         bot.on('error', (err) => {
-            console.log(`❌ [${username}] Error: ${err.message}`);
+            console.log(`❌ [${username}] Network Error: ${err.message}`);
         });
 
         bot.on('end', () => {
@@ -254,7 +285,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยก Native 1.21)
+// 🕹️ LEVER LOGIC
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -316,7 +347,6 @@ async function triggerLeverCycle() {
     }
 }
 
-// รอบสับคันโยกอัตโนมัติ
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -334,7 +364,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบบอทคิวเดี่ยว (Ultra Low-CPU)...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบวินิจฉัยและควบคุมบอท...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
