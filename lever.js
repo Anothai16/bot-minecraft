@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Full Mute Pipeline Farm (Compass Retry Mode)</div>
+        <div class="title">⚡ Direct Packet Lever Automation (Detailed Logs)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -66,7 +66,7 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
                     document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
@@ -146,7 +146,7 @@ function muteInboundStream(bot, username) {
         bot.world.getBlock = () => null;
     }
 
-    console.log(`⚡ [${username}] เปิดระบบ Full Mute Pipeline เรียบร้อย (CPU ลดเหลือศูนย์)`);
+    console.log(`⚡ [${username}] เปิดระบบ Full Mute Pipeline เรียบร้อย`);
 }
 
 // ====================================================================
@@ -262,7 +262,6 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            // วนลูปหาและกดเข็มทิศซ้ำๆ ทุก 2.5 วินาทีจนกว่า GUI จะเปิด
             for (let i = 0; i < 15; i++) {
                 await sleep(2500);
                 if (!bot || bot._client.ended || isGuiOpen) break;
@@ -357,31 +356,48 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC
+// 🕹️ LEVER LOGIC (พร้อมระบบ Enhanced Diagnostic Logs)
 // ====================================================================
-async function clickLeverSafe() {
+let leverSequenceNumber = 100;
+
+async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
-    if (!isBotOnline('Lervy_Lever')) return false;
+    if (!isBotOnline('Lervy_Lever')) {
+        console.log(`❌ [LEVER LOG] ยกเลิกการคลิก: Lervy_Lever ยังไม่ออนไลน์`);
+        return false;
+    }
 
     const leverPos = new Vec3(10428, 74, -5054);
+    const botPos = leverBot.entity?.position ? leverBot.entity.position.floored() : { x: '?', y: '?', z: '?' };
+    const distance = leverBot.entity?.position ? leverBot.entity.position.distanceTo(leverPos).toFixed(2) : 'Unknown';
+
+    console.log(`🎯 [LEVER LOG] บอทยืนที่พิกัด (${botPos.x}, ${botPos.y}, ${botPos.z}) | ระยะห่างถึงคันโยก: ${distance} บล็อก`);
+    console.log(`👀 [LEVER LOG] กำลังหันหน้าไปที่เป้าหมายคันโยก (${leverPos.x}, ${leverPos.y}, ${leverPos.z})...`);
 
     try {
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(100);
+        await sleep(150);
 
-        const mockBlock = {
-            position: leverPos,
-            name: 'lever',
-            shapes: [[[0, 0, 0, 1, 1, 1]]]
-        };
+        leverSequenceNumber++;
+        console.log(`📡 [LEVER LOG] กำลังส่ง Packet [use_item_on] ไปยังคันโยก (Seq: ${leverSequenceNumber}, Action: ${actionName})...`);
 
-        await leverBot.activateBlock(mockBlock);
+        leverBot._client.write('use_item_on', {
+            hand: 0,
+            location: leverPos,
+            direction: 1, // Face Up / Top of Block
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false,
+            worldBorderHit: false,
+            sequence: leverSequenceNumber
+        });
+
+        leverBot._client.write('arm_animation', { hand: 0 });
+        console.log(`✨ [LEVER LOG] ส่ง Packet [arm_animation] สับคันโยก ${actionName} สำเร็จ 100%!`);
         return true;
     } catch (err) {
-        if (err.message && (err.message.includes('block') || err.message.includes('interact'))) {
-            return true;
-        }
-        console.log(`❌ [LEVER ERROR]: ${err.message}`);
+        console.log(`❌ [LEVER LOG ERROR]: ${err.message}`);
         return false;
     }
 }
@@ -400,16 +416,16 @@ async function triggerLeverCycle() {
             return;
         }
 
-        console.log(`🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-        const ok = await clickLeverSafe();
+        console.log(`\n=================== 🔴 เริ่มต้นไซเคิลสับคันโยก ===================`);
+        const okClose = await clickLeverSafe('ปิดคันโยก (OFF)');
 
-        if (ok) {
-            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
+        if (okClose) {
+            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอทำงาน 30 วินาที...`);
             await sleep(30000);
 
-            console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยก (ON)...`);
-            await clickLeverSafe();
-            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
+            console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
+            await clickLeverSafe('เปิดคันโยก (ON)');
+            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย สมบูรณ์แบบ!\n`);
         }
     } finally {
         isLeverCycleRunning = false;
@@ -433,7 +449,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Full Mute Pipeline (Compass Auto-Retry)...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Direct Packet Lever Automation (พร้อม Lever Detailed Logs)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
