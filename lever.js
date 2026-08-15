@@ -12,6 +12,7 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 let bot = null;
 let isReady = false;
+let isChangingServer = false;
 
 // ================= Web Dashboard (Port 3001) =================
 const app = express();
@@ -82,6 +83,7 @@ app.listen(3001, () => logger.log('🌍 Web Dashboard รันอยู่ท�
 // ================= Bot Logic =================
 function startBot() {
     isReady = false;
+    isChangingServer = false;
     logger.setStatus(false);
     logger.log('กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
 
@@ -89,24 +91,29 @@ function startBot() {
         host: 'play.amorycraft.com',
         username: 'Lervy_Lever',
         version: '1.21.11',
-        viewDistance: 2
+        viewDistance: 2,
+        checkTimeoutInterval: 120000
     });
 
-    bot._client.on('packet', async (data, meta) => {
-        if (meta.name === 'open_book') {
-            await sleep(1000);
-            bot.chat('/login 112233');
-            logger.log('ยิงรหัสผ่านรอบที่ 1');
+    let spawnCount = 0;
+
+    bot.on('spawn', async () => {
+        spawnCount++;
+        
+        // สปอว์นรอบที่ 1 (ห้อง Lobby)
+        if (spawnCount === 1) {
             await sleep(1500);
-            try { bot.closeWindow(0); } catch(e){}
+            bot.chat('/login 112233');
+            logger.log('ยิงรหัสผ่านด่านตรวจสมุดรอบที่ 1');
+            
             await sleep(3000);
+            try { bot.closeWindow(0); } catch(e){}
+            
+            await sleep(2000);
             bot.chat('/login 112233');
             logger.log('ยิงรหัสผ่านรอบที่ 2');
-        }
-    });
 
-    bot.once('spawn', () => {
-        setTimeout(async () => {
+            await sleep(5000);
             const comp = bot.inventory?.items().find(i => i.name === 'recovery_compass');
             if (comp) {
                 try {
@@ -115,31 +122,45 @@ function startBot() {
                     await bot.activateItem();
                     logger.log('กดใช้งานเข็มทิศฟ้าเรียบร้อย');
                 } catch(e){}
+            } else {
+                bot.chat('/server survival');
             }
-        }, 8000);
+        } 
+        // สปอว์นรอบที่ 2 (เข้าสู่ห้อง Survival เรียบร้อย)
+        else if (spawnCount >= 2) {
+            isChangingServer = false;
+            await sleep(4000);
+            bot.chat('/home home');
+            isReady = true;
+            logger.setStatus(true);
+            logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+        }
     });
 
     bot.on('windowOpen', async () => {
         await sleep(2000);
         try {
+            isChangingServer = true; // ทำเครื่องหมายว่ากำลังเปลี่ยนเซิร์ฟเวอร์ ห้าม Trigger reconnect
             await bot.clickWindow(10, 0, 0);
-            logger.log('จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย');
-            await sleep(8000);
-            bot.chat('/home home');
-            isReady = true;
-            logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
+            logger.log('จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย (กำลังย้ายมิติ...)');
         } catch(e) {}
     });
 
     bot.on('end', () => {
         isReady = false;
         logger.setStatus(false);
+        if (isChangingServer) {
+            logger.log('กำลังเปลี่ยนเซิร์ฟเวอร์ย่อย...');
+            return;
+        }
         logger.log('หลุดการเชื่อมต่อ รอ 15 วินาทีเพื่อเข้าใหม่...');
-        setTimeout(startBot, 15000); // 👈 Lever รีคอนเนกต์ที่ 15 วินาที
+        setTimeout(startBot, 15000);
     });
+
+    bot.on('error', (err) => logger.log(`Error: ${err.message}`));
 }
 
-// ตรวจสอบว่าอีก 2 ตัวออนไลน์ก่อนสับคันโยก
+// ตรวจสอบสถานะบอทอื่นก่อนสับคันโยก
 function areAfkBotsOnline() {
     try {
         const k666 = JSON.parse(fs.readFileSync(path.join(LOG_DIR, 'K666.json'), 'utf8'));
@@ -150,7 +171,6 @@ function areAfkBotsOnline() {
     }
 }
 
-// รอบสับคันโยกอัตโนมัติ
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
