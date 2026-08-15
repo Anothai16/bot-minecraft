@@ -116,16 +116,8 @@ function startBot() {
         host: 'play.amorycraft.com',
         username: 'Lervy_Lever',
         version: '1.21.11',
-        viewDistance: 2,
-        checkTimeoutInterval: 120000,
-        physicsEnabled: false // 👈 ปิด Physics ไม่ต้องคำนวณการเดิน/แรงโน้มถ่วง
-    });
-
-    // 🛑 บล็อกการเก็บ Entity ไอเทมลงหน่วยความจำ
-    bot.on('entitySpawn', (entity) => {
-        if (entity.name === 'item' || entity.type === 'object') {
-            delete bot.entities[entity.id];
-        }
+        viewDistance: 1,
+        checkTimeoutInterval: 120000
     });
 
     bot.once('spawn', async () => {
@@ -220,34 +212,22 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const leverPos = new Vec3(10428, 74, -5054);
     logger.log('🔴 สั่งสับปิดคันโยก (OFF)...');
     try {
-        bot._client.write('use_item_on', {
-            hand: 0,
-            location: leverPos,
-            direction: 1,
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            sequence: 0
-        });
-        bot._client.write('arm_animation', { hand: 0 });
+        await bot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
+        await sleep(100);
+        let block = bot.blockAt ? bot.blockAt(leverPos) : null;
+        if (!block) block = { position: leverPos, name: 'lever', shapes: [[[0, 0, 0, 1, 1, 1]]] };
+        await bot.activateBlock(block);
     } catch (e) {}
     
     await sleep(30000);
     
     logger.log('🟢 สั่งสับเปิดคันโยก (ON)...');
     try {
-        bot._client.write('use_item_on', {
-            hand: 0,
-            location: leverPos,
-            direction: 1,
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            sequence: 0
-        });
-        bot._client.write('arm_animation', { hand: 0 });
+        await bot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
+        await sleep(100);
+        let block = bot.blockAt ? bot.blockAt(leverPos) : null;
+        if (!block) block = { position: leverPos, name: 'lever', shapes: [[[0, 0, 0, 1, 1, 1]]] };
+        await bot.activateBlock(block);
     } catch (e) {}
     logger.log('✅ ทำงานครบไซเคิลเรียบร้อย!');
 });
