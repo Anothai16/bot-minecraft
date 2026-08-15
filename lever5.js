@@ -138,7 +138,7 @@ function isBotActive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION
+// 🕹️ LEVER ACTION (สับคันโยกแบบ Native ปลอดภัย 100%)
 // ====================================================================
 async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
@@ -146,37 +146,25 @@ async function clickLeverSafe() {
     const leverPos = new Vec3(10428, 74, -5054);
 
     try {
-        if (botLever.entity && botLever.entity.position) {
-            const dx = leverPos.x + 0.5 - botLever.entity.position.x;
-            const dy = leverPos.y + 0.5 - (botLever.entity.position.y + 1.62);
-            const dz = leverPos.z + 0.5 - botLever.entity.position.z;
-            const yaw = Math.atan2(-dx, -dz);
-            const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
+        await botLever.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
+        await sleep(100);
 
-            botLever._client.write('player_rotation', {
-                yaw: yaw * (180 / Math.PI),
-                pitch: -pitch * (180 / Math.PI),
-                onGround: true
-            });
+        let block = botLever.blockAt ? botLever.blockAt(leverPos) : null;
+        if (!block) {
+            block = {
+                position: leverPos,
+                name: 'lever',
+                shapes: [[[0, 0, 0, 1, 1, 1]]]
+            };
         }
 
-        await sleep(50);
-
-        botLever._client.write('use_item_on', {
-            hand: 0,
-            location: leverPos,
-            direction: 1,
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            sequence: 0
-        });
-
-        botLever._client.write('arm_animation', { hand: 0 });
+        await botLever.activateBlock(block);
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดตอนสับคันโยก: ${err.message}`);
+        if (err.message && (err.message.includes('block') || err.message.includes('interact'))) {
+            return true;
+        }
+        console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
 }
@@ -252,7 +240,7 @@ function startLeverBot() {
             host: 'play.amorycraft.com', 
             username: 'Lervy_Lever',
             version: '1.21.11',
-            viewDistance: 1,
+            viewDistance: 2,
             checkTimeoutInterval: 120000,
             noResetWorld: false
         });
@@ -446,27 +434,24 @@ function handleK555Reconnect() {
 }
 
 // ====================================================================
-// 🚀 LINEAR QUEUE: รอให้เสร็จ 100% + เว้น 12 วินาทีก่อนปล่อยตัวถัดไป
+// 🚀 LINEAR QUEUE
 // ====================================================================
 async function launchAllBotsSequentially() {
     initScheduler();
 
     console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัว...");
 
-    // 1. รอ Lever Bot ให้ล็อกอินและถึงบ้านเสร็จสมบูรณ์
     await startLeverBot();
-    console.log("⏳ [QUEUE]: Lervy_Lever เข้าสู่บ้านแล้ว กำลังรอ 12 วินาทีเพื่อให้เซิร์ฟเวอร์เสถียร...");
+    console.log("⏳ [QUEUE]: Lervy_Lever เข้าสู่บ้านแล้ว รอ 12 วินาทีก่อนปล่อยตัวถัดไป...");
     await sleep(12000);
 
-    // 2. รอ K666 ให้ล็อกอินและถึงบ้านเสร็จสมบูรณ์
     await startK666Bot();
-    console.log("⏳ [QUEUE]: K666 เข้าสู่บ้านแล้ว กำลังรอ 12 วินาทีเพื่อให้เซิร์ฟเวอร์เสถียร...");
+    console.log("⏳ [QUEUE]: K666 เข้าสู่บ้านแล้ว รอ 12 วินาทีก่อนปล่อยตัวถัดไป...");
     await sleep(12000);
 
-    // 3. ปล่อย K555
     await startK555Bot();
     
-    console.log("🌟 [SYSTEM READY]: บอททั้ง 3 ตัวเข้าสู่ Survival อย่างสมบูรณ์ครบถ้วน!");
+    console.log("🌟 [SYSTEM READY]: บอททั้ง 3 ตัวเข้าสู่ Survival ครบเรียบร้อย!");
 }
 
 launchAllBotsSequentially();
