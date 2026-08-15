@@ -10,7 +10,7 @@ let isReady = false;
 let isReconnecting = false;
 let hasNavigated = false;
 
-function reconnect(delayMs = 35000) {
+function reconnect(delayMs = 40000) {
     if (isReconnecting) return;
     isReconnecting = true;
     isReady = false;
@@ -99,10 +99,7 @@ function startBot() {
                 logger.setStatus(true);
                 logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Low-CPU)');
 
-                // ⚡ ตัดโหลด CPU ทันทีที่เข้าบ้านสำเร็จ
-                if (bot.physics) bot.physics.stop();
-                bot.removeAllListeners('blockUpdate');
-                bot.removeAllListeners('chunkColumnLoad');
+                bot.physicsEnabled = false;
             }
         } catch (err) {
             logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);
@@ -111,7 +108,7 @@ function startBot() {
 
     bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
     bot.on('error', (err) => logger.log(`❌ Error: ${err.message}`));
-    bot.on('end', () => reconnect(35000));
+    bot.on('end', () => reconnect(40000));
 }
 
 startBot();

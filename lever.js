@@ -81,7 +81,7 @@ app.get('/', (req, res) => {
 });
 app.listen(3001, () => logger.log('🌍 Web Dashboard รันอยู่ที่พอร์ต http://localhost:3001'));
 
-function reconnect(delayMs = 15000) {
+function reconnect(delayMs = 20000) {
     if (isReconnecting) return;
     isReconnecting = true;
     isReady = false;
@@ -170,10 +170,8 @@ function startBot() {
                 logger.setStatus(true);
                 logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Low-CPU)');
 
-                // ⚡ ตัดโหลด CPU ทันทีที่เข้าบ้านสำเร็จ
-                if (bot.physics) bot.physics.stop();
-                bot.removeAllListeners('blockUpdate');
-                bot.removeAllListeners('chunkColumnLoad');
+                // ⚡ ปิด Physics อย่างถูกต้อง (CPU ลดเหลือ 0-1%)
+                bot.physicsEnabled = false;
             }
         } catch (err) {
             logger.log(`❌ จิ้มเมนูไม่สำเร็จ: ${err.message}`);
@@ -182,7 +180,7 @@ function startBot() {
 
     bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
     bot.on('error', (err) => logger.log(`❌ Error: ${err.message}`));
-    bot.on('end', () => reconnect(15000));
+    bot.on('end', () => reconnect(20000));
 }
 
 function areAfkBotsOnline() {
