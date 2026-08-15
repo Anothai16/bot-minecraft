@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Anti-Timeout AFK Bot Controller</div>
+        <div class="title">⚡ Fast GUI Bypass Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Anti-Kick ON)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Anti-Kick ON)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,16 +106,14 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛡️ ANTI-TIMEOUT & IMMORTAL KEEP-ALIVE SYSTEM (สำหรับ AFK Bots)
+// 🛡️ ANTI-TIMEOUT & IMMORTAL KEEP-ALIVE SYSTEM
 // ====================================================================
 function setupImmortalAfkBot(bot, username) {
-    // 1. ตรึง TCP Socket Connection ป้องกัน OS ตัดการเชื่อมต่อ
     if (bot._client && bot._client.socket) {
         bot._client.socket.setKeepAlive(true, 10000);
         bot._client.socket.setNoDelay(true);
     }
 
-    // 2. ตอบกลับ Keep-Alive และ Ping ทันทีในระดับต้นสาย Protocol
     bot._client.on('keep_alive', (packet) => {
         try {
             bot._client.write('keep_alive', {
@@ -132,7 +130,6 @@ function setupImmortalAfkBot(bot, username) {
         } catch (e) {}
     });
 
-    // 3. ทิ้ง Event และ Buffer ขยะฟาร์มทั้งหมดเพื่อไม่ให้กิน CPU
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -169,7 +166,7 @@ function setupImmortalAfkBot(bot, username) {
         bot.world.columns = {};
         bot.world.getBlock = () => null;
     }
-    console.log(`⚡ [${username}] เปิดระบบ Immortal AFK Mode เรียบร้อย (ไม่หลุดแม้ CPU 100%)`);
+    console.log(`⚡ [${username}] ติดตั้งเกราะ Immortal AFK Mode สำเร็จ`);
 }
 
 // ====================================================================
@@ -242,7 +239,7 @@ function launchBotPipeline(username) {
             username: username,
             version: '1.21.11',
             viewDistance: 2,
-            checkTimeoutInterval: 180000, // 3 นาที ป้องกัน Kick Timeout ช่วง CPU Peak
+            checkTimeoutInterval: 180000,
             disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
         });
 
@@ -262,7 +259,7 @@ function launchBotPipeline(username) {
                 resolve(false);
                 queueBot(username, 15000);
             }
-        }, 50000);
+        }, 55000);
 
         const finalizeLogin = async () => {
             if (isCompleted) return;
@@ -277,14 +274,14 @@ function launchBotPipeline(username) {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
                 bot.removeAllListeners('entityMoved');
-                await sleep(2000);
+                await sleep(1500);
                 console.log(`🚀 [Lervy_Lever] วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU...`);
                 bot.chat('/home home2');
             }
             resolve(true);
         };
 
-        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศ
+        // 1. ยิงรหัสผ่าน และวนลูปบังคับเปิดเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -296,23 +293,39 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
+            // ลูปกดเข็มทิศแบบ Multi-Trigger
             for (let i = 0; i < 15; i++) {
-                await sleep(2500);
+                await sleep(1500);
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
+                // ตรวจหาเข็มทิศในกระเป๋าหรือ Hotbar
                 const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
-                if (comp) {
-                    try {
+                
+                try {
+                    if (comp) {
                         await bot.equip(comp, 'hand');
-                        await sleep(500);
-                        await bot.activateItem();
-                        console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (ครั้งที่ ${i + 1})...`);
-                    } catch (e) {}
-                }
+                    } else {
+                        // สลับไปช่อง Hotbar 0 ถึง 8 วนไปเรื่อยๆ เผื่อไอเทมอยู่ช่องหลัก
+                        bot.setQuickBarSlot(i % 9);
+                    }
+
+                    // ยิง Packet คลิกขวาเปิดไอเทมตรงเข้าเซิร์ฟเวอร์
+                    if (bot._client) {
+                        bot._client.write('use_item', { hand: 0, sequence: 0 });
+                    }
+                    if (bot.activateItem) bot.activateItem();
+                    if (bot.swingArm) bot.swingArm('right');
+
+                    console.log(`🧭 [${username}] ส่ง Packet ใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
+                } catch (e) {}
+
+                // หากกดแล้วยังไม่เปิด ให้ลองใช้ Command Fallback
+                if (i === 4) bot.chat('/menu');
+                if (i === 8) bot.chat('/servers');
             }
         });
 
-        // 2. จิ้มเลือก Survival
+        // 2. จิ้มเลือก Survival และสั่งวาร์ปเข้าบ้าน
         bot.on('windowOpen', async (window) => {
             isGuiOpen = true;
             if (isWindowHandled) return;
@@ -343,9 +356,12 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                        await sleep(9000);
+                        await sleep(8000);
                         if (bot && !bot._client.ended) {
                             if (isAfk) {
+                                console.log(`🚀 [${username}] กำลังวาร์ปเข้าสู่บ้าน (/home home)...`);
+                                bot.chat('/home home');
+                                await sleep(3000);
                                 bot.chat('/home home');
                                 await sleep(3000);
                             }
@@ -501,7 +517,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Anti-Timeout AFK Bot Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Fast GUI Bypass Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
