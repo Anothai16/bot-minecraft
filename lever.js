@@ -40,26 +40,25 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bot Resource Controller</title>
+        <title>Minecraft Bot Controller</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
+            body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; }
             .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
             .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
             .offline { background: #ef4444; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
+            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; }
         </style>
     </head>
     <body>
-        <div class="title">⚡ Extreme Low-CPU Bot Farm (0-2% CPU Target)</div>
+        <h2 style="color:#38bdf8; margin:0 0 16px 0;">⚡ Blind / Headless Bot Automation Dashboard</h2>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k555" class="dot offline"></span> K555: <b id="txt-k555">กำลังโหลด...</b></div>
         </div>
-        <div class="log-box" id="logs">กำลังเชื่อมต่อฐานข้อมูล...</div>
+        <div class="log-box" id="logs">กำลังดึง Logs...</div>
         <script>
             async function update() {
                 try {
@@ -68,9 +67,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Blind AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Blind AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -78,14 +77,12 @@ app.get('/', (req, res) => {
             update();
         </script>
     </body>
-    </html>
-    `);
+    </html>`);
 });
-
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
 
 // ====================================================================
-// 🤖 BOT MANAGEMENT & QUEUE ENGINE
+// 🤖 BOT MANAGEMENT & PIPELINE ENGINE
 // ====================================================================
 const bots = {
     Lervy_Lever: { instance: null, ready: false },
@@ -118,7 +115,7 @@ async function processQueue() {
     try {
         await launchBotPipeline(username);
     } catch (err) {
-        console.log(`❌ [${username}] Pipeline Exception: ${err.message}`);
+        console.log(`❌ [${username}] Exception: ${err.message}`);
     } finally {
         isLoginBusy = false;
         if (loginQueue.length > 0) {
@@ -147,12 +144,16 @@ function launchBotPipeline(username) {
         destroyBot(username);
         console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
 
+        const isAfkBot = username !== 'Lervy_Lever';
+
+        // ปิด Plugins ที่ไม่จำเป็นทั้งหมดตั้งแต่ตอนสร้างบอท
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 1,
-            checkTimeoutInterval: 120000
+            checkTimeoutInterval: 120000,
+            disabledPlugins: isAfkBot ? ['sound', 'rain', 'particle', 'raycast'] : ['sound', 'rain', 'particle']
         });
 
         bot.physicsEnabled = false;
@@ -166,39 +167,27 @@ function launchBotPipeline(username) {
             if (isCompleted) return;
             isCompleted = true;
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (ตัดโหลด CPU ทันที)`);
+            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เข้าสู่โหมด Blind Low-CPU)`);
 
-            // ⚡ ปลด Event Listener ทั้งหมดของ Entity และ Block
-            const blockedEvents = [
-                'entityMoved', 'entitySpawn', 'entityGone', 'entityUpdate',
-                'blockUpdate', 'chunkColumnLoad', 'chunkColumnUnload',
-                'soundEffect', 'hardcodedSoundEffect', 'particle'
-            ];
-            blockedEvents.forEach(evt => bot.removeAllListeners(evt));
+            // ⚡ 1. ปลด Event Handler ทั้งหมด
+            bot.removeAllListeners('blockUpdate');
+            bot.removeAllListeners('chunkColumnLoad');
+            bot.removeAllListeners('entityMoved');
+            bot.removeAllListeners('entitySpawn');
 
-            // ปิดการประมวลผล Packet ที่กินทรัพยากรสูงในระดับ Client Parser
-            const heavyPackets = [
-                'rel_entity_move', 'entity_velocity', 'entity_metadata',
-                'entity_teleport', 'entity_look', 'entity_move_look',
-                'entity_head_rotation', 'world_particles', 'sound_effect',
-                'named_sound_effect', 'block_action', 'multi_block_change'
-            ];
-            heavyPackets.forEach(p => {
-                bot._client.removeAllListeners(p);
-            });
-
-            // ล้างแคช Entities ไม่ให้บวมในหน่วยความจำ
+            // ⚡ 2. สับสวิตช์ปิดการคำนวณ Entity
             bot.entities = {};
 
-            // สำหรับ AFK Bot (K666/K555) ตัด Chunk Storage ออกเพื่อประหยัด RAM/CPU
-            if (username !== 'Lervy_Lever' && bot.world) {
+            // ⚡ 3. สำหรับบอท AFK ปิดการจำ Chunk บล็อก (เซิร์ฟเวอร์จะยังคงโหลด Piston ทำงานปกติเพราะตัวละครยังยืนอยู่ตรงนั้น)
+            if (isAfkBot && bot.world) {
                 bot.world.columns = {};
+                bot.world.getBlock = () => null;
             }
 
             resolve(true);
         };
 
-        // 1. จัดการรหัสผ่านและเข็มทิศ
+        // 1. จัดการล็อกอินและเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -212,7 +201,7 @@ function launchBotPipeline(username) {
 
             await sleep(4500);
             if (!bot || bot._client.ended) return;
-            
+
             const comp = bot.inventory?.items().find(i => i.name.includes('compass'));
             if (comp) {
                 try {
@@ -224,7 +213,7 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกไอเทมตัวเลือกเซิร์ฟเวอร์
+        // 2. จิ้มเลือก Survival
         bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
@@ -241,13 +230,13 @@ function launchBotPipeline(username) {
 
                 if (menuItems.length > 0) {
                     clicked = true;
-                    
+
                     const target = menuItems.find(it => it.name.includes('grass')) || 
                                    menuItems.find(it => it.slot === 10) || 
                                    menuItems[0];
 
                     console.log(`📦 [${username}] พบไอเทมในเมนู: ${target.name} (Slot ${target.slot})`);
-                    
+
                     await sleep(1000);
                     try {
                         await bot.clickWindow(target.slot, 0, 0);
@@ -274,10 +263,6 @@ function launchBotPipeline(username) {
                 await sleep(500);
                 await tryClickMenu();
             }
-
-            if (!clicked) {
-                console.log(`⚠️ [${username}] ไม่สามารถคลิกเมนูได้ภายในเวลาที่กำหนด`);
-            }
         });
 
         bot.on('kicked', (reason) => {
@@ -285,7 +270,7 @@ function launchBotPipeline(username) {
         });
 
         bot.on('error', (err) => {
-            console.log(`❌ [${username}] Network Error: ${err.message}`);
+            console.log(`❌ [${username}] Error: ${err.message}`);
         });
 
         bot.on('end', () => {
@@ -380,7 +365,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ Extreme Low-CPU (Single Process)...");
+console.log("🚀 [SYSTEM START]: เริ่มต้นระบบ Blind Mode...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
