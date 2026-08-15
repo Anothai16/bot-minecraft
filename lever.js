@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Packet Shield & CPU Profiler Stream (0-2% CPU)</div>
+        <div class="title">⚡ Ultimate Stream Filter (0.5% - 2% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -83,7 +83,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
 
 // ====================================================================
-// 📊 REAL-TIME CPU & PROFILER ENGINE (ทุก 5 วินาที)
+// 📊 REAL-TIME CPU PROFILER (ทุก 5 วินาที)
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
@@ -103,18 +103,14 @@ setInterval(() => {
     const rssMB = Math.round(mem.rss / 1024 / 1024);
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
-    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB) | บล็อกแพ็กเก็ตขยะไปแล้ว: ${totalBlockedPackets.toLocaleString()} ชิ้น`);
+    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB) | สกัดแพ็กเก็ตขยะ: ${totalBlockedPackets.toLocaleString()} ชิ้น`);
 }, 5000);
 
 // ====================================================================
-// 🛡️ PACKET SHIELD ENGINE (ตัดการ Decode ในระดับ Binary)
+// 🛡️ STREAM PACKET INTERCEPTOR (สกัดที่ระดับ Stream Pipeline)
 // ====================================================================
-function enablePacketShield(bot, username) {
-    const deserializer = bot._client?.deserializer;
-    if (!deserializer || deserializer._shieldActive) return;
-    deserializer._shieldActive = true;
-
-    const ignoredNames = new Set([
+function attachStreamInterceptor(bot, username) {
+    const trashNames = new Set([
         'rel_entity_move',
         'entity_velocity',
         'entity_metadata',
@@ -130,48 +126,28 @@ function enablePacketShield(bot, username) {
         'multi_block_change',
         'damage_event',
         'animation',
-        'entity_equipment'
+        'entity_equipment',
+        'bundle_delimiter'
     ]);
 
-    const ignoredIds = new Set();
-    const origParse = deserializer.parsePacketBuffer.bind(deserializer);
-
-    deserializer.parsePacketBuffer = function (buffer) {
-        let offset = 0;
-        let packetId = 0;
-        let shift = 0;
-        while (offset < buffer.length) {
-            const b = buffer[offset++];
-            packetId |= (b & 0x7F) << shift;
-            if ((b & 0x80) === 0) break;
-            shift += 7;
-        }
-
-        // 🛑 ถ้าเป็น Packet ขยะ ให้ Bypass การถอดรหัสทิ้งทันที (CPU 0%)
-        if (ignoredIds.has(packetId)) {
+    // 1. ดักตัดการทำงานของ Event Loop ภายใน EventEmitter
+    const origEmit = bot._client.emit;
+    bot._client.emit = function (event, ...args) {
+        if (trashNames.has(event)) {
             totalBlockedPackets++;
-            return {
-                data: { name: 'ignored', params: {} },
-                metadata: {
-                    name: 'ignored',
-                    state: deserializer.state || 'play',
-                    size: buffer.length
-                },
-                buffer
-            };
+            return false;
         }
-
-        // ถอดรหัสปกติสำหรับแพ็กเก็ตสำคัญ
-        const res = origParse(buffer);
-        if (res && res.metadata && res.metadata.name) {
-            if (ignoredNames.has(res.metadata.name)) {
-                ignoredIds.add(packetId);
+        if (event === 'raw') {
+            const name = args[1]?.name;
+            if (trashNames.has(name)) {
+                totalBlockedPackets++;
+                return false;
             }
         }
-        return res;
+        return origEmit.apply(this, [event, ...args]);
     };
 
-    console.log(`🛡️ [${username}] เปิดใช้งาน Packet Shield สำเร็จ! (บล็อก Deserializer ขยะ 100%)`);
+    console.log(`🛡️ [${username}] ติดตั้ง Stream Interceptor เรียบร้อย (บล็อกแพ็กเก็ตขยะแบบ 100%)`);
 }
 
 // ====================================================================
@@ -245,7 +221,7 @@ function launchBotPipeline(username) {
             version: '1.21.11',
             viewDistance: 1,
             checkTimeoutInterval: 120000,
-            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
+            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle', 'raycast']
         });
 
         bot.physicsEnabled = false;
@@ -261,8 +237,8 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            // ⚡ เปิดเกราะ Packet Shield สกัด CPU 100%
-            enablePacketShield(bot, username);
+            // ⚡ ติดตั้งเกราะ Stream Interceptor ทันทีที่เข้าถึงบ้าน
+            attachStreamInterceptor(bot, username);
 
             bot.removeAllListeners('blockUpdate');
             bot.removeAllListeners('chunkColumnLoad');
@@ -377,7 +353,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC
+// 🕹️ LEVER LOGIC (สับคันโยกแบบ Direct Interaction ไม่กิน CPU)
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -456,7 +432,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Packet Shield...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stream Interceptor...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
