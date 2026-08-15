@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Verified Lever Click & Low-CPU Controller</div>
+        <div class="title">⚡ On-Demand Valve Farm Controller (Strict &lt; 15% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -66,11 +66,11 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Valve Ready)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Filter)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Filter)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,10 +106,12 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 PRECISE PACKET FILTER (กรองเฉพาะขยะฟาร์ม ไม่แตะ Protocol สำคัญ)
+// 🛑 ON-DEMAND VALVE ENGINE
 // ====================================================================
-function applyPreciseFilter(bot, username) {
-    const isAfk = username !== 'Lervy_Lever';
+let isLeverValveOpen = false;
+
+function setupValveFilter(bot, username) {
+    const isLever = username === 'Lervy_Lever';
 
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
@@ -122,25 +124,22 @@ function applyPreciseFilter(bot, username) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
-        const blockedPacketNames = new Set([
-            'rel_entity_move', 'entity_velocity', 'entity_metadata',
-            'entity_teleport', 'entity_look', 'entity_move_look',
-            'entity_head_rotation', 'world_particles', 'sound_effect',
-            'named_sound_effect', 'sound_effect_entity', 'block_action',
-            'multi_block_change', 'damage_event', 'animation', 'entity_equipment'
-        ]);
-
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                const res = origParse(buffer);
-                if (res && res.metadata && blockedPacketNames.has(res.metadata.name)) {
+                // สำหรับ Lever: หากเปิดวาล์ว ให้ยอมรับข้อมูลผ่านเข้ามาได้เพื่อใช้สับคันโยก
+                if (isLever && isLeverValveOpen) {
+                    return origParse(buffer);
+                }
+
+                // สภาวะปกติ: ตัดทิ้ง Packet ขนาด > 24 bytes ทั้งหมด
+                if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
                         metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
                         buffer
                     };
                 }
-                return res;
+                return origParse(buffer);
             } catch (e) {
                 return {
                     data: { name: 'ignored', params: {} },
@@ -151,15 +150,8 @@ function applyPreciseFilter(bot, username) {
         };
     }
 
-    if (isAfk) {
-        bot.entities = {};
-        if (bot.world) {
-            bot.world.columns = {};
-            bot.world.getBlock = () => null;
-        }
-    }
-
-    console.log(`⚡ [${username}] ติดตั้ง Precise Filter เรียบร้อย`);
+    bot.entities = {};
+    console.log(`⚡ [${username}] ติดตั้งระบบ On-Demand Valve Filter เรียบร้อย`);
 }
 
 // ====================================================================
@@ -225,15 +217,13 @@ function launchBotPipeline(username) {
         destroyBot(username);
         console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
 
-        const isAfk = username !== 'Lervy_Lever';
-
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 1,
             checkTimeoutInterval: 120000,
-            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'physics']
         });
 
         bot.physicsEnabled = false;
@@ -261,7 +251,7 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            applyPreciseFilter(bot, username);
+            setupValveFilter(bot, username);
             resolve(true);
         };
 
@@ -369,7 +359,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยกแบบ Full-State Interaction)
+// 🕹️ LEVER LOGIC (พร้อมระบบสลับวาล์วอัตโนมัติ)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -389,7 +379,11 @@ async function clickLeverSafe(actionName) {
     }
 
     try {
+        // ⚡ 1. เปิดวาล์วและฟิสิกส์ชั่วคราว เพื่อรับการซิงก์ตำแหน่งจากเซิร์ฟเวอร์
+        isLeverValveOpen = true;
         leverBot.physicsEnabled = true;
+        await sleep(500);
+
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
         await sleep(250);
 
@@ -402,20 +396,20 @@ async function clickLeverSafe(actionName) {
             };
         }
 
-        // ดำเนินการสับคันโยกผ่าน activateBlock
+        // ⚡ 2. สับคันโยก
         await leverBot.activateBlock(block);
-        
-        // ส่ง Animation ยืนยัน
-        if (leverBot.swingArm) {
-            leverBot.swingArm('right');
-        }
-
+        if (leverBot.swingArm) leverBot.swingArm('right');
         console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
-        await sleep(200);
+        await sleep(300);
+
+        // ⚡ 3. สับเสร็จแล้วสั่ง "ปิดวาล์ว" และ "ปิดฟิสิกส์" ทันที เพื่อล็อก CPU ให้อยู่ระดับต่ำ
+        isLeverValveOpen = false;
         leverBot.physicsEnabled = false;
+        leverBot.entities = {};
         return true;
     } catch (err) {
+        isLeverValveOpen = false;
         leverBot.physicsEnabled = false;
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
@@ -469,7 +463,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Verified Lever Click & Low-CPU Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ On-Demand Valve Farm Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
