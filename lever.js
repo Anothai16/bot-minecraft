@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Zero-Decode AFK Loader (CPU 0.5% - 2%)</div>
+        <div class="title">⚡ Turbo Low-CPU Farm (Target &lt; 35% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Zero-CPU)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute Pipeline)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Zero-CPU)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute Pipeline)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,47 +106,65 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 ZERO-DECODE ENGINE (สกัดลึกถึง ProtoDef Deserializer)
+// 🛑 PIPELINE THROTTLER (สกัด Buffer ในระดับ Decoder)
 // ====================================================================
-function stripHeavyProcessing(bot, username) {
+function muteInboundStream(bot, username) {
     const isAfk = username !== 'Lervy_Lever';
 
-    // 1. ถอด Event Emitter ออกทั้งหมด
+    // 1. ถอด Event ทั้งหมด
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience'
+        'soundEffect', 'particle', 'experience', 'move'
     ];
     trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    // 2. สำหรับบอท AFK: ตัดส่วนประกอบภายในของ Mineflayer ทิ้งทั้งหมด
-    if (isAfk) {
-        if (bot._client) {
-            // ดักเฉพาะ keep_alive, ping, chat, disconnect
-            const essentialPackets = new Set([
-                'keep_alive', 'ping', 'system_chat', 'disguised_chat',
-                'player_chat', 'kick_disconnect', 'disconnect', 'login'
-            ]);
+    // 2. Override ฟังก์ชัน parsePacketBuffer ที่ตัวแปลง Protocol
+    if (bot._client && bot._client.deserializer) {
+        const deserializer = bot._client.deserializer;
+        const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
-            const origEmit = bot._client.emit;
-            bot._client.emit = function (event, ...args) {
-                if (event === 'packet') {
-                    const name = args[1]?.name;
-                    if (name && !essentialPackets.has(name)) return false;
+        deserializer.parsePacketBuffer = function (buffer) {
+            try {
+                // อ่าน VarInt ตัวแรก (Packet ID)
+                let packetId = 0;
+                let shift = 0;
+                let offset = 0;
+                while (offset < buffer.length) {
+                    const b = buffer[offset++];
+                    packetId |= (b & 0x7F) << shift;
+                    if ((b & 0x80) === 0) break;
+                    shift += 7;
                 }
-                return origEmit.apply(this, [event, ...args]);
-            };
-        }
 
-        // ล้างหน่วยความจำ Entity และ Block ของ AFK Bot ให้ว่างสนิท
-        bot.entities = {};
-        if (bot.world) {
-            bot.world.columns = {};
-            bot.world.getBlock = () => null;
-        }
+                // สำหรับบอท AFK: ถ้าขนาดแพ็กเก็ตเกิน 16 ไบต์ (ส่วนใหญ่เป็น Entity/Block/Chunk ข้อมูลใหญ่) ให้ทิ้งทันที
+                if (isAfk && buffer.length > 24) {
+                    return {
+                        data: { name: 'ignored', params: {} },
+                        metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
+                        buffer
+                    };
+                }
+
+                return origParse(buffer);
+            } catch (e) {
+                return {
+                    data: { name: 'ignored', params: {} },
+                    metadata: { name: 'ignored', state: 'play', size: buffer.length },
+                    buffer
+                };
+            }
+        };
     }
 
-    console.log(`⚡ [${username}] เปิดใช้งานโหมดตัดโหลดสมบูรณ์ (CPU 0%)`);
+    // ล้าง Objects
+    bot.entities = {};
+    if (bot.world) {
+        bot.world.columns = {};
+        bot.world.getBlock = () => null;
+    }
+
+    console.log(`⚡ [${username}] เปิดระบบ Mute Pipeline เรียบร้อย (ตัด Buffer ขยะที่ต้นทาง)`);
 }
 
 // ====================================================================
@@ -236,7 +254,7 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            stripHeavyProcessing(bot, username);
+            muteInboundStream(bot, username);
             resolve(true);
         };
 
@@ -339,7 +357,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยก Native 1.21)
+// 🕹️ LEVER LOGIC
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -418,7 +436,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Zero-Decode AFK Loader...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Mute Pipeline Throttler...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
