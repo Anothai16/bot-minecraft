@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Zero-Decode AFK Loader (CPU 0.5% - 2%)</div>
+        <div class="title">⚡ Ultimate Stream Filter (0.5% - 2% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Zero-CPU)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Shield ON)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Zero-CPU)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Shield ON)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -87,6 +87,7 @@ app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงา�
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
+let totalBlockedPackets = 0;
 
 setInterval(() => {
     const elapsedMs = Date.now() - lastCpuTime;
@@ -102,51 +103,51 @@ setInterval(() => {
     const rssMB = Math.round(mem.rss / 1024 / 1024);
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
-    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
+    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB) | สกัดแพ็กเก็ตขยะ: ${totalBlockedPackets.toLocaleString()} ชิ้น`);
 }, 5000);
 
 // ====================================================================
-// 🛑 ZERO-DECODE ENGINE (สกัดลึกถึง ProtoDef Deserializer)
+// 🛡️ STREAM PACKET INTERCEPTOR (สกัดที่ระดับ Stream Pipeline)
 // ====================================================================
-function stripHeavyProcessing(bot, username) {
-    const isAfk = username !== 'Lervy_Lever';
+function attachStreamInterceptor(bot, username) {
+    const trashNames = new Set([
+        'rel_entity_move',
+        'entity_velocity',
+        'entity_metadata',
+        'entity_teleport',
+        'entity_look',
+        'entity_move_look',
+        'entity_head_rotation',
+        'world_particles',
+        'sound_effect',
+        'named_sound_effect',
+        'sound_effect_entity',
+        'block_action',
+        'multi_block_change',
+        'damage_event',
+        'animation',
+        'entity_equipment',
+        'bundle_delimiter'
+    ]);
 
-    // 1. ถอด Event Emitter ออกทั้งหมด
-    const trashEvents = [
-        'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
-        'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience'
-    ];
-    trashEvents.forEach(evt => bot.removeAllListeners(evt));
-
-    // 2. สำหรับบอท AFK: ตัดส่วนประกอบภายในของ Mineflayer ทิ้งทั้งหมด
-    if (isAfk) {
-        if (bot._client) {
-            // ดักเฉพาะ keep_alive, ping, chat, disconnect
-            const essentialPackets = new Set([
-                'keep_alive', 'ping', 'system_chat', 'disguised_chat',
-                'player_chat', 'kick_disconnect', 'disconnect', 'login'
-            ]);
-
-            const origEmit = bot._client.emit;
-            bot._client.emit = function (event, ...args) {
-                if (event === 'packet') {
-                    const name = args[1]?.name;
-                    if (name && !essentialPackets.has(name)) return false;
-                }
-                return origEmit.apply(this, [event, ...args]);
-            };
+    // 1. ดักตัดการทำงานของ Event Loop ภายใน EventEmitter
+    const origEmit = bot._client.emit;
+    bot._client.emit = function (event, ...args) {
+        if (trashNames.has(event)) {
+            totalBlockedPackets++;
+            return false;
         }
-
-        // ล้างหน่วยความจำ Entity และ Block ของ AFK Bot ให้ว่างสนิท
-        bot.entities = {};
-        if (bot.world) {
-            bot.world.columns = {};
-            bot.world.getBlock = () => null;
+        if (event === 'raw') {
+            const name = args[1]?.name;
+            if (trashNames.has(name)) {
+                totalBlockedPackets++;
+                return false;
+            }
         }
-    }
+        return origEmit.apply(this, [event, ...args]);
+    };
 
-    console.log(`⚡ [${username}] เปิดใช้งานโหมดตัดโหลดสมบูรณ์ (CPU 0%)`);
+    console.log(`🛡️ [${username}] ติดตั้ง Stream Interceptor เรียบร้อย (บล็อกแพ็กเก็ตขยะแบบ 100%)`);
 }
 
 // ====================================================================
@@ -236,7 +237,20 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            stripHeavyProcessing(bot, username);
+            // ⚡ ติดตั้งเกราะ Stream Interceptor ทันทีที่เข้าถึงบ้าน
+            attachStreamInterceptor(bot, username);
+
+            bot.removeAllListeners('blockUpdate');
+            bot.removeAllListeners('chunkColumnLoad');
+            bot.removeAllListeners('entityMoved');
+            bot.removeAllListeners('entitySpawn');
+
+            bot.entities = {};
+            if (isAfk && bot.world) {
+                bot.world.columns = {};
+                bot.world.getBlock = () => null;
+            }
+
             resolve(true);
         };
 
@@ -339,7 +353,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (สับคันโยก Native 1.21)
+// 🕹️ LEVER LOGIC (สับคันโยกแบบ Direct Interaction ไม่กิน CPU)
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -418,7 +432,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Zero-Decode AFK Loader...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stream Interceptor...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
