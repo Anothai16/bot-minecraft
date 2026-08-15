@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Direct Packet Lever Automation (Detailed Logs)</div>
+        <div class="title">⚡ Stable Anti-Kick Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -83,7 +83,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
 
 // ====================================================================
-// 📊 REAL-TIME CPU PROFILER (ทุก 5 วินาที)
+// 📊 REAL-TIME CPU PROFILER
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
@@ -106,7 +106,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 FULL MUTE PIPELINE ENGINE (ตัด Buffer ขยะทั้ง 3 บอท)
+// 🛑 FULL MUTE PIPELINE ENGINE (สำหรับ AFK Bots)
 // ====================================================================
 function muteInboundStream(bot, username) {
     const trashEvents = [
@@ -145,8 +145,6 @@ function muteInboundStream(bot, username) {
         bot.world.columns = {};
         bot.world.getBlock = () => null;
     }
-
-    console.log(`⚡ [${username}] เปิดระบบ Full Mute Pipeline เรียบร้อย`);
 }
 
 // ====================================================================
@@ -212,13 +210,15 @@ function launchBotPipeline(username) {
         destroyBot(username);
         console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
 
+        const isAfk = username !== 'Lervy_Lever';
+
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 1,
             checkTimeoutInterval: 120000,
-            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'physics']
+            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
         });
 
         bot.physicsEnabled = false;
@@ -246,11 +246,18 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            muteInboundStream(bot, username);
+            if (isAfk) {
+                muteInboundStream(bot, username);
+            } else {
+                // สำหรับ Lever: ปิดเฉพาะ Entity และปิด Physics ตอนยืนนิ่ง
+                bot.removeAllListeners('entityMoved');
+                bot.removeAllListeners('entitySpawn');
+                bot.entities = {};
+            }
             resolve(true);
         };
 
-        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศซ้ำจนกว่า GUI จะเปิด
+        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -274,13 +281,11 @@ function launchBotPipeline(username) {
                         await bot.activateItem();
                         console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (ครั้งที่ ${i + 1})...`);
                     } catch (e) {}
-                } else {
-                    console.log(`🔍 [${username}] กำลังค้นหาเข็มทิศในตัว (รอโหลดกระเป๋า)...`);
                 }
             }
         });
 
-        // 2. จิ้มเลือก Survival เมื่อหน้าต่าง GUI เปิด
+        // 2. จิ้มเลือก Survival
         bot.on('windowOpen', async (window) => {
             isGuiOpen = true;
             if (isWindowHandled) return;
@@ -356,48 +361,57 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (พร้อมระบบ Enhanced Diagnostic Logs)
+// 🕹️ LEVER LOGIC (Safe Interaction with Physics Sync)
 // ====================================================================
-let leverSequenceNumber = 100;
-
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
     if (!isBotOnline('Lervy_Lever')) {
-        console.log(`❌ [LEVER LOG] ยกเลิกการคลิก: Lervy_Lever ยังไม่ออนไลน์`);
+        console.log(`❌ [LEVER LOG] ยกเลิก: Lervy_Lever ไม่ออนไลน์`);
         return false;
     }
 
     const leverPos = new Vec3(10428, 74, -5054);
-    const botPos = leverBot.entity?.position ? leverBot.entity.position.floored() : { x: '?', y: '?', z: '?' };
-    const distance = leverBot.entity?.position ? leverBot.entity.position.distanceTo(leverPos).toFixed(2) : 'Unknown';
+    let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
+    let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
-    console.log(`🎯 [LEVER LOG] บอทยืนที่พิกัด (${botPos.x}, ${botPos.y}, ${botPos.z}) | ระยะห่างถึงคันโยก: ${distance} บล็อก`);
-    console.log(`👀 [LEVER LOG] กำลังหันหน้าไปที่เป้าหมายคันโยก (${leverPos.x}, ${leverPos.y}, ${leverPos.z})...`);
+    // หากไม่อยู่หน้าคันโยก ให้วาร์ปกลับบ้านก่อน
+    if (distance > 4) {
+        console.log(`⚠️ [LEVER LOG] บอทไม่ได้อยู่หน้าคันโยก (ระยะ: ${distance.toFixed(1)} บล็อก) กำลังวาร์ป /home home...`);
+        leverBot.chat('/home home');
+        await sleep(3500);
+        currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
+        distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
+    }
+
+    console.log(`🎯 [LEVER LOG] ยืนที่ (${currentPos?.x}, ${currentPos?.y}, ${currentPos?.z}) | ระยะห่าง: ${distance.toFixed(2)} บล็อก`);
 
     try {
+        // ⚡ 1. เปิด Physics และมองไปที่คันโยกเพื่อซิงก์พิกัดและมุมมองกับเซิร์ฟเวอร์
+        leverBot.physicsEnabled = true;
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(150);
+        await sleep(300);
 
-        leverSequenceNumber++;
-        console.log(`📡 [LEVER LOG] กำลังส่ง Packet [use_item_on] ไปยังคันโยก (Seq: ${leverSequenceNumber}, Action: ${actionName})...`);
+        // ⚡ 2. หาบล็อกจริง หรือใช้ Proxy Block Object
+        let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
+        if (!block) {
+            block = {
+                position: leverPos,
+                name: 'lever',
+                shapes: [[[0, 0, 0, 1, 1, 1]]]
+            };
+        }
 
-        leverBot._client.write('use_item_on', {
-            hand: 0,
-            location: leverPos,
-            direction: 1, // Face Up / Top of Block
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            worldBorderHit: false,
-            sequence: leverSequenceNumber
-        });
+        // ⚡ 3. สับคันโยกผ่าน activateBlock มาตรฐาน
+        await leverBot.activateBlock(block);
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
-        leverBot._client.write('arm_animation', { hand: 0 });
-        console.log(`✨ [LEVER LOG] ส่ง Packet [arm_animation] สับคันโยก ${actionName} สำเร็จ 100%!`);
+        await sleep(200);
+        // ⚡ 4. ปิด Physics กลับคืนเพื่อประหยัด CPU ทันที
+        leverBot.physicsEnabled = false;
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER LOG ERROR]: ${err.message}`);
+        leverBot.physicsEnabled = false;
+        console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
 }
@@ -449,7 +463,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Direct Packet Lever Automation (พร้อม Lever Detailed Logs)...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Anti-Kick Lever Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
