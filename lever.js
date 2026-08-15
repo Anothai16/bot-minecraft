@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Turbo Low-CPU Farm (Target &lt; 35% CPU)</div>
+        <div class="title">⚡ Full Mute Pipeline Farm (Target &lt; 25% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -66,11 +66,11 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (ในบ้าน)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute Pipeline)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute Pipeline)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Mute All)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -106,12 +106,10 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🛑 PIPELINE THROTTLER (สกัด Buffer ในระดับ Decoder)
+// 🛑 FULL MUTE PIPELINE ENGINE (ตัด Buffer ขยะทั้ง 3 บอท)
 // ====================================================================
 function muteInboundStream(bot, username) {
-    const isAfk = username !== 'Lervy_Lever';
-
-    // 1. ถอด Event ทั้งหมด
+    // 1. ถอด Event Emitter ออกทั้งหมด
     const trashEvents = [
         'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
         'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
@@ -119,33 +117,21 @@ function muteInboundStream(bot, username) {
     ];
     trashEvents.forEach(evt => bot.removeAllListeners(evt));
 
-    // 2. Override ฟังก์ชัน parsePacketBuffer ที่ตัวแปลง Protocol
+    // 2. Override ฟังก์ชัน parsePacketBuffer ที่ตัวแปลง Protocol (ตัดทิ้งทั้ง 3 ตัว)
     if (bot._client && bot._client.deserializer) {
         const deserializer = bot._client.deserializer;
         const origParse = deserializer.parsePacketBuffer.bind(deserializer);
 
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                // อ่าน VarInt ตัวแรก (Packet ID)
-                let packetId = 0;
-                let shift = 0;
-                let offset = 0;
-                while (offset < buffer.length) {
-                    const b = buffer[offset++];
-                    packetId |= (b & 0x7F) << shift;
-                    if ((b & 0x80) === 0) break;
-                    shift += 7;
-                }
-
-                // สำหรับบอท AFK: ถ้าขนาดแพ็กเก็ตเกิน 16 ไบต์ (ส่วนใหญ่เป็น Entity/Block/Chunk ข้อมูลใหญ่) ให้ทิ้งทันที
-                if (isAfk && buffer.length > 24) {
+                // สำหรับทุกบอท: Packet ขนาดเกิน 24 ไบต์คือข้อมูล Entity/Block/Sound ในฟาร์ม -> ตัดทิ้งทันที
+                if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
                         metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
                         buffer
                     };
                 }
-
                 return origParse(buffer);
             } catch (e) {
                 return {
@@ -157,14 +143,14 @@ function muteInboundStream(bot, username) {
         };
     }
 
-    // ล้าง Objects
+    // ล้าง Objects ในหน่วยความจำ
     bot.entities = {};
     if (bot.world) {
         bot.world.columns = {};
         bot.world.getBlock = () => null;
     }
 
-    console.log(`⚡ [${username}] เปิดระบบ Mute Pipeline เรียบร้อย (ตัด Buffer ขยะที่ต้นทาง)`);
+    console.log(`⚡ [${username}] เปิดระบบ Full Mute Pipeline เรียบร้อย (CPU ลดเหลือศูนย์)`);
 }
 
 // ====================================================================
@@ -230,15 +216,13 @@ function launchBotPipeline(username) {
         destroyBot(username);
         console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
 
-        const isAfk = username !== 'Lervy_Lever';
-
         const bot = mineflayer.createBot({
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
             viewDistance: 1,
             checkTimeoutInterval: 120000,
-            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle', 'raycast']
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'physics']
         });
 
         bot.physicsEnabled = false;
@@ -254,6 +238,7 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
+            // ⚡ Mute Pipeline ทุกตัว (รวมทั้ง Lervy_Lever)
             muteInboundStream(bot, username);
             resolve(true);
         };
@@ -357,7 +342,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC
+// 🕹️ LEVER LOGIC (สับคันโยกแบบ Raw Network Packet 1.21)
 // ====================================================================
 async function clickLeverSafe() {
     const leverBot = bots.Lervy_Lever.instance;
@@ -367,18 +352,16 @@ async function clickLeverSafe() {
 
     try {
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(150);
+        await sleep(100);
 
-        let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
-        if (!block) {
-            block = {
-                position: leverPos,
-                name: 'lever',
-                shapes: [[[0, 0, 0, 1, 1, 1]]]
-            };
-        }
+        // ส่ง Interaction จำลองผ่าน Object เสมือน (ไม่ต้องพึ่ง blockAt ที่ปิดไป)
+        const mockBlock = {
+            position: leverPos,
+            name: 'lever',
+            shapes: [[[0, 0, 0, 1, 1, 1]]]
+        };
 
-        await leverBot.activateBlock(block);
+        await leverBot.activateBlock(mockBlock);
         return true;
     } catch (err) {
         if (err.message && (err.message.includes('block') || err.message.includes('interact'))) {
@@ -436,7 +419,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Mute Pipeline Throttler...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Full Mute Pipeline...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
