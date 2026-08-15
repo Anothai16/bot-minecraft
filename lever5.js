@@ -135,14 +135,14 @@ function destroyBot(botInstance) {
 }
 
 function isBotActive(bot) {
-    return bot && bot._client && !bot._client.ended && bot.isInSurvival;
+    return bot && bot._client && !bot._client.ended;
 }
 
-// 💓 รักษาสถานะการเชื่อมต่อสำหรับบอท AFK ไม่ให้ Server Timeout ตอนฟาร์มขยับ
+// 💓 รักษาสถานะ Connection บอท AFK ไม่ให้ Server ตัดสายตอนฟาร์มขยับ
 function keepAfkAlive(bot) {
     if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
     bot.afkHeartbeat = setInterval(() => {
-        if (bot && bot._client && !bot._client.ended && bot.isInSurvival) {
+        if (isBotActive(bot)) {
             try {
                 bot._client.write('player_rotation', {
                     yaw: (bot.entity?.yaw || 0) + 0.001,
@@ -155,7 +155,7 @@ function keepAfkAlive(bot) {
 }
 
 // ====================================================================
-// 🕹️ LEVER ACTION
+// 🕹️ LEVER ACTION (Native Method)
 // ====================================================================
 async function clickLeverSafe() {
     if (!isBotActive(botLever)) return false;
@@ -244,62 +244,44 @@ function initScheduler() {
 // 🕹️ 1. LEVER BOT
 // ====================================================================
 function startLeverBot() {
-    return new Promise((resolve) => {
-        if (isReconnectingLever) return resolve(false);
-        isReconnectingLever = true;
+    if (isReconnectingLever) return;
+    isReconnectingLever = true;
 
-        destroyBot(botLever);
-        botLever = null;
+    destroyBot(botLever);
+    botLever = null;
 
-        console.log('🔌 [Lervy_Lever] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
-        
-        const bot = mineflayer.createBot({ 
-            host: 'play.amorycraft.com', 
-            username: 'Lervy_Lever',
-            version: '1.21.11',
-            viewDistance: 2,
-            checkTimeoutInterval: 120000,
-            noResetWorld: false
+    console.log('🔌 [Lervy_Lever] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
+    
+    const bot = mineflayer.createBot({ 
+        host: 'play.amorycraft.com', 
+        username: 'Lervy_Lever',
+        version: '1.21.11',
+        viewDistance: 2,
+        checkTimeoutInterval: 120000,
+        noResetWorld: false
+    });
+
+    botLever = bot;
+
+    if (bot._client) {
+        bot._client.on('packet', (data, metadata) => {
+            if (!metadata || !metadata.name) return;
+            if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
         });
+    }
 
-        bot.isInSurvival = false;
-        botLever = bot;
+    setupAmoryLogin(bot);
+    keepAfkAlive(bot);
 
-        if (bot._client) {
-            bot._client.on('packet', (data, metadata) => {
-                if (!metadata || !metadata.name) return;
-                if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
-            });
-        }
+    bot.on('kicked', (reason) => {
+        console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+    });
 
-        let isResolved = false;
-        const markSuccess = () => {
-            if (!isResolved) {
-                isResolved = true;
-                bot.isInSurvival = true;
-                isReconnectingLever = false;
-                keepAfkAlive(bot);
-                resolve(true);
-            }
-        };
+    bot.on('error', (err) => console.log(`\n❌ [Lervy_Lever Error]: ${err.message}`));
 
-        setupAmoryLogin(bot, markSuccess);
-
-        bot.on('kicked', (reason) => {
-            console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-        });
-
-        bot.on('error', (err) => console.log(`\n❌ [Lervy_Lever Error]: ${err.message}`));
-
-        bot.on('end', () => { 
-            bot.isInSurvival = false;
-            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
-            if (!isResolved) {
-                isResolved = true;
-                resolve(false);
-            }
-            handleLeverReconnect();
-        });
+    bot.on('end', () => { 
+        if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
+        handleLeverReconnect();
     });
 }
 
@@ -316,62 +298,44 @@ function handleLeverReconnect() {
 // 🤖 2. K666 BOT
 // ====================================================================
 function startK666Bot() {
-    return new Promise((resolve) => {
-        if (isReconnectingK666) return resolve(false);
-        isReconnectingK666 = true;
+    if (isReconnectingK666) return;
+    isReconnectingK666 = true;
 
-        destroyBot(botK666);
-        botK666 = null;
+    destroyBot(botK666);
+    botK666 = null;
 
-        console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
-        
-        const bot = mineflayer.createBot({ 
-            host: 'play.amorycraft.com', 
-            username: 'K666',
-            version: '1.21.11',
-            viewDistance: 2,
-            checkTimeoutInterval: 120000,
-            noResetWorld: false
+    console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
+    
+    const bot = mineflayer.createBot({ 
+        host: 'play.amorycraft.com', 
+        username: 'K666',
+        version: '1.21.11',
+        viewDistance: 2,
+        checkTimeoutInterval: 120000,
+        noResetWorld: false
+    });
+
+    botK666 = bot;
+
+    if (bot._client) {
+        bot._client.on('packet', (data, metadata) => {
+            if (!metadata || !metadata.name) return;
+            if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
         });
+    }
 
-        bot.isInSurvival = false;
-        botK666 = bot;
+    setupAmoryLogin(bot);
+    keepAfkAlive(bot);
 
-        if (bot._client) {
-            bot._client.on('packet', (data, metadata) => {
-                if (!metadata || !metadata.name) return;
-                if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
-            });
-        }
+    bot.on('kicked', (reason) => {
+        console.log(`\n🚨 [K666]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+    });
 
-        let isResolved = false;
-        const markSuccess = () => {
-            if (!isResolved) {
-                isResolved = true;
-                bot.isInSurvival = true;
-                isReconnectingK666 = false;
-                keepAfkAlive(bot);
-                resolve(true);
-            }
-        };
+    bot.on('error', (err) => console.log(`\n❌ [K666 Error]: ${err.message}`));
 
-        setupAmoryLogin(bot, markSuccess);
-
-        bot.on('kicked', (reason) => {
-            console.log(`\n🚨 [K666]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-        });
-
-        bot.on('error', (err) => console.log(`\n❌ [K666 Error]: ${err.message}`));
-
-        bot.on('end', () => { 
-            bot.isInSurvival = false;
-            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
-            if (!isResolved) {
-                isResolved = true;
-                resolve(false);
-            }
-            handleK666Reconnect();
-        });
+    bot.on('end', () => { 
+        if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
+        handleK666Reconnect();
     });
 }
 
@@ -388,62 +352,44 @@ function handleK666Reconnect() {
 // 🤖 3. K555 BOT
 // ====================================================================
 function startK555Bot() {
-    return new Promise((resolve) => {
-        if (isReconnectingK555) return resolve(false);
-        isReconnectingK555 = true;
+    if (isReconnectingK555) return;
+    isReconnectingK555 = true;
 
-        destroyBot(botK555);
-        botK555 = null;
+    destroyBot(botK555);
+    botK555 = null;
 
-        console.log('🔌 [K555] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
-        
-        const bot = mineflayer.createBot({ 
-            host: 'play.amorycraft.com', 
-            username: 'K555',
-            version: '1.21.11',
-            viewDistance: 2,
-            checkTimeoutInterval: 120000,
-            noResetWorld: false
+    console.log('🔌 [K555] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
+    
+    const bot = mineflayer.createBot({ 
+        host: 'play.amorycraft.com', 
+        username: 'K555',
+        version: '1.21.11',
+        viewDistance: 2,
+        checkTimeoutInterval: 120000,
+        noResetWorld: false
+    });
+
+    botK555 = bot;
+
+    if (bot._client) {
+        bot._client.on('packet', (data, metadata) => {
+            if (!metadata || !metadata.name) return;
+            if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
         });
+    }
 
-        bot.isInSurvival = false;
-        botK555 = bot;
+    setupAmoryLogin(bot);
+    keepAfkAlive(bot);
 
-        if (bot._client) {
-            bot._client.on('packet', (data, metadata) => {
-                if (!metadata || !metadata.name) return;
-                if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
-            });
-        }
+    bot.on('kicked', (reason) => {
+        console.log(`\n🚨 [K555]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+    });
 
-        let isResolved = false;
-        const markSuccess = () => {
-            if (!isResolved) {
-                isResolved = true;
-                bot.isInSurvival = true;
-                isReconnectingK555 = false;
-                keepAfkAlive(bot);
-                resolve(true);
-            }
-        };
+    bot.on('error', (err) => console.log(`\n❌ [K555 Error]: ${err.message}`));
 
-        setupAmoryLogin(bot, markSuccess);
-
-        bot.on('kicked', (reason) => {
-            console.log(`\n🚨 [K555]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-        });
-
-        bot.on('error', (err) => console.log(`\n❌ [K555 Error]: ${err.message}`));
-
-        bot.on('end', () => { 
-            bot.isInSurvival = false;
-            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
-            if (!isResolved) {
-                isResolved = true;
-                resolve(false);
-            }
-            handleK555Reconnect();
-        });
+    bot.on('end', () => { 
+        if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
+        handleK555Reconnect();
     });
 }
 
@@ -457,24 +403,23 @@ function handleK555Reconnect() {
 }
 
 // ====================================================================
-// 🚀 LINEAR QUEUE
+// 🚀 ปล่อยบอททีละตัว (เว้นห่างกันตัวละ 30 วินาที ชัวร์ 100%)
 // ====================================================================
 async function launchAllBotsSequentially() {
     initScheduler();
 
-    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัวแบบรอถึงบ้าน...");
+    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัว...");
 
-    await startLeverBot();
-    console.log("⏳ [QUEUE]: Lervy_Lever เข้าสู่บ้านแล้ว รอ 12 วินาทีก่อนปล่อยตัวถัดไป...");
-    await sleep(12000);
+    startLeverBot();
+    console.log("⏳ [QUEUE]: ปล่อย Lervy_Lever แล้ว... รอ 30 วินาทีให้ล็อกอินเสร็จสมบูรณ์");
+    await sleep(30000);
 
-    await startK666Bot();
-    console.log("⏳ [QUEUE]: K666 เข้าสู่บ้านแล้ว รอ 12 วินาทีก่อนปล่อยตัวถัดไป...");
-    await sleep(12000);
+    startK666Bot();
+    console.log("⏳ [QUEUE]: ปล่อย K666 แล้ว... รอ 30 วินาทีให้ล็อกอินเสร็จสมบูรณ์");
+    await sleep(30000);
 
-    await startK555Bot();
-    
-    console.log("🌟 [SYSTEM READY]: บอททั้ง 3 ตัวเข้าสู่ Survival ครบเรียบร้อย!");
+    startK555Bot();
+    console.log("⏳ [QUEUE]: ปล่อย K555 ตัวสุดท้ายเรียบร้อย");
 }
 
 launchAllBotsSequentially();
