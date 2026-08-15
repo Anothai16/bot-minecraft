@@ -24,7 +24,6 @@ let isReconnectingK666 = false;
 let botK555 = null;
 let isReconnectingK555 = false;
 
-// 🔒 ป้องกันรอบ Cron ทำงานซ้อนกัน
 let isLeverCycleRunning = false;
 
 // 🌍 Express Server (Health check 24/7)
@@ -65,6 +64,21 @@ function destroyBot(botInstance) {
         }
         botInstance.quit();
     } catch (e) {}
+}
+
+// 🛡️ ป้องกันปัญหา Keep-Alive Timeout
+function setupKeepAliveFix(bot) {
+    if (!bot._client) return;
+    bot._client.on('packet', (data, metadata) => {
+        if (!metadata || !metadata.name) return;
+        if (metadata.name === 'keep_alive') {
+            try {
+                bot._client.write('keep_alive', {
+                    keepAliveId: data.keepAliveId
+                });
+            } catch (e) {}
+        }
+    });
 }
 
 // ====================================================================
@@ -136,13 +150,11 @@ async function triggerLeverCycle() {
             } else {
                 console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
                 
-                // สั่ง Reconnect K666 ถ้าไม่อยู่
                 if (!check.hasK666 && !isReconnectingK666) {
                     console.log(`🔄 [AUTO RECONNECT K666]: สั่งเชื่อมต่อ K666 ใหม่...`);
                     startK666Bot();
                 }
 
-                // สั่ง Reconnect K555 ถ้าไม่อยู่
                 if (!check.hasK555 && !isReconnectingK555) {
                     console.log(`🔄 [AUTO RECONNECT K555]: สั่งเชื่อมต่อ K555 ใหม่...`);
                     startK555Bot();
@@ -206,7 +218,7 @@ function startLeverBot() {
         username: 'Lervy_Lever',
         version: '1.21.11',
         viewDistance: 1,
-        checkTimeoutInterval: 60000,
+        checkTimeoutInterval: 120000, // ขยายเป็น 2 นาที ป้องกันตัดสายตัวเอง
         noResetWorld: true,
         physicsEnabled: false
     });
@@ -214,6 +226,7 @@ function startLeverBot() {
     botLever = bot;
 
     if (bot._client) {
+        setupKeepAliveFix(bot);
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
             if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
@@ -287,7 +300,7 @@ function startK666Bot() {
         username: 'K666',
         version: '1.21.11',
         viewDistance: 1,
-        checkTimeoutInterval: 60000,
+        checkTimeoutInterval: 120000,
         noResetWorld: true,
         physicsEnabled: false
     });
@@ -295,6 +308,7 @@ function startK666Bot() {
     botK666 = bot;
 
     if (bot._client) {
+        setupKeepAliveFix(bot);
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
             if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
@@ -376,7 +390,7 @@ function startK555Bot() {
         username: 'K555',
         version: '1.21.11',
         viewDistance: 1,
-        checkTimeoutInterval: 60000,
+        checkTimeoutInterval: 120000,
         noResetWorld: true,
         physicsEnabled: false
     });
@@ -384,6 +398,7 @@ function startK555Bot() {
     botK555 = bot;
 
     if (bot._client) {
+        setupKeepAliveFix(bot);
         bot._client.on('packet', (data, metadata) => {
             if (!metadata || !metadata.name) return;
             if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
@@ -441,19 +456,16 @@ function handleK555Reconnect() {
 }
 
 // ====================================================================
-// 🚀 STARTUP & CLI (ปล่อยบอทเข้าตามลำดับ)
+// 🚀 STARTUP & CLI
 // ====================================================================
 initScheduler();
 
-// 1. เริ่มรันตัวสับคันโยกก่อน
 startLeverBot();
 
-// 2. หน่วง 6 วินาทีแล้วเริ่มรัน K666
 setTimeout(() => {
     startK666Bot();
 }, 6000);
 
-// 3. หน่วงอีก 6 วินาที (วินาทีที่ 12) แล้วเริ่มรัน K555
 setTimeout(() => {
     startK555Bot();
 }, 12000);
