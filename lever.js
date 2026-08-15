@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Fast GUI Bypass Controller</div>
+        <div class="title">⚡ Stable Protocol Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -166,7 +166,7 @@ function setupImmortalAfkBot(bot, username) {
         bot.world.columns = {};
         bot.world.getBlock = () => null;
     }
-    console.log(`⚡ [${username}] ติดตั้งเกราะ Immortal AFK Mode สำเร็จ`);
+    console.log(`⚡ [${username}] ติดตั้งเกราะ Immortal AFK Mode สำเร็จ (ประจำการที่บ้าน)`);
 }
 
 // ====================================================================
@@ -281,7 +281,7 @@ function launchBotPipeline(username) {
             resolve(true);
         };
 
-        // 1. ยิงรหัสผ่าน และวนลูปบังคับเปิดเข็มทิศ
+        // 1. ยิงรหัสผ่าน และวนลูปกดเข็มทิศแบบ Safe Native
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -293,35 +293,24 @@ function launchBotPipeline(username) {
             bot.chat('/login 112233');
             console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
 
-            // ลูปกดเข็มทิศแบบ Multi-Trigger
             for (let i = 0; i < 15; i++) {
-                await sleep(1500);
+                await sleep(2000);
                 if (!bot || bot._client.ended || isGuiOpen) break;
 
-                // ตรวจหาเข็มทิศในกระเป๋าหรือ Hotbar
                 const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
                 
                 try {
                     if (comp) {
                         await bot.equip(comp, 'hand');
                     } else {
-                        // สลับไปช่อง Hotbar 0 ถึง 8 วนไปเรื่อยๆ เผื่อไอเทมอยู่ช่องหลัก
                         bot.setQuickBarSlot(i % 9);
                     }
 
-                    // ยิง Packet คลิกขวาเปิดไอเทมตรงเข้าเซิร์ฟเวอร์
-                    if (bot._client) {
-                        bot._client.write('use_item', { hand: 0, sequence: 0 });
-                    }
-                    if (bot.activateItem) bot.activateItem();
+                    await bot.activateItem();
                     if (bot.swingArm) bot.swingArm('right');
 
-                    console.log(`🧭 [${username}] ส่ง Packet ใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
+                    console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (รอบที่ ${i + 1})...`);
                 } catch (e) {}
-
-                // หากกดแล้วยังไม่เปิด ให้ลองใช้ Command Fallback
-                if (i === 4) bot.chat('/menu');
-                if (i === 8) bot.chat('/servers');
             }
         });
 
@@ -517,7 +506,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Fast GUI Bypass Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Protocol Bot Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
