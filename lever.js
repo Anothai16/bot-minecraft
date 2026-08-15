@@ -16,7 +16,7 @@ const originalLog = console.log;
 console.log = (...args) => {
     const timestamp = new Date().toLocaleTimeString('th-TH');
     const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-    logsBuffer.push(`[${timestamp}]${message}`);
+    logsBuffer.push(`[${timestamp}] ${message}`);
     if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
     originalLog(...args);
 };
@@ -118,11 +118,11 @@ async function processQueue() {
     try {
         await launchBotPipeline(username);
     } catch (err) {
-        console.log(`❌ [${username}] Pipeline Error:${err.message}`);
+        console.log(`❌ [${username}] Pipeline Error: ${err.message}`);
     } finally {
         isLoginBusy = false;
         if (loginQueue.length > 0) {
-            setTimeout(processQueue, 6000); // เว้นระยะ 6 วินาทีก่อนเริ่มตัวถัดไป
+            setTimeout(processQueue, 6000);
         }
     }
 }
@@ -155,6 +155,9 @@ function launchBotPipeline(username) {
             checkTimeoutInterval: 120000
         });
 
+        // 🛑 ปิดฟิสิกส์ตั้งแต่เริ่ม เพื่อไม่ให้ส่ง Packet ขัดจังหวะ Proxy ตอนย้ายห้อง และกิน CPU 0%
+        bot.physicsEnabled = false;
+
         bots[username].instance = bot;
         bots[username].ready = false;
 
@@ -167,12 +170,10 @@ function launchBotPipeline(username) {
             bots[username].ready = true;
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!`);
 
-            // ⚡ โหมดประหยัด CPU ขั้นสูงสุด
-            bot.physicsEnabled = false;
+            // ⚡ ล้าง Event เพื่อป้องกัน CPU สูงตอนฟาร์มไอเทมหล่น
             bot.removeAllListeners('blockUpdate');
             bot.removeAllListeners('chunkColumnLoad');
 
-            // สำหรับ AFK Bot ตัดการประมวลผล Entity/Item ลอยน้ำทั้งหมด
             if (username !== 'Lervy_Lever') {
                 bot.on('entitySpawn', (entity) => {
                     delete bot.entities[entity.id];
@@ -207,8 +208,8 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. จิ้มเลือก Survival และวาร์ปเข้าบ้าน
-        bot.on('windowOpen', async (window) => {
+        // 2. จิ้มเลือก Survival (Slot 10) และวาร์ปเข้าบ้าน
+        bot.on('windowOpen', async () => {
             if (isWindowHandled) return;
             isWindowHandled = true;
 
@@ -216,19 +217,20 @@ function launchBotPipeline(username) {
             if (!bot || bot._client.ended) return;
 
             try {
-                const grass = window.items().find(i => i.name.includes('grass'));
-                const slot = grass ? grass.slot : 10;
-                await bot.clickWindow(slot, 0, 0);
+                // จิ้มช่อง 10 ตรงๆ (Survival)
+                await bot.clickWindow(10, 0, 0);
                 console.log(`จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                // รอโหลดมิติ 9 วินาทีแล้ววาร์ปเข้าบ้าน
+                // รอโหลดข้ามมิติ 9 วินาที แล้ววาร์ปเข้าบ้าน
                 await sleep(9000);
                 if (bot && !bot._client.ended) {
                     bot.chat('/home home');
                     await sleep(3000);
                     finalizeLogin();
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.log(`❌ [${username}] Error จิ้มเมนู: ${err.message}`);
+            }
         });
 
         bot.on('kicked', (reason) => {
@@ -236,7 +238,7 @@ function launchBotPipeline(username) {
         });
 
         bot.on('error', (err) => {
-            console.log(`❌ [${username}] Error:${err.message}`);
+            console.log(`❌ [${username}] Error: ${err.message}`);
         });
 
         bot.on('end', () => {
@@ -314,7 +316,7 @@ async function triggerLeverCycle() {
     }
 }
 
-// ตั้งเวลารอบสับคันโยกอัตโนมัติ
+// รอบสับคันโยกอัตโนมัติ
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
