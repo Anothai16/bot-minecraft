@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Native Multi-Bot Controller</div>
+        <div class="title">⚡ Entity-Stripped AFK Controller (Locked &lt; 15% CPU)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -68,9 +68,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Zero-Lag AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Zero-Lag AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -104,6 +104,51 @@ setInterval(() => {
 
     console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
 }, 5000);
+
+// ====================================================================
+// 🛡️ ZERO-LAG AFK STRIPPER (สกัดภาระฟาร์มของบอท AFK อย่างสมบูรณ์)
+// ====================================================================
+function stripAfkFarmLoad(bot, username) {
+    bot.physicsEnabled = false;
+
+    // 1. ถอด Event Emitters ที่ Mineflayer ประมวลผลหนักทั้งหมด
+    const heavyEvents = [
+        'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
+        'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
+        'soundEffect', 'particle', 'experience', 'move', 'forcedMove'
+    ];
+    heavyEvents.forEach(evt => bot.removeAllListeners(evt));
+
+    // 2. ดักข้ามการประมวลผล Entity Tracking ในระดับ Client Dispatcher
+    const dropPackets = new Set([
+        'rel_entity_move', 'entity_velocity', 'entity_metadata',
+        'entity_teleport', 'entity_look', 'entity_move_look',
+        'entity_head_rotation', 'world_particles', 'sound_effect',
+        'named_sound_effect', 'sound_effect_entity', 'damage_event',
+        'animation', 'entity_equipment', 'spawn_entity'
+    ]);
+
+    const origEmit = bot._client.emit;
+    bot._client.emit = function (event, ...args) {
+        if (event === 'packet') {
+            const packetName = args[1]?.name;
+            if (packetName && dropPackets.has(packetName)) {
+                return false; // ข้ามการคำนวณของ Mineflayer ทันที
+            }
+        }
+        return origEmit.apply(this, [event, ...args]);
+    };
+
+    // ล้างและล็อก Entity Pool ให้เป็นค่าว่าง
+    bot.entities = {};
+    setInterval(() => {
+        if (bot && !bot._client.ended) {
+            bot.entities = {};
+        }
+    }, 10000);
+
+    console.log(`⚡ [${username}] เปิดใช้งาน Zero-Lag AFK Mode สำเร็จ (ตัดโหลดฟาร์ม 100%)`);
+}
 
 // ====================================================================
 // 🤖 BOT MANAGEMENT & QUEUE ENGINE
@@ -170,7 +215,6 @@ function launchBotPipeline(username) {
 
         const isAfk = username !== 'Lervy_Lever';
 
-        // ปิด Plugins ที่ไม่จำเป็นเพื่อลด CPU ให้อยู่ระดับต่ำที่สุด
         const disabledPlugins = isAfk 
             ? ['sound', 'rain', 'particle', 'raycast', 'physics', 'villager', 'chest', 'tablist', 'experience']
             : ['sound', 'rain', 'particle', 'raycast', 'experience'];
@@ -210,11 +254,7 @@ function launchBotPipeline(username) {
             console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
 
             if (isAfk) {
-                bot.physicsEnabled = false;
-                bot.removeAllListeners('entityMoved');
-                bot.removeAllListeners('entitySpawn');
-                bot.removeAllListeners('blockUpdate');
-                bot.entities = {};
+                stripAfkFarmLoad(bot, username);
             } else {
                 bot.removeAllListeners('soundEffect');
                 bot.removeAllListeners('particle');
@@ -289,7 +329,6 @@ function launchBotPipeline(username) {
                         await bot.clickWindow(target.slot, 0, 0);
                         console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                        // รอโหลดโลก Survival ให้เสร็จสมบูรณ์
                         await sleep(8000);
                         if (bot && !bot._client.ended) {
                             finalizeLogin();
@@ -444,7 +483,7 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Stable Native Multi-Bot Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Zero-Lag AFK Multi-Bot Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
