@@ -46,7 +46,14 @@ function startBot() {
         username: 'K666',
         version: '1.21.11',
         viewDistance: 2,
-        checkTimeoutInterval: 120000
+        checkTimeoutInterval: 120000,
+        physicsEnabled: false // 👈 ปิด Physics
+    });
+
+    bot.on('entitySpawn', (entity) => {
+        if (entity.name === 'item' || entity.type === 'object') {
+            delete bot.entities[entity.id];
+        }
     });
 
     bot.once('spawn', async () => {
@@ -106,17 +113,9 @@ function startBot() {
         } catch (e) {}
     });
 
-    bot.on('kicked', (reason) => {
-        logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-    });
-
-    bot.on('error', (err) => {
-        logger.log(`❌ Error: ${err.message}`);
-    });
-
-    bot.on('end', () => {
-        reconnect(35000); // 👈 K666 หน่วง 35 วินาที
-    });
+    bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
+    bot.on('error', (err) => logger.log(`❌ Error: ${err.message}`));
+    bot.on('end', () => reconnect(35000));
 }
 
 startBot();

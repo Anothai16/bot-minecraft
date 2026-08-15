@@ -81,7 +81,6 @@ app.get('/', (req, res) => {
 });
 app.listen(3001, () => logger.log('🌍 Web Dashboard รันอยู่ที่พอร์ต http://localhost:3001'));
 
-// ================= Bot Lifecycle =================
 function reconnect(delayMs = 15000) {
     if (isReconnecting) return;
     isReconnecting = true;
@@ -118,7 +117,15 @@ function startBot() {
         username: 'Lervy_Lever',
         version: '1.21.11',
         viewDistance: 2,
-        checkTimeoutInterval: 120000
+        checkTimeoutInterval: 120000,
+        physicsEnabled: false // 👈 ปิด Physics ไม่ต้องคำนวณการเดิน/แรงโน้มถ่วง
+    });
+
+    // 🛑 บล็อกการเก็บ Entity ไอเทมลงหน่วยความจำ
+    bot.on('entitySpawn', (entity) => {
+        if (entity.name === 'item' || entity.type === 'object') {
+            delete bot.entities[entity.id];
+        }
     });
 
     bot.once('spawn', async () => {
@@ -178,17 +185,9 @@ function startBot() {
         } catch (e) {}
     });
 
-    bot.on('kicked', (reason) => {
-        logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-    });
-
-    bot.on('error', (err) => {
-        logger.log(`❌ Error: ${err.message}`);
-    });
-
-    bot.on('end', () => {
-        reconnect(15000); // 👈 Lervy_Lever หน่วง 15 วินาที
-    });
+    bot.on('kicked', (reason) => logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`));
+    bot.on('error', (err) => logger.log(`❌ Error: ${err.message}`));
+    bot.on('end', () => reconnect(15000));
 }
 
 function areAfkBotsOnline() {
@@ -220,13 +219,36 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 
     const leverPos = new Vec3(10428, 74, -5054);
     logger.log('🔴 สั่งสับปิดคันโยก (OFF)...');
-    await bot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-    await bot.activateBlock({ position: leverPos, shapes: [[[0,0,0,1,1,1]]] });
+    try {
+        bot._client.write('use_item_on', {
+            hand: 0,
+            location: leverPos,
+            direction: 1,
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false,
+            sequence: 0
+        });
+        bot._client.write('arm_animation', { hand: 0 });
+    } catch (e) {}
     
     await sleep(30000);
     
     logger.log('🟢 สั่งสับเปิดคันโยก (ON)...');
-    await bot.activateBlock({ position: leverPos, shapes: [[[0,0,0,1,1,1]]] });
+    try {
+        bot._client.write('use_item_on', {
+            hand: 0,
+            location: leverPos,
+            direction: 1,
+            cursorX: 0.5,
+            cursorY: 0.5,
+            cursorZ: 0.5,
+            insideBlock: false,
+            sequence: 0
+        });
+        bot._client.write('arm_animation', { hand: 0 });
+    } catch (e) {}
     logger.log('✅ ทำงานครบไซเคิลเรียบร้อย!');
 });
 
