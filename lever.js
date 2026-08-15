@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 // 🌐 WEB DASHBOARD & LOGS (Port 3001)
 // ====================================================================
 const logsBuffer = [];
-const MAX_LOGS = 100;
+const MAX_LOGS = 80;
 
 const originalLog = console.log;
 console.log = (...args) => {
@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Minecraft Bot Controller & Resource Profiler</div>
+        <div class="title">⚡ Extreme Low-CPU Bot Farm (0-2% CPU Target)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -83,35 +83,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
-
-// ====================================================================
-// 📊 RESOURCE & PACKET PROFILER ENGINE
-// ====================================================================
-const packetStats = {
-    total: 0,
-    byType: {}
-};
-
-setInterval(() => {
-    if (packetStats.total === 0) return;
-
-    const mem = process.memoryUsage();
-    const rssMB = Math.round(mem.rss / 1024 / 1024);
-    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
-
-    // เรียง 3 อันดับ Packet ที่ส่งเข้ามามากที่สุด
-    const topPackets = Object.entries(packetStats.byType)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([name, count]) => `${name}: ${count}/10s`)
-        .join(', ');
-
-    console.log(`📊 [PROFILER] RAM: ${rssMB}MB (Heap: ${heapMB}MB) | Packet Rate: ${packetStats.total}/10s | อันดับสูงสุด: [${topPackets}]`);
-
-    // Reset สถิติ
-    packetStats.total = 0;
-    packetStats.byType = {};
-}, 10000);
 
 // ====================================================================
 // 🤖 BOT MANAGEMENT & QUEUE ENGINE
@@ -180,12 +151,30 @@ function launchBotPipeline(username) {
             host: 'play.amorycraft.com',
             username: username,
             version: '1.21.11',
-            viewDistance: 1, // ปรับลด View Distance เหลือต่ำสุด
+            viewDistance: 1,
             checkTimeoutInterval: 120000
         });
 
-        // 🛑 ปิดฟิสิกส์ตั้งแต่เริ่มเพื่อไม่กิน CPU
         bot.physicsEnabled = false;
+
+        // 🛑 ดักตัด Packet ปริมาณมหาศาลทิ้งตั้งแต่ระดับ Network Client
+        const heavyPackets = [
+            'rel_entity_move',
+            'entity_velocity',
+            'entity_metadata',
+            'entity_teleport',
+            'entity_look',
+            'entity_move_look',
+            'entity_head_rotation',
+            'world_particles',
+            'sound_effect',
+            'named_sound_effect',
+            'block_action'
+        ];
+
+        heavyPackets.forEach(pName => {
+            bot._client.on(pName, () => {}); // ใส่ no-op เพื่อไม่ให้ Library รันคำนวณต่อ
+        });
 
         bots[username].instance = bot;
         bots[username].ready = false;
@@ -193,34 +182,17 @@ function launchBotPipeline(username) {
         let isCompleted = false;
         let isWindowHandled = false;
 
-        // ⚡ Packet Interceptor: ดักจับสถิติและตัด Packet ขยะทิ้ง
-        bot._client.on('packet', (data, metadata) => {
-            if (!metadata || !metadata.name) return;
-            const name = metadata.name;
-
-            packetStats.total++;
-            packetStats.byType[name] = (packetStats.byType[name] || 0) + 1;
-
-            // ทิ้ง Particle และ Sound ทันที
-            if (name === 'world_particles' || name === 'sound_effect' || name === 'named_sound_effect') {
-                return;
-            }
-        });
-
         const finalizeLogin = () => {
             if (isCompleted) return;
             isCompleted = true;
             bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เปิดโหมด Low-CPU)`);
+            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย! (เปิดโหมด Extreme Low-CPU)`);
 
-            // ⚡ ปลด Event หนักๆ ทิ้งทันทีเมื่อเข้าบ้านสำเร็จ
+            // ⚡ ล้าง Listener หนักๆ ออกจาก Node.js Event Loop
             bot.removeAllListeners('blockUpdate');
             bot.removeAllListeners('chunkColumnLoad');
             bot.removeAllListeners('entityMoved');
             bot.removeAllListeners('entitySpawn');
-
-            // ล้างแคช Entities ไม่ให้สะสมในหน่วยความจำ
-            bot.entities = {};
 
             // สำหรับ AFK Bot (K666/K555) ตัด Chunk Storage ไม่ให้เปลือง RAM และ CPU
             if (username !== 'Lervy_Lever' && bot.world) {
@@ -230,7 +202,7 @@ function launchBotPipeline(username) {
             resolve(true);
         };
 
-        // 1. จัดการรหัสผ่านและเข็มทิศ
+        // 1. รหัสผ่านและเข็มทิศ
         bot.once('spawn', async () => {
             await sleep(3500);
             if (!bot || bot._client.ended) return;
@@ -256,7 +228,7 @@ function launchBotPipeline(username) {
             }
         });
 
-        // 2. ดักจับเมื่อหน้าต่าง GUI เปิด และคลิกทันทีที่มีการส่งไอเทมเข้ามาในช่อง
+        // 2. จิ้มเลือก Survival
         bot.on('windowOpen', async (window) => {
             if (isWindowHandled) return;
             isWindowHandled = true;
@@ -413,7 +385,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ (พร้อม Profiler & Low-CPU)...");
+console.log("🚀 [SYSTEM START]: กำลังเริ่มระบบ (Extreme Low-CPU Enabled)...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
