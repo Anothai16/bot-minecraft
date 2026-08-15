@@ -12,9 +12,10 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 let bot = null;
 let isReady = false;
-let isChangingServer = false;
+let isReconnecting = false;
+let transferWatchdog = null;
 
-// ================= Web Dashboard =================
+// ================= Web Dashboard (Port 3001) =================
 const app = express();
 app.get('/api/status', (req, res) => {
     const result = { bots: {}, combinedLogs: [] };
@@ -80,10 +81,35 @@ app.get('/', (req, res) => {
 });
 app.listen(3001, () => logger.log('🌍 Web Dashboard รันอยู่ที่พอร์ต http://localhost:3001'));
 
-// ================= Bot Logic =================
+// ================= Bot Lifecycle =================
+function reconnect(delayMs = 15000) {
+    if (isReconnecting) return;
+    isReconnecting = true;
+    isReady = false;
+    logger.setStatus(false);
+    if (transferWatchdog) clearTimeout(transferWatchdog);
+
+    if (bot) {
+        try {
+            bot.removeAllListeners();
+            if (bot._client) {
+                bot._client.removeAllListeners();
+                bot._client.end();
+            }
+            bot.quit();
+        } catch (e) {}
+        bot = null;
+    }
+
+    logger.log(`หลุดการเชื่อมต่อ รอ ${Math.round(delayMs / 1000)} วินาทีเพื่อเชื่อมต่อใหม่...`);
+    setTimeout(() => {
+        isReconnecting = false;
+        startBot();
+    }, delayMs);
+}
+
 function startBot() {
     isReady = false;
-    isChangingServer = false;
     logger.setStatus(false);
     logger.log('กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
 
@@ -96,18 +122,21 @@ function startBot() {
     });
 
     bot.once('spawn', async () => {
-        await sleep(1500);
+        await sleep(3000);
+        if (!bot || bot._client.ended) return;
+
         bot.chat('/login 112233');
         logger.log('ยิงรหัสผ่านด่านตรวจสมุดรอบที่ 1');
         
-        await sleep(3000);
-        try { bot.closeWindow(0); } catch(e){}
-        
-        await sleep(2000);
+        await sleep(3500);
+        if (!bot || bot._client.ended) return;
+
         bot.chat('/login 112233');
         logger.log('ยิงรหัสผ่านรอบที่ 2');
 
-        await sleep(5000);
+        await sleep(4000);
+        if (!bot || bot._client.ended) return;
+
         const comp = bot.inventory?.items().find(i => i.name === 'recovery_compass');
         if (comp) {
             try {
@@ -115,39 +144,51 @@ function startBot() {
                 await sleep(1000);
                 await bot.activateItem();
                 logger.log('กดใช้งานเข็มทิศฟ้าเรียบร้อย');
-            } catch(e){}
+            } catch (e) {}
         } else {
             bot.chat('/server survival');
         }
     });
 
     bot.on('windowOpen', async () => {
-        await sleep(2000);
+        await sleep(2500);
+        if (!bot || bot._client.ended) return;
+
         try {
-            isChangingServer = true;
             await bot.clickWindow(10, 0, 0);
             logger.log('จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย');
 
-            await sleep(7000);
+            if (transferWatchdog) clearTimeout(transferWatchdog);
+            transferWatchdog = setTimeout(() => {
+                if (!isReady && bot && !bot._client.ended) {
+                    logger.log('⚠️ ค้างจังหวะย้ายห้องเกิน 15 วินาที สั่งเชื่อมต่อใหม่...');
+                    reconnect(10000);
+                }
+            }, 15000);
+
+            await sleep(8000);
             if (bot && !bot._client.ended) {
                 bot.chat('/home home');
+                await sleep(2000);
                 isReady = true;
-                isChangingServer = false;
+                if (transferWatchdog) clearTimeout(transferWatchdog);
                 logger.setStatus(true);
                 logger.log('ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อย!');
             }
-        } catch(e) {}
+        } catch (e) {}
+    });
+
+    bot.on('kicked', (reason) => {
+        logger.log(`🚨 โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+    });
+
+    bot.on('error', (err) => {
+        logger.log(`❌ Error: ${err.message}`);
     });
 
     bot.on('end', () => {
-        isReady = false;
-        logger.setStatus(false);
-        if (isChangingServer) return;
-        logger.log('หลุดการเชื่อมต่อ รอ 15 วินาทีเพื่อเข้าใหม่...');
-        setTimeout(startBot, 15000);
+        reconnect(15000); // 👈 Lervy_Lever หน่วง 15 วินาที
     });
-
-    bot.on('error', (err) => logger.log(`Error: ${err.message}`));
 }
 
 function areAfkBotsOnline() {
