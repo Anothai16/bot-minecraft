@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ On-Demand Valve Farm Controller (Strict &lt; 15% CPU)</div>
+        <div class="title">⚡ Reliable Valve Farm Controller (CPU &lt; 15%)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -126,12 +126,10 @@ function setupValveFilter(bot, username) {
 
         deserializer.parsePacketBuffer = function (buffer) {
             try {
-                // สำหรับ Lever: หากเปิดวาล์ว ให้ยอมรับข้อมูลผ่านเข้ามาได้เพื่อใช้สับคันโยก
                 if (isLever && isLeverValveOpen) {
                     return origParse(buffer);
                 }
 
-                // สภาวะปกติ: ตัดทิ้ง Packet ขนาด > 24 bytes ทั้งหมด
                 if (buffer.length > 24) {
                     return {
                         data: { name: 'ignored', params: {} },
@@ -359,7 +357,7 @@ function launchBotPipeline(username) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (พร้อมระบบสลับวาล์วอัตโนมัติ)
+// 🕹️ LEVER LOGIC (Direct Right-Click Packet With Valve)
 // ====================================================================
 async function clickLeverSafe(actionName) {
     const leverBot = bots.Lervy_Lever.instance;
@@ -379,38 +377,39 @@ async function clickLeverSafe(actionName) {
     }
 
     try {
-        // ⚡ 1. เปิดวาล์วและฟิสิกส์ชั่วคราว เพื่อรับการซิงก์ตำแหน่งจากเซิร์ฟเวอร์
+        // ⚡ 1. เปิดวาล์วและส่งการมองคันโยก
         isLeverValveOpen = true;
-        leverBot.physicsEnabled = true;
-        await sleep(500);
+        await sleep(300);
 
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(250);
+        await sleep(150);
 
-        let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
-        if (!block) {
-            block = {
-                position: leverPos,
-                name: 'lever',
-                shapes: [[[0, 0, 0, 1, 1, 1]]]
-            };
+        // ⚡ 2. สั่งคลิกขวาด้วยฟังก์ชันมาตรฐาน หรือ ส่ง packet use_item_on โดยตรง
+        if (leverBot._client) {
+            leverBot._client.write('use_item_on', {
+                hand: 0,
+                location: leverPos,
+                direction: 1, // Face top
+                cursorX: 0.5,
+                cursorY: 0.5,
+                cursorZ: 0.5,
+                insideBlock: false,
+                worldBorderHit: false,
+                sequence: 0
+            });
+            leverBot._client.write('arm_animation', { hand: 0 });
         }
 
-        // ⚡ 2. สับคันโยก
-        await leverBot.activateBlock(block);
-        if (leverBot.swingArm) leverBot.swingArm('right');
         console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
         await sleep(300);
 
-        // ⚡ 3. สับเสร็จแล้วสั่ง "ปิดวาล์ว" และ "ปิดฟิสิกส์" ทันที เพื่อล็อก CPU ให้อยู่ระดับต่ำ
+        // ⚡ 3. ปิดวาล์วกลับคืนทันทีเพื่อรักษา CPU ให้อยู่ระดับต่ำ
         isLeverValveOpen = false;
-        leverBot.physicsEnabled = false;
         leverBot.entities = {};
         return true;
     } catch (err) {
         isLeverValveOpen = false;
-        leverBot.physicsEnabled = false;
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
@@ -463,7 +462,7 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 // ====================================================================
 // 🚀 เริ่มต้นระบบ
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ On-Demand Valve Farm Controller...");
+console.log("🚀 [SYSTEM START]: เริ่มระบบ Reliable Valve Farm Controller...");
 queueBot('Lervy_Lever', 0);
 queueBot('K666', 0);
 queueBot('K555', 0);
