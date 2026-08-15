@@ -103,7 +103,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => console.log(`🌍 Web Logs Dashboard รันอยู่ที่พอร์ต http://localhost:${port}`));
 
 // ====================================================================
-// 🤖 BOT MANAGEMENT & QUEUE ENGINE (ระบบคิวเดี่ยว ป้องกันชนกัน 100%)
+// 🤖 BOT MANAGEMENT & QUEUE ENGINE
 // ====================================================================
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
@@ -156,12 +156,11 @@ async function processLoginQueue() {
     try {
         await createAndRunBot(username);
     } catch (err) {
-        console.log(`❌ [QUEUE ERROR]: ล็อกอิน ${username} ไม่สำเร็จ: ${err.message}`);
+        console.log(`❌ [QUEUE ERROR]: ล็อกอิน ${username} เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
         isGlobalLoginBusy = false;
-        // พัก 5 วินาทีให้เซิร์ฟเวอร์เสถียรก่อนเริ่มคิวถัดไป
         if (loginQueue.length > 0) {
-            setTimeout(processLoginQueue, 5000);
+            setTimeout(processLoginQueue, 6000);
         }
     }
 }
@@ -194,6 +193,7 @@ function createAndRunBot(username) {
 
         let isBookHandled = false;
         let isCompassHandled = false;
+        let isWindowClicked = false;
         let isDone = false;
 
         const completeLogin = () => {
@@ -202,7 +202,6 @@ function createAndRunBot(username) {
             bot.isHomeReady = true;
             console.log(`🏠 [${username}]: ล็อกอินสำเร็จ เข้าสู่บ้านเรียบร้อยครับพี่!`);
 
-            // เริ่มระบบ Heartbeat รักษาการเชื่อมต่อ
             if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
             bot.afkHeartbeat = setInterval(() => {
                 if (isBotReady(bot)) {
@@ -219,7 +218,7 @@ function createAndRunBot(username) {
             resolve(true);
         };
 
-        // 🎯 1. จัดการสมุด
+        // 🎯 1. ตรวจจับด่านสมุด
         bot._client.on('packet', async (data, metadata) => {
             if (!metadata || !metadata.name) return;
 
@@ -228,20 +227,20 @@ function createAndRunBot(username) {
                 isBookHandled = true;
 
                 console.log(`🚨 [${username}]: ตรวจพบด่านสมุดล็อกหน้าจอ กำลังแก้ทาง...`);
-                await sleep(1000);
+                await sleep(800);
 
                 if (bot && !bot._client.ended) {
                     bot.chat('/login 112233');
                     console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 1 [/login 112233]`);
                 }
 
-                await sleep(2000);
+                await sleep(1500);
                 try {
                     bot.closeWindow(0);
                     console.log(`✅ [${username}]: ปลดล็อกด่านตรวจสมุดสำเร็จ!`);
                 } catch (e) {}
 
-                await sleep(4000);
+                await sleep(3000);
                 if (bot && !bot._client.ended) {
                     bot.chat('/login 112233');
                     console.log(`✍️ [${username}]: ยิงรหัสผ่านรอบที่ 2 ซ้ำเพื่อความชัวร์`);
@@ -249,7 +248,7 @@ function createAndRunBot(username) {
             }
         });
 
-        // 🧭 2. กดเข็มทิศ
+        // 🧭 2. กดเข็มทิศฟ้า
         bot.once('spawn', () => {
             setTimeout(async () => {
                 if (isCompassHandled || !bot || bot._client.ended) return;
@@ -259,26 +258,30 @@ function createAndRunBot(username) {
                 if (blueCompass) {
                     try {
                         await bot.equip(blueCompass, 'hand');
-                        await sleep(1500);
+                        await sleep(1200);
                         await bot.activateItem();
                         console.log(`🧭 [${username}]: กดใช้งานเข็มทิศฟ้าเรียบร้อย`);
                     } catch (e) {}
                 } else {
                     bot.chat('/server survival');
                 }
-            }, 10000);
+            }, 8000);
         });
 
-        // 🚨 3. เลือกเซิร์ฟ Survival และวาร์ปเข้าบ้าน
+        // 🚨 3. คลิกบล็อกหญ้า + ย้ายเข้าบ้านอย่างนุ่มนวล
         bot.on('windowOpen', async () => {
-            await sleep(2500);
+            if (isWindowClicked) return;
+            isWindowClicked = true;
+
+            await sleep(2000);
             if (!bot || bot._client.ended) return;
 
             try {
                 await bot.clickWindow(10, 0, 0);
                 console.log(`จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
 
-                await sleep(8000);
+                // เว้น 10 วินาทีให้ Netty โอนย้าย Socket ข้ามไปยัง Survival ให้เสร็จสมบูรณ์
+                await sleep(10000);
                 if (bot && !bot._client.ended) {
                     bot.chat('/home home');
                     await sleep(3000);
@@ -286,14 +289,6 @@ function createAndRunBot(username) {
                 }
             } catch (err) {}
         });
-
-        // 🛡️ Watchdog 30 วินาที
-        setTimeout(() => {
-            if (!isDone && bot && !bot._client.ended) {
-                bot.chat('/home home');
-                completeLogin();
-            }
-        }, 30000);
 
         bot.on('kicked', (reason) => {
             console.log(`\n🚨 [${username}]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
@@ -310,8 +305,8 @@ function createAndRunBot(username) {
                 isDone = true;
                 resolve(false);
             }
-            console.log(`🔄 [${username}] เข้าคิวรอเชื่อมต่อใหม่ในอีก 20 วินาที...`);
-            queueBotLogin(username, 20000);
+            console.log(`🔄 [${username}] เข้าคิวรอเชื่อมต่อใหม่ในอีก 25 วินาที...`);
+            queueBotLogin(username, 25000);
         });
     });
 }
@@ -404,7 +399,7 @@ function initScheduler() {
 }
 
 // ====================================================================
-// 🚀 เริ่มต้นระบบ ป้อนคิวปล่อยบอท
+// 🚀 เริ่มต้นระบบ ป้อนคิวปล่อยบอททีละตัว
 // ====================================================================
 initScheduler();
 console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทตามลำดับคิว...");
