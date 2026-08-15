@@ -115,7 +115,6 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => console.log(`🌍 Web Logs Dashboard รันอยู่ที่พอร์ต http://localhost:${port}`));
 
-// ⚡ ดร็อปเฉพาะ Packet เอฟเฟกต์/เสียง ไม่แตะต้อง Packet มิติหรือการสลับเซิร์ฟเวอร์
 const DROP_PACKETS = [
     'world_particles', 'packet_world_particles',
     'named_sound_effect', 'sound_effect',
@@ -195,7 +194,6 @@ async function triggerLeverCycle() {
         const hasK666 = isBotActive(botK666);
         const hasK555 = isBotActive(botK555);
 
-        // 🛑 ถ้าบอทตัวใดยังไม่ถึงบ้านใน Survival จะไม่สับเด็ดขาด
         if (!hasLever || !hasK666 || !hasK555) {
             console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lever: ${hasLever ? '🟢' : '❌'}, K666: ${hasK666 ? '🟢' : '❌'}, K555: ${hasK555 ? '🟢' : '❌'}) ยกเลิกการสับคันโยกรอบนี้!`);
             return;
@@ -281,13 +279,6 @@ function startLeverBot() {
 
         setupAmoryLogin(bot, markSuccess);
 
-        // ดักฟังข้อความเข้าบ้าน
-        bot.on('messagestr', (msg) => {
-            if (msg.includes('เข้าสู่บ้าน') || msg.includes('บ้านเรียบร้อย')) {
-                markSuccess();
-            }
-        });
-
         bot.on('kicked', (reason) => {
             console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
         });
@@ -357,12 +348,6 @@ function startK666Bot() {
         };
 
         setupAmoryLogin(bot, markSuccess);
-
-        bot.on('messagestr', (msg) => {
-            if (msg.includes('เข้าสู่บ้าน') || msg.includes('บ้านเรียบร้อย')) {
-                markSuccess();
-            }
-        });
 
         bot.on('kicked', (reason) => {
             console.log(`\n🚨 [K666]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
@@ -434,12 +419,6 @@ function startK555Bot() {
 
         setupAmoryLogin(bot, markSuccess);
 
-        bot.on('messagestr', (msg) => {
-            if (msg.includes('เข้าสู่บ้าน') || msg.includes('บ้านเรียบร้อย')) {
-                markSuccess();
-            }
-        });
-
         bot.on('kicked', (reason) => {
             console.log(`\n🚨 [K555]: โดนเตะออก!! เหตุผล: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
         });
@@ -467,25 +446,27 @@ function handleK555Reconnect() {
 }
 
 // ====================================================================
-// 🚀 LINEAR QUEUE: รอให้ตัวแรกจิ้มเมนู+ถึงบ้านเสร็จ 100% ค่อยปล่อยตัวถัดไป
+// 🚀 LINEAR QUEUE: รอให้เสร็จ 100% + เว้น 12 วินาทีก่อนปล่อยตัวถัดไป
 // ====================================================================
 async function launchAllBotsSequentially() {
     initScheduler();
 
-    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัวแบบรอถึงบ้าน...");
+    console.log("🚀 [SYSTEM START]: กำลังเริ่มกระบวนการปล่อยบอทเข้าทีละตัว...");
 
-    // 1. รอ Lervy_Lever ให้เสร็จสมบูรณ์
+    // 1. รอ Lever Bot ให้ล็อกอินและถึงบ้านเสร็จสมบูรณ์
     await startLeverBot();
-    await sleep(8000); // พัก 8 วิให้เซิร์ฟเวอร์เสถียร
+    console.log("⏳ [QUEUE]: Lervy_Lever เข้าสู่บ้านแล้ว กำลังรอ 12 วินาทีเพื่อให้เซิร์ฟเวอร์เสถียร...");
+    await sleep(12000);
 
-    // 2. รอ K666 ให้เสร็จสมบูรณ์
+    // 2. รอ K666 ให้ล็อกอินและถึงบ้านเสร็จสมบูรณ์
     await startK666Bot();
-    await sleep(8000);
+    console.log("⏳ [QUEUE]: K666 เข้าสู่บ้านแล้ว กำลังรอ 12 วินาทีเพื่อให้เซิร์ฟเวอร์เสถียร...");
+    await sleep(12000);
 
-    // 3. รอ K555 ให้เสร็จสมบูรณ์
+    // 3. ปล่อย K555
     await startK555Bot();
     
-    console.log("🌟 [SYSTEM READY]: ปล่อยบอทครบทั้ง 3 ตัวเรียบร้อย!");
+    console.log("🌟 [SYSTEM READY]: บอททั้ง 3 ตัวเข้าสู่ Survival อย่างสมบูรณ์ครบถ้วน!");
 }
 
 launchAllBotsSequentially();
