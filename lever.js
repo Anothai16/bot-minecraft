@@ -73,7 +73,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Full Diagnostic Controller</title>
+        <title>Minecraft Stable Auth Controller</title>
         <style>
             body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Full-Diagnostic Inspector &amp; Auto-Rejoin</div>
+        <div class="title">⚡ Clean Native Auth &amp; Teleport Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Survival)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Survival)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC (WITH FULL DIAGNOSTICS)
+// 🤖 BOT ENGINE & AUTH LOGIC (NATIVE TELEPORT SAFE)
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -158,30 +158,24 @@ function stopBotInstance(username) {
     }
 }
 
-async function triggerCompass(bot, username) {
+async function useCompass(bot, username) {
     if (bot.inSurvival) return;
-    console.log(`🧭 [COMPASS] [${username}] กำลังตรวจสอบช่องเข็มทิศในตัว...`);
+    updateStatus(username, 'In Lobby', 'กดใช้งานเข็มทิศ');
+    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
 
     const compass = bot.inventory ? bot.inventory.items().find(i => i.name.includes('compass')) : null;
     if (compass) {
-        console.log(`🧭 [COMPASS] [${username}] พบเข็มทิศที่ Slot ${compass.slot} (${compass.name}) -> กำลัง Equip และใช้งาน`);
         try {
             await bot.equip(compass, 'hand');
-            await sleep(300);
+            await sleep(400);
             bot.activateItem();
         } catch (e) {
             bot.activateItem();
         }
     } else {
-        console.log(`⚠️ [COMPASS] [${username}] ไม่พบไอเทมเข็มทิศใน Inventory -> ใช้ Fallback Hotbar 0 + Packet Use`);
-        if (bot._client) {
-            try {
-                bot._client.write('held_item_slot', { slotId: 0 });
-                await sleep(200);
-                bot._client.write('use_item', { hand: 0, sequence: 0 });
-            } catch (e) {}
-        }
-        if (bot.activateItem) bot.activateItem();
+        try {
+            bot.activateItem();
+        } catch (e) {}
     }
 }
 
@@ -208,6 +202,7 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const isLever = botConfig?.role === 'lever';
 
+        // เปิด Plugin blocks ตามปกติเพื่อให้รับ Teleport Confirm Packet ได้สมบูรณ์
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
@@ -216,7 +211,7 @@ function createBotInstance(username, delayMs = 0) {
             data: sharedData,
             physicsEnabled: false,
             checkTimeoutInterval: 0,
-            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities']
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
         });
 
         bot.inSurvival = false;
@@ -243,7 +238,6 @@ function createBotInstance(username, delayMs = 0) {
 
         activeBots[username] = bot;
 
-        // ดักจับข้อความในแชททั้งหมด
         bot.on('message', (jsonMsg) => {
             const rawText = jsonMsg.toString().trim();
             if (rawText.length > 0) {
@@ -260,106 +254,85 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('windowOpen', async (window) => {
             const titleStr = typeof window.title === 'string' ? window.title : JSON.stringify(window.title);
-            const slotDetails = window.slots
-                .filter(s => s !== null)
-                .map(s => `[#${s.slot}: ${s.name} x${s.count}]`)
-                .join(' | ');
 
-            console.log(`\n🪟 [WINDOW OPEN] [${username}] ID: ${window.id} | Type: ${window.type} | Title: ${titleStr}`);
-            console.log(`📦 [WINDOW SLOTS] [${username}] -> ${slotDetails || 'ไม่มีไอเทม'}`);
-
-            // 1. หน้าแรก (สมุดรหัสผ่าน Slot 1)
+            // STAGE 0: พบ GUI ล็อกอินหลัก -> กด Slot 1 (สมุดรหัสผ่าน)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
-                console.log(`👉 [AUTH 1/4] [${username}] คลิก Slot 1 เพื่อเปิด Anvil...`);
+                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
+
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
-                                console.log(`⚠️ [AUTH] [${username}] Anvil ไม่เด้ง -> ข้ามไปกดยืนยัน Slot 2`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
-                                startCompassRetry(bot, username);
+                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 6s)');
+                                startCompassLoop(bot, username);
                             }
-                        }, 3500);
+                        }, 3000);
                     } catch (e) {}
                 }, 1500);
             }
 
-            // 2. หน้า Anvil (พิมพ์รหัสผ่าน)
+            // STAGE 1: พิมพ์รหัสใน Anvil
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`✍️ [AUTH 2/4] [${username}] พิมพ์รหัสผ่านใน Anvil...`);
-                updateStatus(username, 'Logging in', 'พิมพ์รหัสผ่าน');
+                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน...`);
+                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
 
                 setTimeout(() => {
                     try {
                         bot._client.write('name_item', { name: botPassword });
                         setTimeout(async () => {
-                            console.log(`👉 [AUTH 2.5/4] [${username}] กด Slot 2 ยืนยันการพิมพ์รหัสใน Anvil`);
                             await bot.clickWindow(2, 0, 0);
                         }, 800);
                     } catch (e) {}
-                }, 1200);
+                }, 1000);
             }
 
-            // 3. หน้ากดยืนยันหลังพิมพ์รหัส
+            // STAGE 2: กดยืนยัน Slot 2 ในหน้าต่างหลัก
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
-                console.log(`👉 [AUTH 3/4] [${username}] กด Slot 2 เพื่อล็อกอินเข้า Lobby...`);
+                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        updateStatus(username, 'In Lobby', 'เข้าห้องโถง');
-                        startCompassRetry(bot, username);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 6s)');
+                        startCompassLoop(bot, username);
                     } catch (e) {}
-                }, 1500);
+                }, 1200);
             }
 
-            // 4. หน้าเลือกโหมด (Server Selector / Survival)
+            // STAGE 3: หน้าต่างเลือกเซิร์ฟเวอร์ -> กดเลือก Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && (bot.authStage >= 3 || titleStr.toLowerCase().includes('server') || titleStr.toLowerCase().includes('select'))) {
                 bot.authStage = 4;
                 if (bot.compassTimer) clearInterval(bot.compassTimer);
 
-                console.log(`🎯 [AUTH 4/4] [${username}] พบหน้าต่างเลือกเซิร์ฟเวอร์! กำลังส่งคำสั่งคลิก Slot 10 (Survival)...`);
-                updateStatus(username, 'Selecting Mode', 'คลิกเลือก Survival (Slot 10)');
+                console.log(`[4/4] [${username}] ตรวจพบ GUI เลือกโหมด! กำลังกดเลือก Survival (Slot 10)...`);
+                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
-                        await bot.clickWindow(10, 0, 0).catch(() => {});
-                        
-                        // เสริม Packet ตรงระดับ Native
-                        if (bot._client) {
-                            bot._client.write('window_click', {
-                                windowId: window.id,
-                                stateId: window.stateId || 0,
-                                slot: 10,
-                                mouseButton: 0,
-                                mode: 0,
-                                changedSlots: [],
-                                cursorItem: { present: false }
-                            });
-                        }
-
-                        console.log(`🚀 [AUTH DONE] [${username}] คลิก Slot 10 เรียบร้อย! รอเซิร์ฟเวอร์ย้ายโลก (10 วินาที)...`);
-                        updateStatus(username, 'Entering Survival', 'กำลังย้ายเข้า Survival');
+                        await bot.clickWindow(10, 0, 0);
+                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปเข้าโลก 10 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival');
 
                         setTimeout(() => {
                             const pos = bot.entity?.position;
-                            console.log(`📍 [LOCATION CHECK] [${username}] พิกัดปัจจุบัน: [${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'}]`);
+                            console.log(`📍 [POSITION] [${username}] พิกัดปัจจุบัน: [${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'}]`);
 
                             if (isLever) {
                                 bot.chat('/home home2');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] ประจำการที่ Survival สมบูรณ์!`);
-                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival สมบูรณ์!`);
+                                updateStatus(username, 'Online (Survival)', 'ออนไลน์ปกติ');
                             }
 
                             bot.inSurvival = true;
@@ -369,39 +342,32 @@ function createBotInstance(username, delayMs = 0) {
                         }, 10000);
 
                     } catch (err) {
-                        console.error(`[-] [${username}] คลิกเลือก Survival ล้มเหลว: ${err.message}`);
+                        console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
                     }
-                }, 1800);
+                }, 1500);
             }
         });
 
-        function startCompassRetry(bot, username) {
+        function startCompassLoop(bot, username) {
             if (bot.compassTimer) clearInterval(bot.compassTimer);
-            let retries = 0;
-            console.log(`⏳ [LOOP] [${username}] เริ่มต้นลูปตรวจจับเข็มทิศ (สแกนซ้ำทุก 3 วินาที)...`);
-
+            let attempts = 0;
             bot.compassTimer = setInterval(async () => {
                 if (bot.authStage >= 4 || bot.inSurvival) {
                     clearInterval(bot.compassTimer);
                     return;
                 }
-                retries++;
-                console.log(`🔄 [RETRY ${retries}] [${username}] พยายามคลิกขวาเข็มทิศ...`);
-                await triggerCompass(bot, username);
-
-                if (retries >= 12) {
-                    console.log(`⚠️ [TIMEOUT] [${username}] ไม่สามารถเปิด GUI เข็มทิศได้ภายใน 12 รอบ`);
-                    clearInterval(bot.compassTimer);
-                }
+                attempts++;
+                console.log(`🧭 [COMPASS LOOP] [${username}] คลิกขวาเข็มทิศรอบที่ ${attempts}...`);
+                await useCompass(bot, username);
+                if (attempts >= 10) clearInterval(bot.compassTimer);
             }, 3000);
         }
 
         bot.on('spawn', () => {
-            const pos = bot.entity?.position;
-            console.log(`[✓] [${username}] Spawn เรียบร้อย! (พิกัด: ${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'})`);
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
             setTimeout(() => {
                 if (bot.authStage === 3 && !bot.inSurvival) {
-                    startCompassRetry(bot, username);
+                    startCompassLoop(bot, username);
                 }
             }, 3000);
         });
