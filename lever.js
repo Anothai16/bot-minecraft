@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Clean Native Auth &amp; Teleport Controller</div>
+        <div class="title">⚡ Stable Auto-Teleport Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC (NATIVE TELEPORT SAFE)
+// 🤖 BOT ENGINE & AUTH LOGIC
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -202,20 +202,21 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const isLever = botConfig?.role === 'lever';
 
-        // เปิด Plugin blocks ตามปกติเพื่อให้รับ Teleport Confirm Packet ได้สมบูรณ์
+        // ⚡ เปิด physicsEnabled: true เพื่อให้ Mineflayer จัดการ accept_teleportation ถูกต้อง
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: false,
+            physicsEnabled: true,
             checkTimeoutInterval: 0,
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
         });
 
         bot.inSurvival = false;
         bot.authStage = 0;
+        bot.hasClickedMode = false;
 
         bot.once('inject_allowed', () => {
             if (bot._client && bot._client.socket) {
@@ -269,7 +270,7 @@ function createBotInstance(username, delayMs = 0) {
                             if (bot.authStage === 1) {
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
-                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 6s)');
+                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
                                 startCompassLoop(bot, username);
                             }
                         }, 3000);
@@ -302,14 +303,16 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 6s)');
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
                         startCompassLoop(bot, username);
                     } catch (e) {}
                 }, 1200);
             }
 
-            // STAGE 3: หน้าต่างเลือกเซิร์ฟเวอร์ -> กดเลือก Survival (Slot 10)
+            // STAGE 3: หน้าต่างเลือกเซิร์ฟเวอร์ -> กดเลือก Survival (Slot 10) เพียงครั้งเดียว
             else if (window.type === 'minecraft:generic_9x3' && (bot.authStage >= 3 || titleStr.toLowerCase().includes('server') || titleStr.toLowerCase().includes('select'))) {
+                if (bot.hasClickedMode) return;
+                bot.hasClickedMode = true;
                 bot.authStage = 4;
                 if (bot.compassTimer) clearInterval(bot.compassTimer);
 
@@ -319,8 +322,8 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปเข้าโลก 10 วินาที...)`);
-                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival');
+                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอเซิร์ฟเวอร์ย้ายโลก 8 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังย้ายเข้า Survival');
 
                         setTimeout(() => {
                             const pos = bot.entity?.position;
@@ -328,7 +331,7 @@ function createBotInstance(username, delayMs = 0) {
 
                             if (isLever) {
                                 bot.chat('/home home2');
-                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival สมบูรณ์!`);
@@ -336,15 +339,18 @@ function createBotInstance(username, delayMs = 0) {
                             }
 
                             bot.inSurvival = true;
+                            // ปิดฟิสิกส์หลังจากข้ามโลกสำเร็จเพื่อประหยัด CPU
+                            bot.physicsEnabled = false;
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
-                        }, 10000);
+                        }, 8000);
 
                     } catch (err) {
                         console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
+                        bot.hasClickedMode = false;
                     }
-                }, 1500);
+                }, 1200);
             }
         });
 
@@ -364,7 +370,8 @@ function createBotInstance(username, delayMs = 0) {
         }
 
         bot.on('spawn', () => {
-            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
+            const pos = bot.entity?.position;
+            console.log(`[✓] [${username}] Spawn เรียบร้อย! (พิกัด: ${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'})`);
             setTimeout(() => {
                 if (bot.authStage === 3 && !bot.inSurvival) {
                     startCompassLoop(bot, username);
@@ -384,8 +391,8 @@ function createBotInstance(username, delayMs = 0) {
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] จะต่อใหม่ใน 15 วินาที...`);
-                createBotInstance(username, 15000);
+                console.log(`[i] [${username}] จะต่อใหม่ใน 10 วินาที...`);
+                createBotInstance(username, 10000);
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
