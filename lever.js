@@ -33,16 +33,16 @@ console.log = (...args) => {
 const app = express();
 
 const BOT_CONFIGS = [
-    { name: 'Lervy_Lever', pass: '112233' },
-    { name: 'K666', pass: '112233' },
-    { name: 'K555', pass: '112233' }
+    { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
+    { name: 'K666', pass: '112233', role: 'afk' },
+    { name: 'K555', pass: '112233', role: 'afk' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 const botStatusMap = {};
 
-// ตัวเก็บสถิติ Packet
+// ตัวเก็บสถิติ Packet ขาเข้า
 const packetStats = {
     Lervy_Lever: {},
     K666: {},
@@ -93,7 +93,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Deep Packet Inspector &amp; Farm Controller</div>
+        <div class="title">⚡ Multi-Bot Detailed Diagnostics &amp; Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -106,7 +106,7 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/status');
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (หน้าคันโยก)' : 'ออฟไลน์';
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
                     document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
@@ -124,7 +124,7 @@ app.get('/', (req, res) => {
 app.listen(WEB_PORT, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${WEB_PORT}`));
 
 // ====================================================================
-// 📊 REAL-TIME CPU & DEEP PACKET PROFILER (วิเคราะห์ Packet ละเอียดยิบ)
+// 📊 REAL-TIME CPU & DEEP PACKET PROFILER (ตรวจสอบโหลด Packet)
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
@@ -145,7 +145,6 @@ setInterval(() => {
 
     console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
 
-    // วิเคราะห์ปริมาณ Packet แต่ละตัว
     BOT_NAMES.forEach(name => {
         const stats = packetStats[name];
         if (!stats) return;
@@ -156,13 +155,10 @@ setInterval(() => {
         const totalPackets = entries.reduce((acc, [, count]) => acc + count, 0);
         const pps = Math.round(totalPackets / 5);
 
-        // หา Top 3 Packet ที่เข้ามาเยอะที่สุด
         entries.sort((a, b) => b[1] - a[1]);
         const top3 = entries.slice(0, 3).map(([pName, count]) => `${pName}:${count} (${Math.round(count / 5)}/s)`).join(' | ');
 
         console.log(`📡 [PACKET LOAD] [${name}] รับเข้า: ${pps} pkt/s | ยอดฮิต: [${top3}]`);
-
-        // รีเซ็ตตัวนับรอบถัดไป
         packetStats[name] = {};
     });
 
@@ -224,6 +220,11 @@ function createBotInstance(username, delayMs = 0) {
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
+        const isLever = botConfig?.role === 'lever';
+
+        const disabledPlugins = isLever
+            ? ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
+            : ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest'];
 
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
@@ -231,12 +232,12 @@ function createBotInstance(username, delayMs = 0) {
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: true,
+            physicsEnabled: isLever,
             checkTimeoutInterval: 120000,
-            disabledPlugins: ['sound', 'rain', 'particle']
+            disabledPlugins: disabledPlugins
         });
 
-        // ดักนับ Packet ขาเข้าทุกตัว
+        // ดักเก็บสถิติ Packet ขาเข้า
         if (bot._client) {
             bot._client.on('packet', (data, meta) => {
                 const pName = meta?.name || 'unknown';
@@ -267,7 +268,6 @@ function createBotInstance(username, delayMs = 0) {
 
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
-                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
                                 updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
@@ -279,8 +279,8 @@ function createBotInstance(username, delayMs = 0) {
             }
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
-                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน ${botPassword}`);
+                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน...`);
+                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
 
                 setTimeout(() => {
                     try {
@@ -316,10 +316,10 @@ function createBotInstance(username, delayMs = 0) {
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
                         setTimeout(() => {
-                            if (username === 'Lervy_Lever') {
-                                bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) พิกัด 10457 64 -5054 เรียบร้อย!`);
-                                updateStatus(username, 'Online (Lever Ready)', 'ประจำการหน้าคันโยก (/home home)');
+                            if (isLever) {
+                                bot.chat('/home home2');
+                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU!`);
+                                updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
@@ -328,11 +328,13 @@ function createBotInstance(username, delayMs = 0) {
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
+                            bot.entities = {};
 
                             if (bot.afkInterval) clearInterval(bot.afkInterval);
                             bot.afkInterval = setInterval(() => {
                                 try {
                                     bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    bot.entities = {};
                                 } catch (e) {}
                             }, 60000);
                         }, 10000);
@@ -372,7 +374,7 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (พิกัด: 10456, 64, -5054)
+// 🕹️ LEVER LOGIC (พร้อมระบบ Full Diagnostics Log)
 // ====================================================================
 let isLeverCycleRunning = false;
 
@@ -400,6 +402,10 @@ async function clickLeverSafe(actionName) {
         console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
         await leverBot.lookAt(LEVER_AIM_TARGET, true);
         await sleep(400);
+
+        const currentYaw = (leverBot.entity.yaw * (180 / Math.PI)).toFixed(1);
+        const currentPitch = (leverBot.entity.pitch * (180 / Math.PI)).toFixed(1);
+        console.log(`🎯 [LEVER DIAG] องศาปัจจุบัน: Yaw=${currentYaw}°, Pitch=${currentPitch}°`);
 
         let block = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
         console.log(`📦 [LEVER DIAG] ข้อมูลบล็อกที่พิกัด 10456, 64, -5054: Name=${block ? block.name : 'null'} | Type=${block ? block.type : 'null'}`);
@@ -451,6 +457,9 @@ async function triggerLeverCycle() {
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
+
+            activeBots['Lervy_Lever'].chat('/home home2');
+            console.log(`🚀 [LEVER CYCLE]: สับเปิดสำเร็จ ยิงคำสั่งวาร์ปหนีฟาร์ม (/home home2) ทันที!`);
             console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!\n`);
         }
     } finally {
@@ -459,7 +468,7 @@ async function triggerLeverCycle() {
 }
 
 // ====================================================================
-// ⏰ SCHEDULE ENGINE (นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57)
+// ⏰ SCHEDULE ENGINE
 // ====================================================================
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
@@ -473,6 +482,19 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 
     console.log(`\n⏰ [CRON TRIGGER]: ถึงรอบทำงาน [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
     await triggerLeverCycle();
+});
+
+cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    if ((hour === 5 && minute >= 34) || hour === 6) return;
+
+    if (isBotOnline('Lervy_Lever')) {
+        console.log(`\n🚶 [PRE-WARP 1 MIN]: ถึงเวลาเตรียมตัว วาร์ปกลับมารอหน้าคันโยก (/home home) [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
+        activeBots['Lervy_Lever'].chat('/home home');
+    }
 });
 
 // ====================================================================
