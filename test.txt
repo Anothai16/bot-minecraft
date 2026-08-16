@@ -6,6 +6,13 @@
 
  Jolibee 3.48K
 
+
+dritestudio@dritestudio:~/bot-minecraft/bot-minecraft$ git fetch
+dritestudio@dritestudio:~/bot-minecraft/bot-minecraft$ git reset --hard origin/master
+Updating files: 100% (4/4), done.
+HEAD is now at a97e913 t
+
+
 82.26.104.50
 dritestudio
 
