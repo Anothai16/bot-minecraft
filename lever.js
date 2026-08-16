@@ -79,36 +79,40 @@ function isLeverBotOnline() {
 }
 
 // ====================================================================
-// 🕹️ LEVER BOT (Lervy_Lever - Direct Raw Packet)
+// 🕹️ LEVER BOT (Lervy_Lever - Direct Packet Safe)
 // ====================================================================
-const LEVER_COORD = new Vec3(10456, 64, -5054);
-const PLAYER_STAND_POS = { x: 10457.5, y: 64.0, z: -5053.5 };
+const LEVER_COORD = { x: 10456, y: 64, z: -5054 };
 
 async function clickLeverRaw(actionName = '') {
-    if (!botLever || !botLever._client || botLever._client.ended) return false;
+    if (!botLever || !botLever._client || botLever._client.ended) {
+        console.log(`❌ [LEVER LOG] ยกเลิก: บอทไม่ออนไลน์`);
+        return false;
+    }
 
     try {
-        botLever._client.write('position_look', {
-            x: PLAYER_STAND_POS.x,
-            y: PLAYER_STAND_POS.y,
-            z: PLAYER_STAND_POS.z,
-            yaw: 90,
-            pitch: 0,
-            onGround: true
-        });
+        // หันหน้าไปยังคันโยก
+        if (botLever.look) {
+            try { botLever.look(Math.PI / 2, 0, true); } catch (e) {}
+        }
+        await sleep(150);
 
-        await sleep(100);
-
-        botLever._client.write('block_place', {
-            location: LEVER_COORD,
-            direction: 1,
+        // ส่ง Packet สับคันโยก (รองรับทั้ง use_item_on และ block_place)
+        const packetData = {
             hand: 0,
+            location: { x: LEVER_COORD.x, y: LEVER_COORD.y, z: LEVER_COORD.z },
+            direction: 1,
             cursorX: 0.5,
             cursorY: 0.5,
             cursorZ: 0.5,
             insideBlock: false,
             sequence: 0
-        });
+        };
+
+        try {
+            botLever._client.write('use_item_on', packetData);
+        } catch (err) {
+            botLever._client.write('block_place', packetData);
+        }
 
         if (botLever.swingArm) botLever.swingArm('right');
         console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จ!`);
@@ -131,7 +135,6 @@ async function triggerLeverCycle() {
         } else {
             console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
             
-            // 🛡️ ป้องกันการ Reconnect ซ้อนหาก K666 กำลังต่ออยู่แล้ว
             if (!check.hasK666 && !isReconnectingK666 && (!botK666 || botK666._client?.ended)) {
                 console.log(`🔄 [AUTO RECONNECT K666]: ไม่พบ K666 สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
                 startAFKBot();
