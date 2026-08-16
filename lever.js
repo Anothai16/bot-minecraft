@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Netty-Teleport Safe Controller</div>
+        <div class="title">⚡ Stable Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -208,7 +208,7 @@ function createBotInstance(username, delayMs = 0) {
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: false, // ปิดไว้แล้วเราดักตอบ teleport_confirm เองตรงๆ
+            physicsEnabled: false,
             checkTimeoutInterval: 0,
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
         });
@@ -227,22 +227,6 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         if (bot._client) {
-            // ⚡ ดักตอบรับ Teleport Position จากเซิร์ฟเวอร์อย่างถูกต้องตรงระดับ Protocol
-            bot._client.on('position', (packet) => {
-                if (packet.teleportId !== undefined) {
-                    try {
-                        bot._client.write('teleport_confirm', { teleportId: packet.teleportId });
-                        bot._client.write('position', {
-                            x: packet.x,
-                            y: packet.y,
-                            z: packet.z,
-                            onGround: true
-                        });
-                    } catch (e) {}
-                }
-            });
-
-            // ดักตอบ Keep-Alive & Ping
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
             });
@@ -270,7 +254,7 @@ function createBotInstance(username, delayMs = 0) {
         bot.on('windowOpen', async (window) => {
             const titleStr = typeof window.title === 'string' ? window.title : JSON.stringify(window.title);
 
-            // STAGE 0: พบ GUI ล็อกอินหลัก -> กด Slot 1 (สมุดรหัสผ่าน)
+            // STAGE 0: กด Slot 1 (สมุดรหัสผ่าน)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
                 console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
@@ -308,7 +292,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1000);
             }
 
-            // STAGE 2: กดยืนยัน Slot 2 ในหน้าต่างหลัก
+            // STAGE 2: กดยืนยัน Slot 2
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
@@ -323,7 +307,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1200);
             }
 
-            // STAGE 3: หน้าต่างเลือกเซิร์ฟเวอร์ -> กดเลือก Survival (Slot 10) เพียงครั้งเดียว
+            // STAGE 3: กดเลือก Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && (bot.authStage >= 3 || titleStr.toLowerCase().includes('server') || titleStr.toLowerCase().includes('select'))) {
                 if (bot.hasClickedMode) return;
                 bot.hasClickedMode = true;
