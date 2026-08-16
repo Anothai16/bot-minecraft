@@ -42,6 +42,13 @@ const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 const botStatusMap = {};
 
+// ตัวเก็บสถิติ Packet
+const packetStats = {
+    Lervy_Lever: {},
+    K666: {},
+    K555: {}
+};
+
 BOT_NAMES.forEach(name => {
     botStatusMap[name] = { 
         status: 'Stopped', 
@@ -86,7 +93,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Multi-Bot &amp; Precision Lever Controller</div>
+        <div class="title">⚡ Deep Packet Inspector &amp; Farm Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -117,7 +124,7 @@ app.get('/', (req, res) => {
 app.listen(WEB_PORT, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${WEB_PORT}`));
 
 // ====================================================================
-// 📊 REAL-TIME CPU PROFILER
+// 📊 REAL-TIME CPU & DEEP PACKET PROFILER (วิเคราะห์ Packet ละเอียดยิบ)
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
@@ -137,6 +144,28 @@ setInterval(() => {
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
     console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
+
+    // วิเคราะห์ปริมาณ Packet แต่ละตัว
+    BOT_NAMES.forEach(name => {
+        const stats = packetStats[name];
+        if (!stats) return;
+
+        const entries = Object.entries(stats);
+        if (entries.length === 0) return;
+
+        const totalPackets = entries.reduce((acc, [, count]) => acc + count, 0);
+        const pps = Math.round(totalPackets / 5);
+
+        // หา Top 3 Packet ที่เข้ามาเยอะที่สุด
+        entries.sort((a, b) => b[1] - a[1]);
+        const top3 = entries.slice(0, 3).map(([pName, count]) => `${pName}:${count} (${Math.round(count / 5)}/s)`).join(' | ');
+
+        console.log(`📡 [PACKET LOAD] [${name}] รับเข้า: ${pps} pkt/s | ยอดฮิต: [${top3}]`);
+
+        // รีเซ็ตตัวนับรอบถัดไป
+        packetStats[name] = {};
+    });
+
 }, 5000);
 
 // ====================================================================
@@ -206,6 +235,15 @@ function createBotInstance(username, delayMs = 0) {
             checkTimeoutInterval: 120000,
             disabledPlugins: ['sound', 'rain', 'particle']
         });
+
+        // ดักนับ Packet ขาเข้าทุกตัว
+        if (bot._client) {
+            bot._client.on('packet', (data, meta) => {
+                const pName = meta?.name || 'unknown';
+                if (!packetStats[username]) packetStats[username] = {};
+                packetStats[username][pName] = (packetStats[username][pName] || 0) + 1;
+            });
+        }
 
         activeBots[username] = bot;
         bot.authStage = 0;
@@ -318,6 +356,7 @@ function createBotInstance(username, delayMs = 0) {
         bot.on('end', (reason) => {
             if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
+            delete packetStats[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
