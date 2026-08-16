@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ All-Lightweight Multi-Bot Controller (Zero World Load)</div>
+        <div class="title">⚡ Low-CPU Farm Controller (No-Parse Engine)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE (Lightweight For All)
+// 🤖 BOT ENGINE & AUTH LOGIC
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -285,20 +285,26 @@ function createBotInstance(username, delayMs = 0) {
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
                         setTimeout(() => {
-                            // ถ้าเป็น Lervy_Lever ให้วาร์ปกลับมาที่ /home home ทันที
                             if (username === 'Lervy_Lever') {
                                 bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) ประจำการหน้าคันโยกเรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Lever Ready)', 'ประจำการหน้าคันโยก (/home home)');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
                             }
 
+                            // ⚡ สกัดการประมวลผล Entity/Movement หนักๆ ทันทีที่เข้าสู่เกม
+                            bot.removeAllListeners('entityMoved');
+                            bot.removeAllListeners('entitySpawn');
+                            bot.removeAllListeners('blockUpdate');
+                            bot.entities = {};
+
                             if (bot.afkInterval) clearInterval(bot.afkInterval);
                             bot.afkInterval = setInterval(() => {
                                 try {
                                     bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    bot.entities = {}; // เคลียร์ Entity ไม่ให้สะสมใน RAM
                                 } catch (e) {}
                             }, 60000);
                         }, 10000);
@@ -337,7 +343,7 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Static Virtual Block - ไม่ต้องโหลด World Chunk)
+// 🕹️ LEVER LOGIC (Direct Virtual Interaction)
 // ====================================================================
 let isLeverCycleRunning = false;
 
