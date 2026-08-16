@@ -32,7 +32,6 @@ console.log = (...args) => {
 
 const app = express();
 
-// ⚡ ตัด K555 ออก เหลือเฉพาะ Lervy_Lever และ K666
 const BOT_CONFIGS = [
     { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
     { name: 'K666', pass: '112233', role: 'afk' }
@@ -275,9 +274,9 @@ function createBotInstance(username, delayMs = 0) {
 
                         setTimeout(() => {
                             if (isLever) {
-                                bot.chat('/home home2');
-                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
-                                updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
+                                bot.chat('/home home');
+                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ ประจำการที่ (/home home) หน้าคันโยกเรียบร้อย!`);
+                                updateStatus(username, 'Online (Standby home)', 'สแตนด์บายที่ home');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
@@ -335,7 +334,7 @@ function createBotInstance(username, delayMs = 0) {
 // ====================================================================
 let isLeverCycleRunning = false;
 
-// ⚡ พิกัดคันโยกและตำแหน่งยืนใหม่
+// ⚡ พิกัดคันโยกและตำแหน่งยืนหน้าคันโยก
 const LEVER_COORD = { x: 10383, y: 64, z: -5065 };
 const PLAYER_STAND_POS = { x: 10382.5, y: 64.0, z: -5065.5 };
 
@@ -389,7 +388,6 @@ async function triggerLeverCycle() {
         const hasLever = isBotOnline('Lervy_Lever');
         const hasK666 = isBotOnline('K666');
 
-        // ⚡ ตรวจสอบเฉพาะ Lervy_Lever และ K666
         if (!hasLever || !hasK666) {
             console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lervy_Lever: ${hasLever ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) ข้ามรอบนี้`);
             return;
@@ -405,9 +403,7 @@ async function triggerLeverCycle() {
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
 
-            activeBots['Lervy_Lever'].chat('/home home2');
-            console.log(`🚀 [LEVER CYCLE]: สับเปิดสำเร็จ วาร์ปหลบไปที่ (/home home2) ทันที!`);
-            console.log(`✅ [LEVER CYCLE]: จบการทำงานรอบนี้เรียบร้อย!\n`);
+            console.log(`✅ [LEVER CYCLE]: จบการทำงานรอบนี้เรียบร้อย! (ประจำการอยู่ที่เดิม)\n`);
         }
     } finally {
         isLeverCycleRunning = false;
@@ -429,19 +425,6 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
 
     console.log(`\n⏰ [CRON TRIGGER]: ถึงรอบทำงาน [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
     await triggerLeverCycle();
-});
-
-cron.schedule('45 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-
-    if ((hour === 5 && minute >= 34) || hour === 6) return;
-
-    if (isBotOnline('Lervy_Lever')) {
-        console.log(`\n🚶 [PRE-WARP 15s]: วาร์ปกลับมารอหน้าคันโยก (/home home) เพื่อเตรียมสับ`);
-        activeBots['Lervy_Lever'].chat('/home home');
-    }
 });
 
 // ====================================================================
