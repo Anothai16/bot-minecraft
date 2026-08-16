@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Clean &amp; Teleport-Safe Multi-Bot Controller</div>
+        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Survival)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Survival)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -197,36 +197,16 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const isLever = botConfig?.role === 'lever';
 
-        // ⚡ เปิด Blocks/Physics และตัด Client Timeout ออก เพื่อให้คุย Handshake ผ่าน 100%
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            checkTimeoutInterval: 0, // ป้องกันบอทตัดตัวเองตอน CPU 100%
-            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
+            physicsEnabled: false,
+            checkTimeoutInterval: 0, // ⚡ ปิด Timeout ภายใน ไม่ให้บอทตัดตัวเองตอน CPU 100%
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
-
-        // 🛡️ ปรับแต่ง Socket TCP
-        bot.once('inject_allowed', () => {
-            if (bot._client && bot._client.socket) {
-                try {
-                    bot._client.socket.setNoDelay(true);
-                    bot._client.socket.setKeepAlive(true, 10000);
-                } catch (e) {}
-            }
-        });
-
-        // 🛡️ ดักตอบ Keep-Alive และ Ping ระดับ Socket ป้องกัน Server เตะ
-        if (bot._client) {
-            bot._client.on('keep_alive', (packet) => {
-                try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
-            });
-            bot._client.on('ping', (packet) => {
-                try { bot._client.write('ping', { id: packet.id }); } catch (e) {}
-            });
-        }
 
         activeBots[username] = bot;
         bot.authStage = 0;
