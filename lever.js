@@ -32,9 +32,9 @@ console.log = (...args) => {
 
 const app = express();
 
+// ⚡ รันเฉพาะ Lervy_Lever ตัวเดียวในโปรเซสนี้
 const BOT_CONFIGS = [
-    { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
-    { name: 'K666', pass: '112233', role: 'afk' }
+    { name: 'Lervy_Lever', pass: '112233', role: 'lever' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
@@ -56,10 +56,17 @@ function isBotOnline(username) {
     return b && b._client && !b._client.ended && botStatusMap[username]?.status.includes('Online');
 }
 
+// 🔍 ฟังก์ชันเช็คว่าผู้เล่น K666 อยู่ในเซิร์ฟเวอร์หรือไม่ (เช็คจาก Tablist ของ Lervy_Lever)
+function isPlayerInServer(targetUsername) {
+    const leverBot = activeBots['Lervy_Lever'];
+    if (!leverBot || !leverBot.players) return false;
+    return Object.keys(leverBot.players).some(name => name.toLowerCase() === targetUsername.toLowerCase());
+}
+
 app.get('/api/status', (req, res) => {
     res.json({
         lever: isBotOnline('Lervy_Lever'),
-        k666: isBotOnline('K666'),
+        k666_in_server: isPlayerInServer('K666'),
         logs: logsBuffer.slice().reverse().join('\n')
     });
 });
@@ -71,7 +78,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bot Resource Controller</title>
+        <title>Minecraft Lever Controller</title>
         <style>
             body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -84,10 +91,10 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
+        <div class="title">⚡ Single Lever Controller (Remote K666 Checker)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
-            <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
+            <div class="card"><span id="dot-k666" class="dot offline"></span> สถานะ K666 ในเซิร์ฟ: <b id="txt-k666">กำลังโหลด...</b></div>
         </div>
         <div class="log-box" id="logs">กำลังดึง Logs...</div>
         <script>
@@ -97,8 +104,8 @@ app.get('/', (req, res) => {
                     const data = await res.json();
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
-                    document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('dot-k666').className = 'dot ' + (data.k666_in_server ? 'online' : 'offline');
+                    document.getElementById('txt-k666').textContent = data.k666_in_server ? 'พบในเซิร์ฟเวอร์' : 'ไม่พบในเซิร์ฟเวอร์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -190,8 +197,8 @@ function createBotInstance(username, delayMs = 0) {
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
-        const isLever = botConfig?.role === 'lever';
 
+        // ⚡ เปิด tablist ไว้เพื่อให้ Lervy_Lever สามารถตรวจสอบชื่อ K666 ในเซิร์ฟเวอร์ได้
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
@@ -200,7 +207,7 @@ function createBotInstance(username, delayMs = 0) {
             data: sharedData,
             physicsEnabled: false,
             checkTimeoutInterval: 0,
-            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'blocks', 'physics', 'entities', 'chest']
         });
 
         activeBots[username] = bot;
@@ -273,14 +280,9 @@ function createBotInstance(username, delayMs = 0) {
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
                         setTimeout(() => {
-                            if (isLever) {
-                                bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ ประจำการที่ (/home home) หน้าคันโยกเรียบร้อย!`);
-                                updateStatus(username, 'Online (Standby home)', 'สแตนด์บายที่ home');
-                            } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
-                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
-                            }
+                            bot.chat('/home home');
+                            console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ ประจำการที่ (/home home) หน้าคันโยกเรียบร้อย!`);
+                            updateStatus(username, 'Online (Standby home)', 'สแตนด์บายที่ home');
 
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
@@ -386,10 +388,10 @@ async function triggerLeverCycle() {
 
     try {
         const hasLever = isBotOnline('Lervy_Lever');
-        const hasK666 = isBotOnline('K666');
+        const hasK666 = isPlayerInServer('K666'); // 🔍 ตรวจสอบชื่อ K666 ในเซิร์ฟเวอร์
 
         if (!hasLever || !hasK666) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lervy_Lever: ${hasLever ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) ข้ามรอบนี้`);
+            console.log(`⏳ [SKIP CYCLE]: เงื่อนไขไม่ครบ (Lervy_Lever: ${hasLever ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666 ในเซิร์ฟ: ${hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) ข้ามรอบนี้`);
             return;
         }
 
