@@ -59,18 +59,18 @@ chmod +x ./MinecraftClient
 
       echo "==================================================" >&2
       echo "⏰ [CRON $NOW_TIME] ถึงรอบทำงาน! สั่งสับปิดคันโยก (OFF)..." >&2
-      echo "/useblock 10383 64.00 -5064.51"
+      echo "/useblock 10383 64 -5065"
       
       echo "⏱️ [CRON $NOW_TIME] รอ 5 วินาที..." >&2
       sleep 5
       
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🟢 [CRON $NOW_TIME] จบเวลาทำงาน: สั่งสับเปิดระบบ (ON)..." >&2
-      echo "/useblock 10383 64.00 -5064.51"
+      echo "/useblock 10383 64 -5065"
       echo "✅ [CRON $NOW_TIME] ไซเคิลรอบนี้เสร็จสมบูรณ์!" >&2
       echo "==================================================" >&2
     fi
 
     sleep 1
   done
-) | ./MinecraftClient Lervy_Lever - play.amorycraft.com 1.20.1
+) | ./MinecraftClient Lervy_Lever - play.amorycraft.com
