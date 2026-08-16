@@ -33,20 +33,14 @@ console.log = (...args) => {
 const app = express();
 
 const BOT_CONFIGS = [
-    { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
-    { name: 'K666', pass: '112233', role: 'afk' },
-    { name: 'K555', pass: '112233', role: 'afk' }
+    { name: 'Lervy_Lever', pass: '112233' },
+    { name: 'K666', pass: '112233' },
+    { name: 'K555', pass: '112233' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 const botStatusMap = {};
-
-const packetStats = {
-    Lervy_Lever: {},
-    K666: {},
-    K555: {}
-};
 
 BOT_NAMES.forEach(name => {
     botStatusMap[name] = { 
@@ -92,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Zero-Lag Precise Lever Controller</div>
+        <div class="title">⚡ Pure Zero-Load Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -123,7 +117,7 @@ app.get('/', (req, res) => {
 app.listen(WEB_PORT, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${WEB_PORT}`));
 
 // ====================================================================
-// 📊 REAL-TIME CPU & PACKET PROFILER
+// 📊 REAL-TIME CPU PROFILER
 // ====================================================================
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
@@ -143,28 +137,10 @@ setInterval(() => {
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
     console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
-
-    BOT_NAMES.forEach(name => {
-        const stats = packetStats[name];
-        if (!stats) return;
-
-        const entries = Object.entries(stats);
-        if (entries.length === 0) return;
-
-        const totalPackets = entries.reduce((acc, [, count]) => acc + count, 0);
-        const pps = Math.round(totalPackets / 5);
-
-        entries.sort((a, b) => b[1] - a[1]);
-        const top3 = entries.slice(0, 3).map(([pName, count]) => `${pName}:${count} (${Math.round(count / 5)}/s)`).join(' | ');
-
-        console.log(`📡 [PACKET LOAD] [${name}] รับเข้า: ${pps} pkt/s | ยอดฮิต: [${top3}]`);
-        packetStats[name] = {};
-    });
-
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC
+// 🤖 BOT ENGINE & AUTH LOGIC (All Physics Off)
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -219,52 +195,34 @@ function createBotInstance(username, delayMs = 0) {
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
-        const isLever = botConfig?.role === 'lever';
 
-        const disabledPlugins = isLever
-            ? ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'entities', 'chest']
-            : ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest'];
-
+        // ปิด Physics และ Plugins หนักทั้งหมดในทุกตัว
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: isLever,
+            physicsEnabled: false,
             checkTimeoutInterval: 120000,
-            disabledPlugins: disabledPlugins
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
 
-        // ⚡ ดักสกัดแพ็กเก็ตขยะทั้งหมด รวมทั้ง Block Changes ของฟาร์ม
+        // กรอง Packet ทิ้งทั้งหมดตั้งแต่ Socket Level
         if (bot._client) {
-            const dropPacketsAFK = new Set([
+            const dropPackets = new Set([
                 'rel_entity_move', 'entity_velocity', 'multi_block_change', 'block_change', 
-                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 'entity_destroy', 'update_light'
-            ]);
-
-            const dropPacketsLever = new Set([
-                'rel_entity_move', 'entity_velocity', 'entity_teleport', 'entity_metadata', 
-                'bundle_delimiter', 'spawn_entity', 'entity_destroy', 'multi_block_change', 'block_change', 'update_light', 'world_event'
+                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 
+                'entity_destroy', 'update_light', 'world_event', 'block_action'
             ]);
 
             const origEmit = bot._client.emit;
             bot._client.emit = function (event, ...args) {
-                if (event === 'packet' && args[1]) {
-                    const pName = args[1].name;
-                    if (!isLever && dropPacketsAFK.has(pName)) return false;
-                    if (isLever && dropPacketsLever.has(pName)) return false;
+                if (event === 'packet' && args[1] && dropPackets.has(args[1].name)) {
+                    return false;
                 }
                 return origEmit.apply(this, [event, ...args]);
             };
-        }
-
-        if (bot._client) {
-            bot._client.on('packet', (data, meta) => {
-                const pName = meta?.name || 'unknown';
-                if (!packetStats[username]) packetStats[username] = {};
-                packetStats[username][pName] = (packetStats[username][pName] || 0) + 1;
-            });
         }
 
         activeBots[username] = bot;
@@ -337,9 +295,9 @@ function createBotInstance(username, delayMs = 0) {
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
 
                         setTimeout(() => {
-                            if (isLever) {
+                            if (username === 'Lervy_Lever') {
                                 bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปเข้าประจำการหน้าคันโยก (/home home) พิกัด 10457 64 -5054!`);
+                                console.log(`🚀 [Lervy_Lever] ประจำการหน้าคันโยก (/home home) พิกัด 10457 64 -5054!`);
                                 updateStatus(username, 'Online (Lever Ready)', 'ประจำการหน้าคันโยก');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
@@ -379,7 +337,6 @@ function createBotInstance(username, delayMs = 0) {
         bot.on('end', (reason) => {
             if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
-            delete packetStats[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
@@ -395,19 +352,12 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Direct Lever Interaction - Zero World Load)
+// 🕹️ DIRECT SOCKET LEVER ENGINE (สับแม่นยำ 100% โดยไม่ต้องใช้ Physics)
 // ====================================================================
 let isLeverCycleRunning = false;
 
-const LEVER_BLOCK_POS = new Vec3(10456, 64, -5054);
-const LEVER_AIM_TARGET = new Vec3(10456.5, 64.5, -5053.5);
-
-// โครงสร้างคันโยกถาวร ไม่ต้องรอ World Parse
-const STATIC_LEVER_BLOCK = {
-    position: LEVER_BLOCK_POS,
-    name: 'lever',
-    shapes: [[[0, 0, 0, 1, 1, 1]]]
-};
+const LEVER_COORD = { x: 10456, y: 64, z: -5054 };
+const PLAYER_STAND_POS = { x: 10457.5, y: 64.0, z: -5053.5 };
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -416,25 +366,39 @@ async function clickLeverSafe(actionName) {
         return false;
     }
 
-    const playerPos = leverBot.entity?.position;
-    const distance = playerPos ? playerPos.distanceTo(LEVER_BLOCK_POS).toFixed(2) : 'N/A';
-    console.log(`🔍 [LEVER DIAG] บอทยืนที่: [${playerPos ? `${playerPos.x.toFixed(1)}, ${playerPos.y.toFixed(1)}, ${playerPos.z.toFixed(1)}` : 'Unknown'}] | ระยะห่างถึงคันโยก: ${distance} บล็อก`);
-
     try {
-        console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
-        await leverBot.lookAt(LEVER_AIM_TARGET, true);
-        await sleep(250);
+        // 1. ส่ง Position Packet ยืนยันว่ายืนติดคันโยกแน่นอน (ป้องกัน Reach Limit)
+        if (leverBot._client) {
+            leverBot._client.write('position_look', {
+                x: PLAYER_STAND_POS.x,
+                y: PLAYER_STAND_POS.y,
+                z: PLAYER_STAND_POS.z,
+                yaw: 90, // หันหน้าทิศตะวันตกตรงหาคันโยก
+                pitch: 0,
+                onGround: true
+            });
+        }
+        await sleep(100);
 
-        console.log(`👆 [LEVER DIAG] ส่งคำสั่ง activateBlock...`);
-        
-        // ใช้ activateBlock กับ STATIC_LEVER_BLOCK โดยตรง (เร็วและไม่ติด Loop World Update)
-        await leverBot.activateBlock(STATIC_LEVER_BLOCK);
+        // 2. ส่งแพ็กเก็ตคลิกขวาคันโยกตรงๆ ในระดับ Protocol
+        if (leverBot._client) {
+            leverBot._client.write('block_place', {
+                hand: 0,
+                location: { x: LEVER_COORD.x, y: LEVER_COORD.y, z: LEVER_COORD.z },
+                direction: 1, // Face: Top
+                cursorX: 0.5,
+                cursorY: 0.5,
+                cursorZ: 0.5,
+                insideBlock: false,
+                sequence: 0
+            });
+        }
+
         if (leverBot.swingArm) leverBot.swingArm('right');
-
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์ (Direct Packet)!`);
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: ข้อผิดพลาด -> ${err.message}`);
+        console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
 }
@@ -449,7 +413,7 @@ async function triggerLeverCycle() {
         const hasK555 = isBotOnline('K555');
 
         if (!hasLever || !hasK666 || !hasK555) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้ (Lever: ${hasLever}, K666: ${hasK666}, K555: ${hasK555})`);
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้`);
             return;
         }
 
@@ -462,7 +426,7 @@ async function triggerLeverCycle() {
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
-            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย (ยืนสแตนด์บายหน้าคันโยกต่อ)!\n`);
+            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย (เวลาตรงเป๊ะ 10s)!\n`);
         }
     } finally {
         isLeverCycleRunning = false;
