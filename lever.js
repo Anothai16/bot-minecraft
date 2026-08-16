@@ -21,6 +21,7 @@ let isReconnectingLever = false;
 
 let botK666;
 let isReconnectingK666 = false;
+let isK666InSurvival = false;
 
 // 🌍 Express Server (Health check 24/7)
 const app = express();
@@ -67,7 +68,7 @@ function checkPlayersFromLever() {
     }
     const onlinePlayerNames = Object.keys(botLever.players);
     const hasK555 = onlinePlayerNames.includes('K555');
-    const hasK666 = onlinePlayerNames.includes('K666');
+    const hasK666 = onlinePlayerNames.includes('K666') || isK666InSurvival;
 
     return { isReady: hasK555 && hasK666, hasK555, hasK666 };
 }
@@ -87,7 +88,6 @@ async function clickLeverRaw(actionName = '') {
     if (!botLever || !botLever._client || botLever._client.ended) return false;
 
     try {
-        // จัดตำแหน่งและมุมมองตัวละครไปยังคันโยก
         botLever._client.write('position_look', {
             x: PLAYER_STAND_POS.x,
             y: PLAYER_STAND_POS.y,
@@ -99,7 +99,6 @@ async function clickLeverRaw(actionName = '') {
 
         await sleep(100);
 
-        // ส่ง Packet สับคันโยก
         botLever._client.write('block_place', {
             location: LEVER_COORD,
             direction: 1,
@@ -132,9 +131,9 @@ async function triggerLeverCycle() {
         } else {
             console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
             
-            if (!check.hasK666 && !isReconnectingK666) {
+            // 🛡️ ป้องกันการ Reconnect ซ้อนหาก K666 กำลังต่ออยู่แล้ว
+            if (!check.hasK666 && !isReconnectingK666 && (!botK666 || botK666._client?.ended)) {
                 console.log(`🔄 [AUTO RECONNECT K666]: ไม่พบ K666 สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
-                if (botK666) { try { botK666.quit(); } catch (e) {} }
                 startAFKBot();
             }
 
@@ -178,7 +177,6 @@ function initScheduler() {
         await triggerLeverCycle();
     });
 
-    // 🚶 วาร์ปมารอหน้าคันโยกก่อนรอบทำงาน 15 วินาที
     cron.schedule('45 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
         const now = new Date();
         const hour = now.getHours();
@@ -196,6 +194,10 @@ function initScheduler() {
 }
 
 function startLeverBot() {
+    if (botLever && !botLever._client?.ended) {
+        try { botLever.quit(); } catch (e) {}
+    }
+
     console.log('🔌 [Lervy_Lever] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     
     botLever = mineflayer.createBot({ 
@@ -243,7 +245,7 @@ function startLeverBot() {
         neuterBotEngine(botLever);
     });
 
-    botLever.on('kicked', (reason) => console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!!`));
+    botLever.on('kicked', (reason) => console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!! (${reason})`));
     botLever.on('error', (err) => console.log(`\n❌ [Lervy_Lever Error]: ${err.message}`));
 
     botLever.on('end', () => { 
@@ -262,6 +264,11 @@ function startLeverBot() {
 // 🤖 AFK BOT (K666)
 // ====================================================================
 function startAFKBot() {
+    if (botK666 && !botK666._client?.ended) {
+        try { botK666.quit(); } catch (e) {}
+    }
+
+    isK666InSurvival = false;
     console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
     
     botK666 = mineflayer.createBot({ 
@@ -280,8 +287,6 @@ function startAFKBot() {
             if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
         });
     }
-
-    let isK666InSurvival = false;
 
     const k666LoginTimeout = setTimeout(() => {
         if (!isK666InSurvival && botK666) {
@@ -307,22 +312,20 @@ function startAFKBot() {
     botK666.once('spawn', () => {
         console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Extreme Low-CPU)');
         neuterBotEngine(botK666);
-
-        if (botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
-        botK666.watchdogInterval = setInterval(() => {
-            if (isK666InSurvival && !isLeverBotOnline() && !isReconnectingLever) {
-                console.log(`⚠️ [K666 WATCHDOG]: ไม่พบ Lervy_Lever ในเซิร์ฟเวอร์! สั่งช่วย Reconnect Lervy_Lever ทันที...`);
-                if (botLever) { try { botLever.quit(); } catch (e) {} }
-                startLeverBot();
-            }
-        }, 120000);
     });
 
-    botK666.on('kicked', (reason) => console.log(`\n🚨 [K666]: โดนเตะออก!!`));
-    botK666.on('error', (err) => console.log(`\n❌ [K666 Error]: ${err.message}`));
+    botK666.on('kicked', (reason) => {
+        isK666InSurvival = false;
+        console.log(`\n🚨 [K666]: โดนเตะออก!! (${reason})`);
+    });
+    
+    botK666.on('error', (err) => {
+        isK666InSurvival = false;
+        console.log(`\n❌ [K666 Error]: ${err.message}`);
+    });
 
     botK666.on('end', () => { 
-        if (botK666 && botK666.watchdogInterval) clearInterval(botK666.watchdogInterval);
+        isK666InSurvival = false;
         clearTimeout(k666LoginTimeout);
         if (isReconnectingK666) return;
         isReconnectingK666 = true;
@@ -342,7 +345,7 @@ startLeverBot();
 
 setTimeout(() => {
     startAFKBot();
-}, 5000);
+}, 6000);
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
