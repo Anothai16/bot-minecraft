@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Auto-Teleport Controller</div>
+        <div class="title">⚡ Stable Netty-Teleport Safe Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -202,14 +202,13 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const isLever = botConfig?.role === 'lever';
 
-        // ⚡ เปิด physicsEnabled: true เพื่อให้ Mineflayer จัดการ accept_teleportation ถูกต้อง
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: true,
+            physicsEnabled: false, // ปิดไว้แล้วเราดักตอบ teleport_confirm เองตรงๆ
             checkTimeoutInterval: 0,
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
         });
@@ -227,8 +226,23 @@ function createBotInstance(username, delayMs = 0) {
             }
         });
 
-        // ดัก Keep-Alive & Ping
         if (bot._client) {
+            // ⚡ ดักตอบรับ Teleport Position จากเซิร์ฟเวอร์อย่างถูกต้องตรงระดับ Protocol
+            bot._client.on('position', (packet) => {
+                if (packet.teleportId !== undefined) {
+                    try {
+                        bot._client.write('teleport_confirm', { teleportId: packet.teleportId });
+                        bot._client.write('position', {
+                            x: packet.x,
+                            y: packet.y,
+                            z: packet.z,
+                            onGround: true
+                        });
+                    } catch (e) {}
+                }
+            });
+
+            // ดักตอบ Keep-Alive & Ping
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
             });
@@ -331,7 +345,7 @@ function createBotInstance(username, delayMs = 0) {
 
                             if (isLever) {
                                 bot.chat('/home home2');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival สมบูรณ์!`);
@@ -339,8 +353,6 @@ function createBotInstance(username, delayMs = 0) {
                             }
 
                             bot.inSurvival = true;
-                            // ปิดฟิสิกส์หลังจากข้ามโลกสำเร็จเพื่อประหยัด CPU
-                            bot.physicsEnabled = false;
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
