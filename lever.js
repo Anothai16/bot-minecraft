@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Multi-Bot Controller &amp; Anti-Kick</div>
+        <div class="title">⚡ Clean Auth &amp; Anti-Disconnect Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC (Original Authentic Logic)
+// 🤖 BOT ENGINE & AUTH LOGIC (AUTHENTIC CLEAN CODE)
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -204,11 +204,21 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 0, // ⚡ ปิด timeout ป้องกันบอทตัดตัวเองเมื่อ CPU ขึ้นสูง
+            checkTimeoutInterval: 0, // ⚡ ป้องกัน Mineflayer สั่งตัดการเชื่อมต่อตัวเอง
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
 
-        // ⚡ ดักตอบ Keep-Alive และ Ping ทันทีที่ระดับ Socket เพื่อป้องกันเซิร์ฟเวอร์เตะ
+        // ⚡ เพิ่มความเสถียรระดับ Socket ไม่ให้ติด Buffer
+        bot.once('inject_allowed', () => {
+            if (bot._client && bot._client.socket) {
+                try {
+                    bot._client.socket.setNoDelay(true);
+                    bot._client.socket.setKeepAlive(true, 10000);
+                } catch (e) {}
+            }
+        });
+
+        // ⚡ ตอบ Keep-Alive และ Ping ระดับ Priority
         if (bot._client) {
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
@@ -293,7 +303,7 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์ปกติ)`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
                             }
 
@@ -335,7 +345,7 @@ function createBotInstance(username, delayMs = 0) {
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
                 console.log(`[i] [${username}] จะต่อใหม่ใน 3 วินาที...`);
-                createBotInstance(username, 3000);
+                createBotInstance(username, 3000); // ⚡ Reconnect อัตโนมัติใน 3 วิ
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
