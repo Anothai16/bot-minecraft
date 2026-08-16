@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Multi-Bot Controller</div>
+        <div class="title">⚡ Verified State Machine Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC
+// 🤖 BOT ENGINE & VERIFIED STATE AUTH LOGIC
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -161,21 +161,27 @@ function stopBotInstance(username) {
 async function useCompass(bot, username) {
     if (bot.inSurvival) return;
     updateStatus(username, 'In Lobby', 'กดใช้งานเข็มทิศ');
-    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
-
+    
     const compass = bot.inventory ? bot.inventory.items().find(i => i.name.includes('compass')) : null;
     if (compass) {
+        console.log(`🧭 [COMPASS] [${username}] พบเข็มทิศที่ Slot ${compass.slot} (${compass.name}) -> Equip และใช้งาน`);
         try {
             await bot.equip(compass, 'hand');
-            await sleep(400);
+            await sleep(300);
             bot.activateItem();
         } catch (e) {
             bot.activateItem();
         }
     } else {
-        try {
-            bot.activateItem();
-        } catch (e) {}
+        console.log(`⚠️ [COMPASS] [${username}] สแกน Inventory ยังไม่เจอเข็มทิศ -> ลองคลิกขวา Hotbar 0`);
+        if (bot._client) {
+            try {
+                bot._client.write('held_item_slot', { slotId: 0 });
+                await sleep(200);
+                bot._client.write('use_item', { hand: 0, sequence: 0 });
+            } catch (e) {}
+        }
+        if (bot.activateItem) bot.activateItem();
     }
 }
 
@@ -209,13 +215,12 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 0,
+            checkTimeoutInterval: 0, // ⚡ ปิด timeout กันหลุด
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
         });
 
         bot.inSurvival = false;
-        bot.authStage = 0;
-        bot.hasClickedMode = false;
+        bot.authStage = 0; // 0=เริ่ม, 1=กดสมุด, 2=พิมพ์ Anvil, 3=อยู่ใน Lobby รอเข็มทิศ, 4=เลือก Survival
 
         bot.once('inject_allowed', () => {
             if (bot._client && bot._client.socket) {
@@ -226,6 +231,7 @@ function createBotInstance(username, delayMs = 0) {
             }
         });
 
+        // ⚡ ดักตอบ Keep-Alive & Ping ระดับ Priority
         if (bot._client) {
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
@@ -253,22 +259,26 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('windowOpen', async (window) => {
             const titleStr = typeof window.title === 'string' ? window.title : JSON.stringify(window.title);
+            const slotItems = window.slots.filter(s => s !== null);
+            const hasGrass = slotItems.some(s => s.name.includes('grass_block'));
+            const isSelector = titleStr.toLowerCase().includes('server') || titleStr.toLowerCase().includes('select') || hasGrass;
 
-            // STAGE 0: กด Slot 1 (สมุดรหัสผ่าน)
-            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
+            console.log(`\n🪟 [GUI OPEN] [${username}] ID: ${window.id} | Type: ${window.type} | Title: ${titleStr} | Items: ${slotItems.map(s => `[#${s.slot}: ${s.name}]`).join(', ')}`);
+
+            // 1. หน้าแรก (สมุดรหัสผ่าน Slot 1)
+            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0 && !isSelector) {
                 bot.authStage = 1;
-                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
+                console.log(`👉 [AUTH 1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (เปิด Anvil)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
-
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
+                                console.log(`⚠️ [AUTH] [${username}] Anvil ไม่เปิด -> กดยืนยัน Slot 2 ข้ามไป Lobby`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
-                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
                                 startCompassLoop(bot, username);
                             }
                         }, 3000);
@@ -276,75 +286,76 @@ function createBotInstance(username, delayMs = 0) {
                 }, 1500);
             }
 
-            // STAGE 1: พิมพ์รหัสใน Anvil
+            // 2. หน้า Anvil (พิมพ์รหัสผ่าน)
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
-                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน...`);
-                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
+                console.log(`✍️ [AUTH 2/4] [${username}] Anvil เปิดสำเร็จ! -> กำลังพิมพ์รหัสผ่าน...`);
+                updateStatus(username, 'Logging in', 'พิมพ์รหัสผ่าน');
 
                 setTimeout(() => {
                     try {
                         bot._client.write('name_item', { name: botPassword });
                         setTimeout(async () => {
+                            console.log(`👉 [AUTH 2.5/4] [${username}] กดยืนยัน Slot 2 ใน Anvil`);
                             await bot.clickWindow(2, 0, 0);
                         }, 800);
                     } catch (e) {}
                 }, 1000);
             }
 
-            // STAGE 2: กดยืนยัน Slot 2
-            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
+            // 3. หน้ากดยืนยันหลังพิมพ์รหัสผ่าน
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2 && !isSelector) {
                 bot.authStage = 3;
-                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
+                console.log(`👉 [AUTH 3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 ยืนยันเข้า Lobby...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง');
                         startCompassLoop(bot, username);
                     } catch (e) {}
                 }, 1200);
             }
 
-            // STAGE 3: กดเลือก Survival (Slot 10)
-            else if (window.type === 'minecraft:generic_9x3' && (bot.authStage >= 3 || titleStr.toLowerCase().includes('server') || titleStr.toLowerCase().includes('select'))) {
-                if (bot.hasClickedMode) return;
-                bot.hasClickedMode = true;
+            // 4. หน้าต่างเลือกเซิร์ฟเวอร์ (ต้องมี grass_block หรือ Title Selector เท่านั้น)
+            else if (isSelector && bot.authStage >= 3) {
                 bot.authStage = 4;
                 if (bot.compassTimer) clearInterval(bot.compassTimer);
 
-                console.log(`[4/4] [${username}] ตรวจพบ GUI เลือกโหมด! กำลังกดเลือก Survival (Slot 10)...`);
-                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
+                const grassSlot = window.slots.find(s => s && s.name.includes('grass_block'))?.slot || 10;
+                console.log(`🎯 [AUTH 4/4] [${username}] ตรวจพบ GUI เลือกโหมด Survival! กำลังคลิก Slot ${grassSlot}...`);
+                updateStatus(username, 'Selecting Mode', `เลือก Survival (Slot ${grassSlot})`);
 
                 setTimeout(async () => {
                     try {
-                        await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอเซิร์ฟเวอร์ย้ายโลก 8 วินาที...)`);
-                        updateStatus(username, 'Entering Survival', 'กำลังย้ายเข้า Survival');
+                        await bot.clickWindow(grassSlot, 0, 0);
+                        console.log(`🚀 [AUTH DONE] [${username}] คลิกเลือก Survival แล้ว! กำลังรอตรวจสอบพิกัดย้ายโลก...`);
 
+                        // รอตรวจสอบพิกัดว่าข้ามโลกสำเร็จหรือไม่
                         setTimeout(() => {
                             const pos = bot.entity?.position;
-                            console.log(`📍 [POSITION] [${username}] พิกัดปัจจุบัน: [${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'}]`);
+                            console.log(`📍 [LOCATION VERIFY] [${username}] พิกัดปัจจุบัน: [${pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : 'Unknown'}]`);
 
-                            if (isLever) {
-                                bot.chat('/home home2');
-                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
-                                updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
+                            if (pos && (pos.x > 500 || pos.z < -1000 || pos.y > 60)) {
+                                console.log(`✅ [SUCCESS] [${username}] ย้ายเข้าสู่ Survival สำเร็จสมบูรณ์!`);
+                                bot.inSurvival = true;
+
+                                if (isLever) {
+                                    bot.chat('/home home2');
+                                    console.log(`🚀 [Lervy_Lever] วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
+                                    updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
+                                } else {
+                                    updateStatus(username, 'Online (Survival)', 'ออนไลน์ปกติ');
+                                }
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival สมบูรณ์!`);
-                                updateStatus(username, 'Online (Survival)', 'ออนไลน์ปกติ');
+                                console.log(`⚠️ [RETRY NEEDED] [${username}] ตัวยังอยู่ที่ Lobby -> เริ่มต้นกดเข็มทิศใหม่`);
+                                bot.authStage = 3;
+                                startCompassLoop(bot, username);
                             }
-
-                            bot.inSurvival = true;
-                            bot.removeAllListeners('soundEffect');
-                            bot.removeAllListeners('particle');
-                            bot.removeAllListeners('entityMoved');
                         }, 8000);
 
                     } catch (err) {
-                        console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
-                        bot.hasClickedMode = false;
+                        console.error(`[-] [${username}] คลิกเลือก Survival พลาด: ${err.message}`);
                     }
                 }, 1200);
             }
@@ -353,13 +364,15 @@ function createBotInstance(username, delayMs = 0) {
         function startCompassLoop(bot, username) {
             if (bot.compassTimer) clearInterval(bot.compassTimer);
             let attempts = 0;
+            console.log(`⏳ [LOOP] [${username}] เริ่มต้นลูปตรวจจับเข็มทิศใน Lobby...`);
+
             bot.compassTimer = setInterval(async () => {
                 if (bot.authStage >= 4 || bot.inSurvival) {
                     clearInterval(bot.compassTimer);
                     return;
                 }
                 attempts++;
-                console.log(`🧭 [COMPASS LOOP] [${username}] คลิกขวาเข็มทิศรอบที่ ${attempts}...`);
+                console.log(`🧭 [COMPASS LOOP] [${username}] ลองคลิกขวาเข็มทิศรอบที่ ${attempts}...`);
                 await useCompass(bot, username);
                 if (attempts >= 10) clearInterval(bot.compassTimer);
             }, 3000);
