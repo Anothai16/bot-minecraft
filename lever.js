@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ High-Resilience Anti-Disconnect Multi-Bot Controller</div>
+        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Anti-Kick)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Anti-Kick)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -204,32 +204,9 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 0, // ⚡ ปิด Client-side timeout ป้องกันตัวบอทตัดสายตัวเองตอน Lag
-            disabledPlugins: [
-                'sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 
-                'tablist', 'blocks', 'physics', 'entities', 'chest'
-            ]
+            checkTimeoutInterval: 120000,
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
-
-        // ⚡ ปรับแต่ง TCP Socket ส่งข้อมูลออกทันทีโดยไม่รอ Buffer
-        bot.once('inject_allowed', () => {
-            if (bot._client && bot._client.socket) {
-                try {
-                    bot._client.socket.setNoDelay(true);
-                    bot._client.socket.setKeepAlive(true, 10000);
-                } catch (e) {}
-            }
-        });
-
-        // ⚡ ดักตอบ Keep-Alive และ Ping ระดับ Priority สูงสุด
-        if (bot._client) {
-            bot._client.on('keep_alive', (packet) => {
-                try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
-            });
-            bot._client.on('ping', (packet) => {
-                try { bot._client.write('ping', { id: packet.id }); } catch (e) {}
-            });
-        }
 
         activeBots[username] = bot;
         bot.authStage = 0;
@@ -306,12 +283,12 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ระบบตรึงการเชื่อมต่อทำงาน)`);
-                                updateStatus(username, 'Online (AFK Anti-Kick)', 'ออนไลน์ปกติ');
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (เปิดโหมด Zero-CPU AFK)`);
+                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
 
-                                // กรอง Packet ให้ผ่านเฉพาะ Packet จำเป็นต่อการรักษาสถานะเชื่อมต่อ
-                                const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
+                                // ⚡ ตัดการ Deserialization ที่ระดับ Protocol ทั้งหมดสำหรับ K555 และ K666
                                 if (bot._client && bot._client.deserializer) {
+                                    const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
                                     const origTransform = bot._client.deserializer.transform;
                                     bot._client.deserializer.transform = function (chunk, enc, cb) {
                                         try {
@@ -362,8 +339,8 @@ function createBotInstance(username, delayMs = 0) {
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] ต่อกลับทันทีใน 3 วินาที...`);
-                createBotInstance(username, 3000); // ⚡ เชื่อมต่อกลับให้อัตโนมัติทันที
+                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
+                createBotInstance(username, 25000);
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
