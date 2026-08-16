@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Multi-Bot &amp; Detailed Lever Logger</div>
+        <div class="title">⚡ Multi-Bot &amp; Precision Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -218,7 +218,6 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('windowOpen', async (window) => {
-            // STAGE 0: กด Slot 1 เปิด Anvil
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
                 console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
@@ -240,8 +239,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 2000);
             }
-
-            // STAGE 1: พิมพ์รหัสใส่ Anvil
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
                 console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
@@ -256,8 +253,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 1200);
             }
-
-            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
@@ -271,8 +266,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 1500);
             }
-
-            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
                 console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
@@ -287,7 +280,7 @@ function createBotInstance(username, delayMs = 0) {
                         setTimeout(() => {
                             if (username === 'Lervy_Lever') {
                                 bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) พิกัด 10457 64 -5053 เรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) พิกัด 10457 64 -5054 เรียบร้อย!`);
                                 updateStatus(username, 'Online (Lever Ready)', 'ประจำการหน้าคันโยก (/home home)');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
@@ -340,12 +333,12 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (พร้อมระบบ Full Diagnostics Log)
+// 🕹️ LEVER LOGIC (พิกัด: 10456, 64, -5054)
 // ====================================================================
 let isLeverCycleRunning = false;
 
-const LEVER_BLOCK_POS = new Vec3(10456, 64, -5053);
-const LEVER_AIM_TARGET = new Vec3(10456.5, 64.6, -5052.5);
+const LEVER_BLOCK_POS = new Vec3(10456, 64, -5054);
+const LEVER_AIM_TARGET = new Vec3(10456.5, 64.5, -5053.5);
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -365,16 +358,12 @@ async function clickLeverSafe(actionName) {
     }
 
     try {
-        console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่จุดสัมผัส: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
+        console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
         await leverBot.lookAt(LEVER_AIM_TARGET, true);
         await sleep(400);
 
-        const currentYaw = (leverBot.entity.yaw * (180 / Math.PI)).toFixed(1);
-        const currentPitch = (leverBot.entity.pitch * (180 / Math.PI)).toFixed(1);
-        console.log(`🎯 [LEVER DIAG] องศาปัจจุบัน: Yaw=${currentYaw}°, Pitch=${currentPitch}°`);
-
         let block = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
-        console.log(`📦 [LEVER DIAG] ข้อมูลบล็อกที่พิกัด 10456, 64, -5053: Name=${block ? block.name : 'null'} | Type=${block ? block.type : 'null'}`);
+        console.log(`📦 [LEVER DIAG] ข้อมูลบล็อกที่พิกัด 10456, 64, -5054: Name=${block ? block.name : 'null'} | Type=${block ? block.type : 'null'}`);
 
         if (!block) {
             console.log(`⚠️ [LEVER DIAG] ไม่พบบล็อกในหน่วยความจำ ใช้ Fallback Virtual Block Object`);
@@ -385,17 +374,17 @@ async function clickLeverSafe(actionName) {
             };
         }
 
-        console.log(`👆 [LEVER DIAG] ส่งคำสั่ง activateBlock ไปยังตัวบล็อก...`);
+        console.log(`👆 [LEVER DIAG] ส่งคำสั่ง activateBlock...`);
         await leverBot.activateBlock(block);
         if (leverBot.swingArm) leverBot.swingArm('right');
 
         await sleep(300);
         const blockAfter = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์! (Block State หลังสับ: ${blockAfter?.getProperties() ? JSON.stringify(blockAfter.getProperties()) : 'N/A'})`);
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์! (Block State: ${blockAfter?.getProperties() ? JSON.stringify(blockAfter.getProperties()) : 'N/A'})`);
 
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: ข้อผิดพลาดตอนสับคันโยก -> ${err.message}`);
+        console.log(`❌ [LEVER ERROR]: ข้อผิดพลาด -> ${err.message}`);
         return false;
     }
 }
