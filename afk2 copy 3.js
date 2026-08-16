@@ -36,12 +36,7 @@ const BOT_CONFIGS = [
     { name: 'gulnwza007', pass: '112233' },
     { name: 'Monosox', pass: '112233' },
     { name: 'twenty29', pass: '112233' },
-    { name: '0zow29', pass: '112233' },
-    { name: '0zow30', pass: '112233' },
-    { name: '0zow31', pass: '112233' },
-    { name: 'guguy555', pass: '112233' },
-    { name: 'ginggong', pass: '112233' },
-    { name: 'JoinServer', pass: '112233' }
+    { name: '0zow29', pass: '112233' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
