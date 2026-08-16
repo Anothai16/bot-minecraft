@@ -25,7 +25,7 @@ const originalLog = console.log;
 console.log = (...args) => {
     const timestamp = new Date().toLocaleTimeString('th-TH');
     const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-    logsBuffer.push(`[${timestamp}]${message}`);
+    logsBuffer.push(`[${timestamp}] ${message}`);
     if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
     originalLog(...args);
 };
@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Multi-Bot Controller &amp; Dashboard</div>
+        <div class="title">⚡ High-Resilience Anti-Disconnect Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Anti-Kick Active)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Anti-Kick Active)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -136,7 +136,7 @@ setInterval(() => {
     const rssMB = Math.round(mem.rss / 1024 / 1024);
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
-    console.log(`📊 [PROFILER 5s] CPU รวม: ${cpuPercent}% | RAM: ${rssMB}MB (Heap:${heapMB}MB)`);
+    console.log(`📊 [PROFILER 5s] CPU รวม: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
 }, 5000);
 
 // ====================================================================
@@ -204,13 +204,38 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 120000,
+            checkTimeoutInterval: 0, // ⚡ ปิด Timeout ฝั่ง Client ไม่ให้สั่งตัดการเชื่อมต่อตัวเอง
             disabledPlugins: [
                 'sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 
                 'tablist', 'blocks', 'physics', 'entities', 'chest', 'furnace', 
                 'dispenser', 'enchantment_table', 'anvil', 'bed', 'book', 'scoreboard', 'team'
             ]
         });
+
+        // ⚡ ปรับแต่ง Socket ระดับ TCP เพื่อส่ง Keep-Alive ทันที
+        bot.once('inject_allowed', () => {
+            if (bot._client && bot._client.socket) {
+                try {
+                    bot._client.socket.setNoDelay(true); // ปิดการรอ Buffer (ยิงทันที)
+                    bot._client.socket.setKeepAlive(true, 10000); // ตรึง TCP Connection
+                } catch (e) {}
+            }
+        });
+
+        // ⚡ ดักตอบ Keep-Alive และ Ping ระดับ Priority สูงสุด
+        if (bot._client) {
+            bot._client.on('keep_alive', (packet) => {
+                try {
+                    bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
+                } catch (e) {}
+            });
+
+            bot._client.on('ping', (packet) => {
+                try {
+                    bot._client.write('ping', { id: packet.id });
+                } catch (e) {}
+            });
+        }
 
         activeBots[username] = bot;
         bot.authStage = 0;
@@ -287,25 +312,29 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์ปกติ)`);
-                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
-
-                                // ปิด Event Emitter เพื่อประหยัด CPU
-                                const allowedPackets = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat', 'custom_payload']);
-                                if (bot._client) {
-                                    const origEmit = bot._client.emit;
-                                    bot._client.emit = function (event, ...args) {
-                                        if (event === 'packet' && args[1] && !allowedPackets.has(args[1].name)) {
-                                            return false;
-                                        }
-                                        return origEmit.apply(this, [event, ...args]);
-                                    };
-                                }
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ระบบตรึงการเชื่อมต่อทำงาน)`);
+                                updateStatus(username, 'Online (AFK Anti-Kick)', 'ออนไลน์ปกติ (ตรึงการเชื่อมต่อ)');
                             }
 
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
+
+                            // ⚡ Emergency Heartbeat: ยิงสัญญาณขยับตัวและยืนยันตำแหน่งเป็นระยะ ป้องกัน Idle Kick
+                            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
+                            bot.afkHeartbeat = setInterval(() => {
+                                try {
+                                    if (bot._client && !bot._client.ended) {
+                                        bot._client.write('position', {
+                                            x: bot.entity?.position?.x || 10457.5,
+                                            y: bot.entity?.position?.y || 64.0,
+                                            z: bot.entity?.position?.z || -5053.5,
+                                            onGround: true
+                                        });
+                                    }
+                                } catch (e) {}
+                            }, 10000);
+
                         }, 10000);
 
                     } catch (err) {
@@ -320,18 +349,19 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('error', (err) => {
-            console.error(`[❌ Error] [${username}]:${err.message}`);
+            console.error(`[❌ Error] [${username}]: ${err.message}`);
             updateStatus(username, 'Error', err.message, err.message);
         });
 
         bot.on('end', (reason) => {
+            if (bot.afkHeartbeat) clearInterval(bot.afkHeartbeat);
             delete activeBots[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
-                createBotInstance(username, 25000);
+                console.log(`[i] [${username}] เชื่อมต่อกลับทันทีใน 3 วินาที...`);
+                createBotInstance(username, 3000); // ⚡ เชื่อมต่อกลับทันทีแบบฉุกเฉิน
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
