@@ -73,7 +73,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Multi-Bot Controller</title>
+        <title>Minecraft Bot Resource Controller</title>
         <style>
             body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
             .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Stable Multi-Bot Controller &amp; Dashboard</div>
+        <div class="title">⚡ High-Resilience Anti-Disconnect Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Anti-Kick)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Anti-Kick)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -136,7 +136,7 @@ setInterval(() => {
     const rssMB = Math.round(mem.rss / 1024 / 1024);
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
-    console.log(`📊 [PROFILER 5s] CPU รวม: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
+    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
 }, 5000);
 
 // ====================================================================
@@ -204,15 +204,14 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 0, // ⚡ ปิด Timeout ฝั่ง Client ไม่ให้สั่งตัดตัวเองเมื่อ CPU ตัน
+            checkTimeoutInterval: 0, // ⚡ ปิด Client-side timeout ป้องกันตัวบอทตัดสายตัวเองตอน Lag
             disabledPlugins: [
                 'sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 
-                'tablist', 'blocks', 'physics', 'entities', 'chest', 'furnace', 
-                'dispenser', 'enchantment_table', 'anvil', 'bed', 'book', 'scoreboard', 'team'
+                'tablist', 'blocks', 'physics', 'entities', 'chest'
             ]
         });
 
-        // ⚡ ปรับแต่ง Socket ระดับ TCP เพื่อตอบ Keep-Alive ทันที
+        // ⚡ ปรับแต่ง TCP Socket ส่งข้อมูลออกทันทีโดยไม่รอ Buffer
         bot.once('inject_allowed', () => {
             if (bot._client && bot._client.socket) {
                 try {
@@ -222,7 +221,7 @@ function createBotInstance(username, delayMs = 0) {
             }
         });
 
-        // ⚡ ตอบ Keep-Alive และ Ping ระดับ Priority สูงสุด
+        // ⚡ ดักตอบ Keep-Alive และ Ping ระดับ Priority สูงสุด
         if (bot._client) {
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
@@ -307,17 +306,21 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์ปกติ)`);
-                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ระบบตรึงการเชื่อมต่อทำงาน)`);
+                                updateStatus(username, 'Online (AFK Anti-Kick)', 'ออนไลน์ปกติ');
 
-                                const allowedPackets = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat', 'custom_payload']);
-                                if (bot._client) {
-                                    const origEmit = bot._client.emit;
-                                    bot._client.emit = function (event, ...args) {
-                                        if (event === 'packet' && args[1] && !allowedPackets.has(args[1].name)) {
-                                            return false;
-                                        }
-                                        return origEmit.apply(this, [event, ...args]);
+                                // กรอง Packet ให้ผ่านเฉพาะ Packet จำเป็นต่อการรักษาสถานะเชื่อมต่อ
+                                const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
+                                if (bot._client && bot._client.deserializer) {
+                                    const origTransform = bot._client.deserializer.transform;
+                                    bot._client.deserializer.transform = function (chunk, enc, cb) {
+                                        try {
+                                            const packet = this.parsePacketBuffer(chunk);
+                                            if (whitelist.has(packet.data.name)) {
+                                                this.push(packet);
+                                            }
+                                        } catch (e) {}
+                                        cb();
                                     };
                                 }
                             }
@@ -325,6 +328,15 @@ function createBotInstance(username, delayMs = 0) {
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
+                            bot.entities = {};
+
+                            if (bot.afkInterval) clearInterval(bot.afkInterval);
+                            bot.afkInterval = setInterval(() => {
+                                try {
+                                    bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    bot.entities = {};
+                                } catch (e) {}
+                            }, 60000);
                         }, 10000);
 
                     } catch (err) {
@@ -344,13 +356,14 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('end', (reason) => {
+            if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] จะต่อใหม่ใน 3 วินาที...`);
-                createBotInstance(username, 3000); // ⚡ เชื่อมต่อกลับทันทีแบบฉุกเฉิน
+                console.log(`[i] [${username}] ต่อกลับทันทีใน 3 วินาที...`);
+                createBotInstance(username, 3000); // ⚡ เชื่อมต่อกลับให้อัตโนมัติทันที
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
