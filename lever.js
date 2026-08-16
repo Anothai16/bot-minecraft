@@ -208,7 +208,7 @@ function createBotInstance(username, delayMs = 0) {
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
 
-        // ⚡ ดักตอบ Keep-Alive และ Ping ทันทีระดับ Client ไม่ให้หลุดตอนเครื่องค้าง
+        // ⚡ ดักตอบ Keep-Alive และ Ping ทันทีระดับ Protocol เพื่อป้องกัน Server ตัดสาย
         if (bot._client) {
             bot._client.on('keep_alive', (packet) => {
                 try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
@@ -293,23 +293,8 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (เปิดโหมด Zero-CPU AFK)`);
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
-
-                                // ⚡ ตัดการ Deserialization ที่ระดับ Protocol ทั้งหมดสำหรับ K555 และ K666
-                                if (bot._client && bot._client.deserializer) {
-                                    const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
-                                    const origTransform = bot._client.deserializer.transform;
-                                    bot._client.deserializer.transform = function (chunk, enc, cb) {
-                                        try {
-                                            const packet = this.parsePacketBuffer(chunk);
-                                            if (whitelist.has(packet.data.name)) {
-                                                this.push(packet);
-                                            }
-                                        } catch (e) {}
-                                        cb();
-                                    };
-                                }
                             }
 
                             bot.removeAllListeners('soundEffect');
