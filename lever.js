@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Fast 5s Lever Controller &amp; Warp Hide</div>
+        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -208,22 +208,6 @@ function createBotInstance(username, delayMs = 0) {
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
 
-        if (bot._client) {
-            const dropPackets = new Set([
-                'rel_entity_move', 'entity_velocity', 'multi_block_change', 'block_change', 
-                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 
-                'entity_destroy', 'update_light', 'world_event', 'block_action'
-            ]);
-
-            const origEmit = bot._client.emit;
-            bot._client.emit = function (event, ...args) {
-                if (event === 'packet' && args[1] && dropPackets.has(args[1].name)) {
-                    return false;
-                }
-                return origEmit.apply(this, [event, ...args]);
-            };
-        }
-
         activeBots[username] = bot;
         bot.authStage = 0;
 
@@ -299,8 +283,23 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (เปิดโหมด Zero-CPU AFK)`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+
+                                // ⚡ ตัดการ Deserialization ที่ระดับ Protocol ทั้งหมดสำหรับ K555 และ K666
+                                if (bot._client && bot._client.deserializer) {
+                                    const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
+                                    const origTransform = bot._client.deserializer.transform;
+                                    bot._client.deserializer.transform = function (chunk, enc, cb) {
+                                        try {
+                                            const packet = this.parsePacketBuffer(chunk);
+                                            if (whitelist.has(packet.data.name)) {
+                                                this.push(packet);
+                                            }
+                                        } catch (e) {}
+                                        cb();
+                                    };
+                                }
                             }
 
                             bot.removeAllListeners('soundEffect');
@@ -351,7 +350,7 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ DIRECT SOCKET LEVER ENGINE (สับปิด -> รอ 5 วิ -> สับเปิด -> วาร์ปหนี)
+// 🕹️ DIRECT SOCKET LEVER ENGINE
 // ====================================================================
 let isLeverCycleRunning = false;
 
@@ -415,24 +414,18 @@ async function triggerLeverCycle() {
         }
 
         console.log(`\n=================== 🔴 เริ่มต้นไซเคิลสับคันโยก ===================`);
-        
-        // 1. สับปิดระบบ (OFF)
         const okClose = await clickLeverSafe('ปิดคันโยก (OFF)');
 
         if (okClose) {
-            // 2. หน่วงเวลารอ 5 วินาที
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 5 วินาที...`);
             await sleep(5000);
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
-            
-            // 3. สับเปิดระบบ (ON)
             await clickLeverSafe('เปิดคันโยก (ON)');
 
-            // 4. วาร์ปหนีฟาร์มทันที
             activeBots['Lervy_Lever'].chat('/home home2');
             console.log(`🚀 [LEVER CYCLE]: สับเปิดสำเร็จ วาร์ปหลบไปที่ (/home home2) ทันที!`);
-            console.log(`✅ [LEVER CYCLE]: จบการทำงานรอบนี้เรียบร้อย (CPU เบาสนิท)!\n`);
+            console.log(`✅ [LEVER CYCLE]: จบการทำงานรอบนี้เรียบร้อย!\n`);
         }
     } finally {
         isLeverCycleRunning = false;
@@ -456,7 +449,6 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     await triggerLeverCycle();
 });
 
-// ก่อนถึงรอบ 15 วินาที: วาร์ปกลับมารอหน้าคันโยก
 cron.schedule('45 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
