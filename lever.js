@@ -32,10 +32,10 @@ console.log = (...args) => {
 
 const app = express();
 
+// ⚡ ตัด K555 ออก เหลือเฉพาะ Lervy_Lever และ K666
 const BOT_CONFIGS = [
     { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
-    { name: 'K666', pass: '112233', role: 'afk' },
-    { name: 'K555', pass: '112233', role: 'afk' }
+    { name: 'K666', pass: '112233', role: 'afk' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
@@ -61,7 +61,6 @@ app.get('/api/status', (req, res) => {
     res.json({
         lever: isBotOnline('Lervy_Lever'),
         k666: isBotOnline('K666'),
-        k555: isBotOnline('K555'),
         logs: logsBuffer.slice().reverse().join('\n')
     });
 });
@@ -90,7 +89,6 @@ app.get('/', (req, res) => {
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
-            <div class="card"><span id="dot-k555" class="dot offline"></span> K555: <b id="txt-k555">กำลังโหลด...</b></div>
         </div>
         <div class="log-box" id="logs">กำลังดึง Logs...</div>
         <script>
@@ -102,8 +100,6 @@ app.get('/', (req, res) => {
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
                     document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
-                    document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -393,7 +389,7 @@ async function triggerLeverCycle() {
         const hasLever = isBotOnline('Lervy_Lever');
         const hasK666 = isBotOnline('K666');
 
-        // ⚡ ตรวจสอบเฉพาะ Lervy_Lever และ K666 (ตัด K555 ออก)
+        // ⚡ ตรวจสอบเฉพาะ Lervy_Lever และ K666
         if (!hasLever || !hasK666) {
             console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lervy_Lever: ${hasLever ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) ข้ามรอบนี้`);
             return;
