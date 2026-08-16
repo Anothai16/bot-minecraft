@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Pure Ghost AFK Controller (Zero-Lag Dashboard)</div>
+        <div class="title">⚡ Stable Multi-Bot Controller &amp; Dashboard</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -101,9 +101,9 @@ app.get('/', (req, res) => {
                     document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
                     document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
                     document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (Ghost AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (Ghost AFK)' : 'ออฟไลน์';
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
                     document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
                 } catch(e) {}
             }
@@ -136,7 +136,7 @@ setInterval(() => {
     const rssMB = Math.round(mem.rss / 1024 / 1024);
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
 
-    console.log(`📊 [PROFILER 5s] CPU รวม 3 ตัว: ${cpuPercent}% | RAM: ${rssMB}MB (Heap:${heapMB}MB)`);
+    console.log(`📊 [PROFILER 5s] CPU รวม: ${cpuPercent}% | RAM: ${rssMB}MB (Heap:${heapMB}MB)`);
 }, 5000);
 
 // ====================================================================
@@ -287,25 +287,19 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival สำเร็จ -> เปิดใช้งาน Ghost Mode (Zero CPU)!`);
-                                updateStatus(username, 'Online (Ghost AFK)', 'ออนไลน์ปกติ (Zero-CPU)');
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์ปกติ)`);
+                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
 
-                                // ⚡ สั่งตัดระบบ Parsing ของ Socket ทิ้งทันที (ไม่ให้ Node.js แตะ Packet จากฟาร์ม)
+                                // ปิด Event Emitter เพื่อประหยัด CPU
+                                const allowedPackets = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat', 'custom_payload']);
                                 if (bot._client) {
-                                    bot._client.removeAllListeners('raw');
-                                    bot._client.removeAllListeners('packet');
-                                    
-                                    // ดักตอบเฉพาะ Keep-Alive และ Ping ตรงผ่าน Raw Packet
-                                    bot._client.on('keep_alive', (packet) => {
-                                        try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch(e) {}
-                                    });
-                                    bot._client.on('ping', (packet) => {
-                                        try { bot._client.write('ping', { id: packet.id }); } catch(e) {}
-                                    });
-
-                                    // ทำลาย World Cache ใน RAM ทิ้งทั้งหมด
-                                    bot.world = null;
-                                    bot.entities = {};
+                                    const origEmit = bot._client.emit;
+                                    bot._client.emit = function (event, ...args) {
+                                        if (event === 'packet' && args[1] && !allowedPackets.has(args[1].name)) {
+                                            return false;
+                                        }
+                                        return origEmit.apply(this, [event, ...args]);
+                                    };
                                 }
                             }
 
