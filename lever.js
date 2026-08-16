@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Low-CPU Farm Controller (No-Parse Engine)</div>
+        <div class="title">⚡ All-Lightweight Multi-Bot Controller (Zero World Load)</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC
+// 🤖 BOT ENGINE (Lightweight For All)
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -287,14 +287,13 @@ function createBotInstance(username, delayMs = 0) {
                         setTimeout(() => {
                             if (username === 'Lervy_Lever') {
                                 bot.chat('/home home');
-                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) เรียบร้อย!`);
+                                console.log(`🚀 [Lervy_Lever] วาร์ปกลับเข้าบ้าน (/home home) พิกัด 10457 64 -5053 เรียบร้อย!`);
                                 updateStatus(username, 'Online (Lever Ready)', 'ประจำการหน้าคันโยก (/home home)');
                             } else {
                                 console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
                             }
 
-                            // ⚡ สกัดการประมวลผล Entity/Movement หนักๆ ทันทีที่เข้าสู่เกม
                             bot.removeAllListeners('entityMoved');
                             bot.removeAllListeners('entitySpawn');
                             bot.removeAllListeners('blockUpdate');
@@ -304,7 +303,7 @@ function createBotInstance(username, delayMs = 0) {
                             bot.afkInterval = setInterval(() => {
                                 try {
                                     bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
-                                    bot.entities = {}; // เคลียร์ Entity ไม่ให้สะสมใน RAM
+                                    bot.entities = {};
                                 } catch (e) {}
                             }, 60000);
                         }, 10000);
@@ -343,12 +342,12 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Direct Virtual Interaction)
+// 🕹️ LEVER LOGIC (พิกัดใหม่: ยืน 10457 64 -5053 | คันโยก 10456 64 -5053)
 // ====================================================================
 let isLeverCycleRunning = false;
 
 const VIRTUAL_LEVER = {
-    position: new Vec3(10428, 74, -5054),
+    position: new Vec3(10456, 64, -5053),
     name: 'lever',
     shapes: [[[0, 0, 0, 1, 1, 1]]]
 };
