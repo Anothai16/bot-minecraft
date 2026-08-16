@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
+        <div class="title">⚡ Stable Multi-Bot Controller &amp; Anti-Kick</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE & AUTH LOGIC
+// 🤖 BOT ENGINE & AUTH LOGIC (Original Authentic Logic)
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -204,9 +204,19 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 120000,
+            checkTimeoutInterval: 0, // ⚡ ปิด timeout ป้องกันบอทตัดตัวเองเมื่อ CPU ขึ้นสูง
             disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
         });
+
+        // ⚡ ดักตอบ Keep-Alive และ Ping ทันทีที่ระดับ Socket เพื่อป้องกันเซิร์ฟเวอร์เตะ
+        if (bot._client) {
+            bot._client.on('keep_alive', (packet) => {
+                try { bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId }); } catch (e) {}
+            });
+            bot._client.on('ping', (packet) => {
+                try { bot._client.write('ping', { id: packet.id }); } catch (e) {}
+            });
+        }
 
         activeBots[username] = bot;
         bot.authStage = 0;
@@ -283,23 +293,8 @@ function createBotInstance(username, delayMs = 0) {
                                 console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
                                 updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
                             } else {
-                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (เปิดโหมด Zero-CPU AFK)`);
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
-
-                                // ⚡ ตัดการ Deserialization ที่ระดับ Protocol ทั้งหมดสำหรับ K555 และ K666
-                                if (bot._client && bot._client.deserializer) {
-                                    const whitelist = new Set(['keep_alive', 'ping', 'kick_disconnect', 'chat', 'system_chat']);
-                                    const origTransform = bot._client.deserializer.transform;
-                                    bot._client.deserializer.transform = function (chunk, enc, cb) {
-                                        try {
-                                            const packet = this.parsePacketBuffer(chunk);
-                                            if (whitelist.has(packet.data.name)) {
-                                                this.push(packet);
-                                            }
-                                        } catch (e) {}
-                                        cb();
-                                    };
-                                }
                             }
 
                             bot.removeAllListeners('soundEffect');
@@ -339,8 +334,8 @@ function createBotInstance(username, delayMs = 0) {
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
-                createBotInstance(username, 25000);
+                console.log(`[i] [${username}] จะต่อใหม่ใน 3 วินาที...`);
+                createBotInstance(username, 3000);
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
