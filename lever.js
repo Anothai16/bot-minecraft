@@ -1,376 +1,257 @@
+const http = require('http');
+const os = require('os');
 const mineflayer = require('mineflayer');
+const minecraftData = require('minecraft-data');
 const { Vec3 } = require('vec3');
 const cron = require('node-cron');
-const express = require('express');
 const readline = require('readline');
 
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-// ====================================================================
-// 🌐 WEB DASHBOARD & LIVE LOGS (Port 3001)
-// ====================================================================
-const logsBuffer = [];
-const MAX_LOGS = 100;
+const SERVER_HOST = 'play.amorycraft.com';
+const SERVER_PORT = 25565;
+const DEFAULT_PASSWORD = '112233';
+const MC_VERSION = '1.20.1';
+const WEB_PORT = 3001;
 
-const originalLog = console.log;
-console.log = (...args) => {
-    const timestamp = new Date().toLocaleTimeString('th-TH');
-    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-    logsBuffer.push(`[${timestamp}] ${message}`);
-    if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
-    originalLog(...args);
-};
+const sharedData = minecraftData(MC_VERSION);
 
-const app = express();
-const port = 3001;
+// รายชื่อและบทบาทของบอท
+const BOT_CONFIGS = [
+    { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
+    { name: 'K666', pass: '112233', role: 'afk' },
+    { name: 'K555', pass: '112233', role: 'afk' }
+];
 
-app.get('/api/status', (req, res) => {
-    res.json({
-        lever: isBotOnline('Lervy_Lever'),
-        k666: isBotOnline('K666'),
-        k555: isBotOnline('K555'),
-        logs: logsBuffer.slice().reverse().join('\n')
-    });
+const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
+const activeBots = {};
+const botStatusMap = {};
+
+BOT_NAMES.forEach(name => {
+    botStatusMap[name] = { 
+        status: 'Stopped', 
+        step: 'รอเริ่มทำงาน...', 
+        lastUpdate: new Date().toLocaleTimeString('th-TH'),
+        lastError: '-',
+        enabled: true 
+    };
 });
 
-app.get('/', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="th">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Minecraft Bot Resource Controller</title>
-        <style>
-            body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-            .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
-            .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-            .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
-            .offline { background: #ef4444; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="title">⚡ Home2-Relocation Lever Controller (10s Cycle)</div>
-        <div class="header">
-            <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
-            <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
-            <div class="card"><span id="dot-k555" class="dot offline"></span> K555: <b id="txt-k555">กำลังโหลด...</b></div>
-        </div>
-        <div class="log-box" id="logs">กำลังดึง Logs...</div>
-        <script>
-            async function update() {
-                try {
-                    const res = await fetch('/api/status');
-                    const data = await res.json();
-                    document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
-                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
-                    document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
-                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
-                    document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
-                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK Mute)' : 'ออฟไลน์';
-                    document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
-                } catch(e) {}
-            }
-            setInterval(update, 2000);
-            update();
-        </script>
-    </body>
-    </html>`);
-});
-app.listen(port, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${port}`));
+function updateStatus(name, status, step, errorReason = null) {
+    if (!botStatusMap[name]) return;
+    botStatusMap[name].status = status;
+    if (step) botStatusMap[name].step = step;
+    if (errorReason) botStatusMap[name].lastError = errorReason;
+    botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH');
+}
 
-// ====================================================================
-// 📊 REAL-TIME CPU PROFILER
-// ====================================================================
-let lastCpuUsage = process.cpuUsage();
-let lastCpuTime = Date.now();
-
-setInterval(() => {
-    const elapsedMs = Date.now() - lastCpuTime;
-    const cpuDiff = process.cpuUsage(lastCpuUsage);
-    
-    const totalUserSystemMicros = cpuDiff.user + cpuDiff.system;
-    const cpuPercent = ((totalUserSystemMicros / (elapsedMs * 1000)) * 100).toFixed(1);
-
-    lastCpuUsage = process.cpuUsage();
-    lastCpuTime = Date.now();
-
-    const mem = process.memoryUsage();
-    const rssMB = Math.round(mem.rss / 1024 / 1024);
-    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
-
-    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
-}, 5000);
-
-// ====================================================================
-// 🛑 AFK BUFFER FILTER (สำหรับ K666 / K555)
-// ====================================================================
-function setupAfkMute(bot, username) {
-    const trashEvents = [
-        'blockUpdate', 'chunkColumnLoad', 'entityMoved', 'entitySpawn',
-        'entityGone', 'entityUpdate', 'entityAttributes', 'entityEffect',
-        'soundEffect', 'particle', 'experience', 'move'
-    ];
-    trashEvents.forEach(evt => bot.removeAllListeners(evt));
-
-    if (bot._client && bot._client.deserializer) {
-        const deserializer = bot._client.deserializer;
-        const origParse = deserializer.parsePacketBuffer.bind(deserializer);
-
-        deserializer.parsePacketBuffer = function (buffer) {
-            try {
-                if (buffer.length > 24) {
-                    return {
-                        data: { name: 'ignored', params: {} },
-                        metadata: { name: 'ignored', state: deserializer.state || 'play', size: buffer.length },
-                        buffer
-                    };
-                }
-                return origParse(buffer);
-            } catch (e) {
-                return {
-                    data: { name: 'ignored', params: {} },
-                    metadata: { name: 'ignored', state: 'play', size: buffer.length },
-                    buffer
-                };
-            }
-        };
+function stopBotInstance(username) {
+    if (activeBots[username]) {
+        try { activeBots[username].quit(); } catch (e) {}
+        delete activeBots[username];
     }
-
-    bot.entities = {};
-    if (bot.world) {
-        bot.world.columns = {};
-        bot.world.getBlock = () => null;
-    }
-    console.log(`⚡ [${username}] เปิดระบบ AFK Mute สำเร็จ (CPU 0%)`);
 }
 
 // ====================================================================
-// 🤖 BOT MANAGEMENT & QUEUE ENGINE
+// 🧭 ฟังก์ชันค้นหาและคลิกเข็มทิศ
 // ====================================================================
-const bots = {
-    Lervy_Lever: { instance: null, ready: false },
-    K666: { instance: null, ready: false },
-    K555: { instance: null, ready: false }
-};
-
-let isLoginBusy = false;
-const loginQueue = [];
-let isLeverCycleRunning = false;
-
-function isBotOnline(username) {
-    const b = bots[username];
-    return b && b.instance && b.instance._client && !b.instance._client.ended && b.ready;
-}
-
-function queueBot(username, delay = 0) {
-    if (!loginQueue.includes(username)) {
-        loginQueue.push(username);
-    }
-    setTimeout(processQueue, delay);
-}
-
-async function processQueue() {
-    if (isLoginBusy || loginQueue.length === 0) return;
-
-    isLoginBusy = true;
-    const username = loginQueue.shift();
-
-    try {
-        await launchBotPipeline(username);
-    } catch (err) {
-        console.log(`❌ [${username}] Exception: ${err.message}`);
-    } finally {
-        isLoginBusy = false;
-        if (loginQueue.length > 0) {
-            setTimeout(processQueue, 5000);
+async function useCompass(bot, username) {
+    updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
+    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    const compass = bot.inventory ? bot.inventory.items().find(i => i.name.includes('compass')) : null;
+    if (compass) {
+        try {
+            await bot.equip(compass, 'hand');
+            await sleep(500);
+            bot.activateItem();
+        } catch (e) {
+            bot.activateItem();
         }
+    } else {
+        try { bot.activateItem(); } catch (e) {}
     }
 }
 
-function destroyBot(username) {
-    const b = bots[username];
-    if (!b || !b.instance) return;
-    try {
-        b.instance.removeAllListeners();
-        if (b.instance._client) {
-            b.instance._client.removeAllListeners();
-            b.instance._client.end();
-        }
-        b.instance.quit();
-    } catch (e) {}
-    b.instance = null;
-    b.ready = false;
-}
+// ====================================================================
+// 🤖 ฟังก์ชันสร้างตัวตนบอท (Life Cycle Engine)
+// ====================================================================
+function createBotInstance(username, delayMs = 0) {
+    const currentStatus = botStatusMap[username]?.status || 'Stopped';
+    const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
 
-function launchBotPipeline(username) {
-    return new Promise((resolve) => {
-        destroyBot(username);
-        console.log(`🔌 [${username}] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...`);
+    if (isAlreadyRunning) {
+        console.log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
+        return;
+    }
 
-        const isAfk = username !== 'Lervy_Lever';
+    if (!botStatusMap[username]?.enabled) {
+        updateStatus(username, 'Stopped', 'ระงับการทำงาน');
+        return;
+    }
+
+    setTimeout(() => {
+        if (!botStatusMap[username]?.enabled) return;
+
+        stopBotInstance(username);
+
+        console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
+        updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
+
+        const botConfig = BOT_CONFIGS.find(b => b.name === username);
+        const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
+        const isLever = botConfig?.role === 'lever';
 
         const bot = mineflayer.createBot({
-            host: 'play.amorycraft.com',
+            host: SERVER_HOST,
+            port: SERVER_PORT,
             username: username,
-            version: '1.21.11',
-            viewDistance: 2,
+            version: MC_VERSION,
+            data: sharedData,
+            physicsEnabled: isLever ? true : false,
             checkTimeoutInterval: 120000,
-            disabledPlugins: isAfk ? ['sound', 'rain', 'particle', 'raycast', 'physics'] : ['sound', 'rain', 'particle']
+            disabledPlugins: isLever ? ['sound', 'rain', 'particle'] : ['sound', 'rain', 'particle', 'raycast', 'physics', 'chest', 'tablist']
         });
 
-        bot.physicsEnabled = true;
-        bots[username].instance = bot;
-        bots[username].ready = false;
-
-        let isCompleted = false;
-        let isWindowHandled = false;
-        let isGuiOpen = false;
-
-        const pipelineTimeout = setTimeout(() => {
-            if (!isCompleted) {
-                console.log(`⚠️ [${username}] ใช้เวลาล็อกอินนานเกินไป รีเซ็ตเพื่อเชื่อมต่อใหม่...`);
-                isCompleted = true;
-                destroyBot(username);
-                resolve(false);
-                queueBot(username, 15000);
-            }
-        }, 50000);
-
-        const finalizeLogin = async () => {
-            if (isCompleted) return;
-            isCompleted = true;
-            clearTimeout(pipelineTimeout);
-            bots[username].ready = true;
-            console.log(`🏠 [${username}] ล็อกอินสำเร็จ เข้าสู่โหมดประจำการ!`);
-
-            if (isAfk) {
-                setupAfkMute(bot, username);
-            } else {
-                bot.removeAllListeners('soundEffect');
-                bot.removeAllListeners('particle');
-                bot.removeAllListeners('entityMoved');
-                // สั่ง Lever วาร์ปไปพักที่ home2 ทันทีหลังจากล็อกอินเสร็จ
-                await sleep(2000);
-                console.log(`🚀 [Lervy_Lever] วาร์ปไปจุดพักผ่อน (/home home2) เพื่อประหยัด CPU...`);
-                bot.chat('/home home2');
-            }
-            resolve(true);
-        };
-
-        // 1. จัดการรหัสผ่าน และวนลูปกดเข็มทิศ
-        bot.once('spawn', async () => {
-            await sleep(3500);
-            if (!bot || bot._client.ended) return;
-            bot.chat('/login 112233');
-            console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 1`);
-
-            await sleep(3500);
-            if (!bot || bot._client.ended) return;
-            bot.chat('/login 112233');
-            console.log(`✍️ [${username}] ยิงรหัสผ่านรอบที่ 2`);
-
-            for (let i = 0; i < 15; i++) {
-                await sleep(2500);
-                if (!bot || bot._client.ended || isGuiOpen) break;
-
-                const comp = bot.inventory?.items().find(it => it.name.includes('compass'));
-                if (comp) {
-                    try {
-                        await bot.equip(comp, 'hand');
-                        await sleep(500);
-                        await bot.activateItem();
-                        console.log(`🧭 [${username}] กดใช้งานเข็มทิศ (ครั้งที่ ${i + 1})...`);
-                    } catch (e) {}
-                }
-            }
-        });
-
-        // 2. จิ้มเลือก Survival
-        bot.on('windowOpen', async (window) => {
-            isGuiOpen = true;
-            if (isWindowHandled) return;
-            isWindowHandled = true;
-
-            console.log(`🪟 [${username}] หน้าต่าง GUI เปิดสำเร็จแล้ว!`);
-            let clicked = false;
-
-            const tryClickMenu = async () => {
-                if (clicked || !bot || bot._client.ended) return;
-
-                const currentWin = bot.currentWindow || window;
-                if (!currentWin || !currentWin.slots) return;
-
-                const menuItems = currentWin.slots.slice(0, 27).filter(it => it !== null && it !== undefined);
-
-                if (menuItems.length > 0) {
-                    clicked = true;
-
-                    const target = menuItems.find(it => it.name.includes('grass')) || 
-                                   menuItems.find(it => it.slot === 10) || 
-                                   menuItems[0];
-
-                    console.log(`📦 [${username}] พบไอเทมในเมนู: ${target.name} (Slot ${target.slot})`);
-
-                    await sleep(1000);
-                    try {
-                        await bot.clickWindow(target.slot, 0, 0);
-                        console.log(`👆 [${username}] จิ้มเมนูเลือกเซิร์ฟ Survival เรียบร้อย`);
-
-                        await sleep(9000);
-                        if (bot && !bot._client.ended) {
-                            if (isAfk) {
-                                bot.chat('/home home');
-                                await sleep(3000);
-                            }
-                            finalizeLogin();
-                        }
-                    } catch (e) {
-                        console.log(`❌ [${username}] ข้อผิดพลาดตอนคลิก: ${e.message}`);
-                    }
-                }
-            };
-
-            window.on('updateSlot', () => {
-                tryClickMenu();
-            });
-
-            for (let i = 0; i < 20; i++) {
-                if (clicked) break;
-                await sleep(500);
-                await tryClickMenu();
-            }
-        });
+        activeBots[username] = bot;
+        bot.authStage = 0;
 
         bot.on('kicked', (reason) => {
-            console.log(`🚨 [${username}] โดนเตะออก: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+            let kickReasonStr = reason;
+            try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
+            console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
+            updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
+        });
+
+        bot.on('windowOpen', async (window) => {
+            // STAGE 0: กด Slot 1 เปิด Anvil
+            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
+                bot.authStage = 1;
+                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
+                updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(1, 0, 0);
+
+                        setTimeout(async () => {
+                            if (bot.authStage === 1) {
+                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
+                                bot.authStage = 3;
+                                await bot.clickWindow(2, 0, 0).catch(() => {});
+                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
+                                setTimeout(() => useCompass(bot, username), 10000);
+                            }
+                        }, 3500);
+                    } catch (e) {}
+                }, 2000);
+            }
+
+            // STAGE 1: พิมพ์รหัสใส่ Anvil
+            else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
+                bot.authStage = 2;
+                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
+                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน ${botPassword}`);
+
+                setTimeout(() => {
+                    try {
+                        bot._client.write('name_item', { name: botPassword });
+                        setTimeout(async () => {
+                            await bot.clickWindow(2, 0, 0);
+                        }, 800);
+                    } catch (e) {}
+                }, 1200);
+            }
+
+            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
+                bot.authStage = 3;
+                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
+                updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยันเข้าสู่ระบบ');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(2, 0, 0);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
+                        setTimeout(() => useCompass(bot, username), 10000);
+                    } catch (e) {}
+                }, 1500);
+            }
+
+            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10)
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
+                bot.authStage = 4;
+                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
+                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(10, 0, 0);
+                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 10 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
+
+                        setTimeout(() => {
+                            if (isLever) {
+                                bot.chat('/home home2');
+                                console.log(`[✓] [${username}] วาร์ปไปจุดพักผ่อน /home home2 เรียบร้อย!`);
+                                updateStatus(username, 'Online (Lever Ready)', 'สแตนด์บายที่ home2');
+                            } else {
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+
+                                if (bot.afkInterval) clearInterval(bot.afkInterval);
+                                bot.afkInterval = setInterval(() => {
+                                    try {
+                                        bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    } catch (e) {}
+                                }, 60000);
+                            }
+                        }, 10000);
+
+                    } catch (err) {
+                        console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
+                    }
+                }, 1800);
+            }
+        });
+
+        bot.on('spawn', () => {
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
         bot.on('error', (err) => {
-            console.log(`❌ [${username}] Error: ${err.message}`);
+            console.error(`[❌ Error] [${username}]: ${err.message}`);
+            updateStatus(username, 'Error', err.message, err.message);
         });
 
-        bot.on('end', () => {
-            bots[username].ready = false;
-            if (!isCompleted) {
-                isCompleted = true;
-                clearTimeout(pipelineTimeout);
-                resolve(false);
+        bot.on('end', (reason) => {
+            if (bot.afkInterval) clearInterval(bot.afkInterval);
+            delete activeBots[username];
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
+            
+            if (botStatusMap[username]?.enabled) {
+                updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
+                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
+                createBotInstance(username, 25000);
+            } else {
+                updateStatus(username, 'Stopped', 'ระงับการทำงาน');
             }
-            console.log(`🔄 [${username}] หลุดการเชื่อมต่อ เข้าคิวรอต่อใหม่ใน 25 วินาที...`);
-            queueBot(username, 25000);
         });
-    });
+
+    }, delayMs);
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (Safe Interaction)
+// 🕹️ LEVER INTERACTION ENGINE (Lervy_Lever)
 // ====================================================================
+let isLeverCycleRunning = false;
+
+function isBotOnline(username) {
+    const b = activeBots[username];
+    return b && b._client && !b._client.ended && botStatusMap[username]?.status.includes('Online');
+}
+
 async function clickLeverSafe(actionName) {
-    const leverBot = bots.Lervy_Lever.instance;
+    const leverBot = activeBots['Lervy_Lever'];
     if (!isBotOnline('Lervy_Lever')) {
         console.log(`❌ [LEVER LOG] ยกเลิก: Lervy_Lever ไม่ออนไลน์`);
         return false;
@@ -380,7 +261,6 @@ async function clickLeverSafe(actionName) {
     let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
     let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
 
-    // ถ้าไม่อยู่หน้าคันโยก ให้วาร์ปกลับมาหน้าคันโยก
     if (distance > 3) {
         console.log(`🚀 [LEVER LOG] วาร์ปกลับเข้าบ้าน (/home home) เพื่อสับคันโยก...`);
         leverBot.chat('/home home');
@@ -389,7 +269,7 @@ async function clickLeverSafe(actionName) {
 
     try {
         await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(250);
+        await sleep(200);
 
         let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
         if (!block) {
@@ -400,11 +280,10 @@ async function clickLeverSafe(actionName) {
             };
         }
 
-        await leverBot.activateBlock(block);
+        leverBot.activateBlock(block).catch(() => {});
         if (leverBot.swingArm) leverBot.swingArm('right');
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จ!`);
 
-        await sleep(300);
         return true;
     } catch (err) {
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
@@ -431,16 +310,14 @@ async function triggerLeverCycle() {
 
         if (okClose) {
             console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาที...`);
-            await sleep(10000); // ⚡ ปรับเหลือรอ 10 วินาที
+            await sleep(10000);
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
             await clickLeverSafe('เปิดคันโยก (ON)');
-            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
 
-            // ⚡ สับเปิดเสร็จปุ๊บ วาร์ปหนีฟาร์มไปที่ /home home2 ทันที
-            await sleep(1000);
-            console.log(`🚀 [LEVER CYCLE]: วาร์ปหนีฟาร์ม (/home home2) เพื่อประหยัด CPU...`);
-            bots.Lervy_Lever.instance.chat('/home home2');
+            activeBots['Lervy_Lever'].chat('/home home2');
+            console.log(`🚀 [LEVER CYCLE]: วาร์ปหนีฟาร์ม (/home home2) สำเร็จ!`);
+            console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!\n`);
         }
     } finally {
         isLeverCycleRunning = false;
@@ -450,8 +327,6 @@ async function triggerLeverCycle() {
 // ====================================================================
 // ⏰ SCHEDULE ENGINE
 // ====================================================================
-
-// 1. Cron สับคันโยก: ทุกๆ นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
 cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -466,7 +341,6 @@ cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
     await triggerLeverCycle();
 });
 
-// 2. Cron ล่วงหน้า 1 นาที: วาร์ปกลับมารอที่คันโยก (/home home) ในนาทีที่ 2, 8, 14, 20, 26, 32, 38, 44, 50, 56
 cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
     const now = new Date();
     const hour = now.getHours();
@@ -475,18 +349,206 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
     if ((hour === 5 && minute >= 34) || hour === 6) return;
 
     if (isBotOnline('Lervy_Lever')) {
-        console.log(`\n🚶 [PRE-WARP 1 MIN]: ถึงเวลาเตรียมตัว วาร์ปกลับบ้าน (/home home) มารอหน้าคันโยก [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
-        bots.Lervy_Lever.instance.chat('/home home');
+        console.log(`\n🚶 [PRE-WARP 1 MIN]: วาร์ปกลับบ้าน (/home home) มารอหน้าคันโยก [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
+        activeBots['Lervy_Lever'].chat('/home home');
     }
 });
 
 // ====================================================================
-// 🚀 เริ่มต้นระบบ
+// 🌐 WEB SERVER & CONTROL PANEL (Port 3001)
 // ====================================================================
-console.log("🚀 [SYSTEM START]: เริ่มระบบ Home2-Relocation Lever Controller (10s Cycle)...");
-queueBot('Lervy_Lever', 0);
-queueBot('K666', 0);
-queueBot('K555', 0);
+const server = http.createServer((req, res) => {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    const path = parsedUrl.pathname;
+
+    if (path === '/api/status') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(botStatusMap));
+        return;
+    }
+
+    if (path === '/api/control') {
+        const action = parsedUrl.searchParams.get('action');
+        const name = parsedUrl.searchParams.get('name');
+
+        if (action === 'start-all') {
+            let launchIndex = 0;
+            BOT_NAMES.forEach((bName) => {
+                const currStatus = botStatusMap[bName]?.status || 'Stopped';
+                const isRunning = activeBots[bName] && (currStatus.includes('Online') || currStatus === 'Connecting' || currStatus === 'Logging in' || currStatus === 'In Lobby');
+
+                if (!isRunning) {
+                    botStatusMap[bName].enabled = true;
+                    createBotInstance(bName, launchIndex * 10000);
+                    launchIndex++;
+                }
+            });
+        } 
+        else if (action === 'stop-all') {
+            BOT_NAMES.forEach(bName => {
+                botStatusMap[bName].enabled = false;
+                stopBotInstance(bName);
+                updateStatus(bName, 'Stopped', 'ระงับการทำงาน');
+            });
+        } 
+        else if (name && botStatusMap[name]) {
+            if (action === 'start') {
+                botStatusMap[name].enabled = true;
+                botStatusMap[name].lastError = '-';
+                createBotInstance(name, 0);
+            } else if (action === 'stop') {
+                botStatusMap[name].enabled = false;
+                stopBotInstance(name);
+                updateStatus(name, 'Stopped', 'ระงับการทำงาน (User Disabled)');
+            }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true }));
+        return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Multi-Bot & Lever Dashboard</title>
+    <style>
+        body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
+        h2 { color: #4caf50; margin-bottom: 10px; display: inline-block; }
+        .btn-group { margin-bottom: 15px; float: right; display: flex; gap: 5px; flex-wrap: wrap; }
+        button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        button:hover { background: #444; }
+        .btn-start { background: #2e7d32; border-color: #4caf50; }
+        .btn-stop { background: #c62828; border-color: #ef5350; }
+        .stats { margin-bottom: 15px; font-size: 14px; clear: both; }
+        table { width: 100%; border-collapse: collapse; background: #1e1e1e; font-size: 13px; }
+        th, td { border: 1px solid #333; padding: 6px 10px; text-align: left; }
+        th { background: #2a2a2a; color: #aaa; }
+        .Online { color: #4caf50; font-weight: bold; }
+        .Connecting, .Logging, .Selecting, .In { color: #ffeb3b; }
+        .Offline, .Kicked, .Error { color: #f44336; }
+        .Stopped { color: #757575; }
+        .err-log { color: #ff9800; font-size: 11px; max-width: 250px; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div>
+        <h2>🤖 Multi-Bot &amp; Lever Controller</h2>
+        <div class="btn-group">
+            <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
+            <button class="btn-stop" onclick="controlBot('', 'stop-all')">⏹ Stop All</button>
+        </div>
+    </div>
+    <div class="stats" id="summary">กำลังโหลดข้อมูล...</div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>ชื่อบอท</th>
+                <th>สถานะ</th>
+                <th>ขั้นตอนล่าสุด</th>
+                <th>ข้อผิดพลาดจากเซิร์ฟ (Error Log)</th>
+                <th>อัปเดตเมื่อ</th>
+                <th>จัดการ</th>
+            </tr>
+        </thead>
+        <tbody id="bot-table"></tbody>
+    </table>
+
+    <script>
+        async function controlBot(name, action) {
+            await fetch(\`/api/control?name=\${name}&action=\${action}\`);
+            fetchStatus();
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const tbody = document.getElementById('bot-table');
+                
+                let onlineCount = 0;
+                let total = 0;
+                let html = '';
+
+                Object.keys(data).forEach((name, index) => {
+                    total++;
+                    const bot = data[name];
+                    const isOnline = bot.status.includes('Online');
+                    if (isOnline) onlineCount++;
+
+                    let statusClass = 'Offline';
+                    if (isOnline) statusClass = 'Online';
+                    else if (bot.status === 'Stopped') statusClass = 'Stopped';
+                    else if (bot.status !== 'Offline') statusClass = 'Connecting';
+
+                    const toggleBtn = bot.enabled ? 
+                        \`<button class="btn-stop" onclick="controlBot('\${name}', 'stop')">Stop</button>\` : 
+                        \`<button class="btn-start" onclick="controlBot('\${name}', 'start')">Start</button>\`;
+
+                    html += \`<tr>
+                        <td>\${index + 1}</td>
+                        <td><b>\${name}</b></td>
+                        <td class="\${statusClass}">\${bot.status}</td>
+                        <td>\${bot.step}</td>
+                        <td class="err-log">\${bot.lastError}</td>
+                        <td>\${bot.lastUpdate}</td>
+                        <td>\${toggleBtn}</td>
+                    </tr>\`;
+                });
+
+                tbody.innerHTML = html;
+                document.getElementById('summary').innerHTML = 
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | อัปเดตอัตโนมัติทุก 3 วินาที\`;
+            } catch (e) {}
+        }
+
+        fetchStatus();
+        setInterval(fetchStatus, 3000);
+    </script>
+</body>
+</html>
+    `);
+});
+
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '127.0.0.1';
+}
+
+function printStartupLogs(ipAddress) {
+    console.log('==================================================');
+    console.log(`🚀 STARTING MULTI-BOT & LEVER CONTROLLER`);
+    console.log('==================================================');
+    console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
+    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (Lever + AFK)`);
+    console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
+    console.log('==================================================');
+}
+
+server.listen(WEB_PORT, () => {
+    printStartupLogs(getLocalIP());
+});
+
+// ====================================================================
+// 🚀 เริ่มต้นทำงานทันที (Auto-Start)
+// ====================================================================
+let startIdx = 0;
+BOT_NAMES.forEach((bName) => {
+    createBotInstance(bName, startIdx * 10000);
+    startIdx++;
+});
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 rl.on('line', async (line) => {
@@ -495,8 +557,8 @@ rl.on('line', async (line) => {
         await triggerLeverCycle();
     }
     if (input === 'tpa') {
-        if (isBotOnline('Lervy_Lever')) bots.Lervy_Lever.instance.chat('/tpa DukDikauai');
-        if (isBotOnline('K666')) bots.K666.instance.chat('/tpa DukDikauai');
-        if (isBotOnline('K555')) bots.K555.instance.chat('/tpa DukDikauai');
+        BOT_NAMES.forEach(name => {
+            if (isBotOnline(name)) activeBots[name].chat('/tpa DukDikauai');
+        });
     }
 });
