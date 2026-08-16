@@ -92,7 +92,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Multi-Bot Permanent Lever Controller</div>
+        <div class="title">⚡ Ultra-Filtered Low CPU Farm Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -222,7 +222,7 @@ function createBotInstance(username, delayMs = 0) {
         const isLever = botConfig?.role === 'lever';
 
         const disabledPlugins = isLever
-            ? ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist']
+            ? ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'entities', 'chest']
             : ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest'];
 
         const bot = mineflayer.createBot({
@@ -236,13 +236,24 @@ function createBotInstance(username, delayMs = 0) {
             disabledPlugins: disabledPlugins
         });
 
-        // ดักกรอง Packet ขยะของ K555 และ K666 ตั้งแต่ต้นทาง
-        if (!isLever && bot._client) {
-            const dropPackets = new Set(['rel_entity_move', 'entity_velocity', 'multi_block_change', 'block_change', 'entity_teleport', 'entity_metadata']);
+        // ⚡ ดักสกัดแพ็กเก็ตขยะตั้งแต่ระดับ Network Socket ไม่ให้เข้ามาใน Event Loop
+        if (bot._client) {
+            const dropPacketsAFK = new Set([
+                'rel_entity_move', 'entity_velocity', 'multi_block_change', 'block_change', 
+                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 'entity_destroy'
+            ]);
+
+            const dropPacketsLever = new Set([
+                'rel_entity_move', 'entity_velocity', 'entity_teleport', 'entity_metadata', 
+                'bundle_delimiter', 'spawn_entity', 'entity_destroy'
+            ]);
+
             const origEmit = bot._client.emit;
             bot._client.emit = function (event, ...args) {
-                if (event === 'packet' && args[1] && dropPackets.has(args[1].name)) {
-                    return false;
+                if (event === 'packet' && args[1]) {
+                    const pName = args[1].name;
+                    if (!isLever && dropPacketsAFK.has(pName)) return false;
+                    if (isLever && dropPacketsLever.has(pName)) return false;
                 }
                 return origEmit.apply(this, [event, ...args]);
             };
