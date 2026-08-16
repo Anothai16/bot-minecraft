@@ -1,374 +1,471 @@
-// 🔇 1. ซ่อน Warning รกจอทันทีตั้งแต่เริ่มรัน
-const originalWarn = console.warn;
-console.warn = (...args) => {
-    if (args[0] && typeof args[0] === 'string' && args[0].includes('Ignoring block entities')) return;
-    originalWarn(...args);
-};
-
+const express = require('express');
 const mineflayer = require('mineflayer');
+const minecraftData = require('minecraft-data');
 const { Vec3 } = require('vec3');
 const cron = require('node-cron');
-const express = require('express');
 const readline = require('readline');
-
-// 🎯 เรียกใช้งานโมดูลล็อกอิน Amory ออโต้จากไฟล์ร่วม login.js
-const { setupAmoryLogin } = require('./login');
 
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-let botLever;
-let isReconnectingLever = false;
+const SERVER_HOST = 'play.amorycraft.com';
+const SERVER_PORT = 25565;
+const DEFAULT_PASSWORD = '112233';
+const MC_VERSION = '1.20.1';
+const WEB_PORT = 3001;
 
-let botK666;
-let isReconnectingK666 = false;
-let isK666InSurvival = false;
+const sharedData = minecraftData(MC_VERSION);
 
-// 🌍 Express Server (Health check 24/7)
+// ====================================================================
+// 🌐 WEB DASHBOARD & LIVE LOGS
+// ====================================================================
+const logsBuffer = [];
+const MAX_LOGS = 100;
+
+const originalLog = console.log;
+console.log = (...args) => {
+    const timestamp = new Date().toLocaleTimeString('th-TH');
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+    logsBuffer.push(`[${timestamp}] ${message}`);
+    if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
+    originalLog(...args);
+};
+
 const app = express();
-const port = process.env.PORT || 8083;
-app.get('/', (req, res) => res.send('Bots are running 24/7!'));
-app.listen(port, () => console.log(`🌍 Health check listening on port ${port}`));
 
-// ⚡ Drop Packets ขยะทิ้งทั้งหมด
-const DROP_PACKETS = [
-    'world_particles', 'packet_world_particles',
-    'named_sound_effect', 'sound_effect', 'entity_destroy',
-    'rel_entity_move', 'entity_move_look', 'entity_teleport',
-    'entity_head_rotation', 'animation', 'entity_metadata',
-    'block_change', 'multi_block_change', 'block_action', 
-    'block_entity_data', 'tile_entity_data', 'update_time', 'set_passengers', 'lighting',
-    'map_chunk', 'world_event', 'spawn_entity', 'spawn_entity_experience_orb',
-    'entity_velocity', 'entity_equipment', 'game_state_change'
+const BOT_CONFIGS = [
+    { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
+    { name: 'K666', pass: '112233', role: 'afk' },
+    { name: 'K555', pass: '112233', role: 'afk' }
 ];
 
-function neuterBotEngine(bot) {
-    bot.physicsEnabled = false;
-    if (bot.physics) bot.physics.stopped = true;
-    
-    if (bot.world) {
-        bot.world.columns = {};
-        bot.world.setBlockStateId = () => {};
-        bot.world.getBlock = () => null;
-        bot.world.getColumn = () => null;
-    }
-    bot.entities = {};
+const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
+const activeBots = {};
+const botStatusMap = {};
 
-    const keepEvents = ['kicked', 'error', 'end', 'spawn', 'windowOpen', 'messagestr'];
-    bot.eventNames().forEach(eventName => {
-        if (!keepEvents.includes(eventName)) bot.removeAllListeners(eventName);
+BOT_NAMES.forEach(name => {
+    botStatusMap[name] = { 
+        status: 'Stopped', 
+        step: 'รอเริ่มทำงาน...', 
+        lastUpdate: new Date().toLocaleTimeString('th-TH'),
+        lastError: '-',
+        enabled: true 
+    };
+});
+
+function isBotOnline(username) {
+    const b = activeBots[username];
+    return b && b._client && !b._client.ended && botStatusMap[username]?.status.includes('Online');
+}
+
+app.get('/api/status', (req, res) => {
+    res.json({
+        lever: isBotOnline('Lervy_Lever'),
+        k666: isBotOnline('K666'),
+        k555: isBotOnline('K555'),
+        logs: logsBuffer.slice().reverse().join('\n')
     });
-}
+});
+
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Minecraft Bot Resource Controller</title>
+        <style>
+            body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
+            .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+            .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+            .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+            .offline { background: #ef4444; }
+            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="title">⚡ Raw Socket-Filtered Multi-Bot Controller</div>
+        <div class="header">
+            <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
+            <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
+            <div class="card"><span id="dot-k555" class="dot offline"></span> K555: <b id="txt-k555">กำลังโหลด...</b></div>
+        </div>
+        <div class="log-box" id="logs">กำลังดึง Logs...</div>
+        <script>
+            async function update() {
+                try {
+                    const res = await fetch('/api/status');
+                    const data = await res.json();
+                    document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์' : 'ออฟไลน์';
+                    document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
+                } catch(e) {}
+            }
+            setInterval(update, 2000);
+            update();
+        </script>
+    </body>
+    </html>`);
+});
+
+app.listen(WEB_PORT, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${WEB_PORT}`));
 
 // ====================================================================
-// 🔍 CHECK PLAYERS ONLINE FUNCTIONS
+// 📊 REAL-TIME CPU PROFILER
 // ====================================================================
-function checkPlayersFromLever() {
-    if (!botLever || !botLever.players) {
-        return { isReady: false, hasK555: false, hasK666: false };
+let lastCpuUsage = process.cpuUsage();
+let lastCpuTime = Date.now();
+
+setInterval(() => {
+    const elapsedMs = Date.now() - lastCpuTime;
+    const cpuDiff = process.cpuUsage(lastCpuUsage);
+    
+    const totalUserSystemMicros = cpuDiff.user + cpuDiff.system;
+    const cpuPercent = ((totalUserSystemMicros / (elapsedMs * 1000)) * 100).toFixed(1);
+
+    lastCpuUsage = process.cpuUsage();
+    lastCpuTime = Date.now();
+
+    const mem = process.memoryUsage();
+    const rssMB = Math.round(mem.rss / 1024 / 1024);
+    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+
+    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
+}, 5000);
+
+// ====================================================================
+// 🤖 BOT ENGINE & AUTH LOGIC
+// ====================================================================
+function updateStatus(name, status, step, errorReason = null) {
+    if (!botStatusMap[name]) return;
+    botStatusMap[name].status = status;
+    if (step) botStatusMap[name].step = step;
+    if (errorReason) botStatusMap[name].lastError = errorReason;
+    botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH');
+}
+
+function stopBotInstance(username) {
+    if (activeBots[username]) {
+        try { activeBots[username].quit(); } catch (e) {}
+        delete activeBots[username];
     }
-    const onlinePlayerNames = Object.keys(botLever.players);
-    const hasK555 = onlinePlayerNames.includes('K555');
-    const hasK666 = onlinePlayerNames.includes('K666') || isK666InSurvival;
-
-    return { isReady: hasK555 && hasK666, hasK555, hasK666 };
 }
 
-function isLeverBotOnline() {
-    if (!botK666 || !botK666.players) return false;
-    return Object.keys(botK666.players).includes('Lervy_Lever');
+async function useCompass(bot, username) {
+    updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
+    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    const compass = bot.inventory ? bot.inventory.items().find(i => i.name.includes('compass')) : null;
+    if (compass) {
+        try {
+            await bot.equip(compass, 'hand');
+            await sleep(500);
+            bot.activateItem();
+        } catch (e) {
+            bot.activateItem();
+        }
+    } else {
+        try { bot.activateItem(); } catch (e) {}
+    }
+}
+
+function createBotInstance(username, delayMs = 0) {
+    const currentStatus = botStatusMap[username]?.status || 'Stopped';
+    const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
+
+    if (isAlreadyRunning) return;
+
+    if (!botStatusMap[username]?.enabled) {
+        updateStatus(username, 'Stopped', 'ระงับการทำงาน');
+        return;
+    }
+
+    setTimeout(() => {
+        if (!botStatusMap[username]?.enabled) return;
+
+        stopBotInstance(username);
+
+        console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
+        updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
+
+        const botConfig = BOT_CONFIGS.find(b => b.name === username);
+        const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
+        const isLever = botConfig?.role === 'lever';
+
+        const bot = mineflayer.createBot({
+            host: SERVER_HOST,
+            port: SERVER_PORT,
+            username: username,
+            version: MC_VERSION,
+            data: sharedData,
+            physicsEnabled: false,
+            checkTimeoutInterval: 0,
+            disabledPlugins: ['sound', 'rain', 'particle', 'raycast', 'experience', 'villager', 'tablist', 'blocks', 'physics', 'entities', 'chest']
+        });
+
+        activeBots[username] = bot;
+        bot.authStage = 0;
+
+        bot.on('kicked', (reason) => {
+            let kickReasonStr = reason;
+            try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
+            console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
+            updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
+        });
+
+        bot.on('windowOpen', async (window) => {
+            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
+                bot.authStage = 1;
+                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
+                updateStatus(username, 'Logging in', 'กด Slot 1 เปิด Anvil');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(1, 0, 0);
+
+                        setTimeout(async () => {
+                            if (bot.authStage === 1) {
+                                bot.authStage = 3;
+                                await bot.clickWindow(2, 0, 0).catch(() => {});
+                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
+                                setTimeout(() => useCompass(bot, username), 10000);
+                            }
+                        }, 3500);
+                    } catch (e) {}
+                }, 2000);
+            }
+            else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
+                bot.authStage = 2;
+                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน...`);
+                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
+
+                setTimeout(() => {
+                    try {
+                        bot._client.write('name_item', { name: botPassword });
+                        setTimeout(async () => {
+                            await bot.clickWindow(2, 0, 0);
+                        }, 800);
+                    } catch (e) {}
+                }, 1200);
+            }
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
+                bot.authStage = 3;
+                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
+                updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยันเข้าสู่ระบบ');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(2, 0, 0);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
+                        setTimeout(() => useCompass(bot, username), 10000);
+                    } catch (e) {}
+                }, 1500);
+            }
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
+                bot.authStage = 4;
+                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
+                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
+
+                setTimeout(async () => {
+                    try {
+                        await bot.clickWindow(10, 0, 0);
+                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 10 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 10s)');
+
+                        setTimeout(() => {
+                            if (isLever) {
+                                bot.chat('/home home2');
+                                console.log(`🚀 [Lervy_Lever] ล็อกอินสำเร็จ วาร์ปไปพักผ่อนที่ (/home home2) เรียบร้อย!`);
+                                updateStatus(username, 'Online (Standby home2)', 'สแตนด์บายที่ home2');
+                            } else {
+                                console.log(`[✓] [${username}] เข้าสู่เซิร์ฟเวอร์ Survival เรียบร้อย!`);
+                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
+                            }
+
+                            bot.removeAllListeners('soundEffect');
+                            bot.removeAllListeners('particle');
+                            bot.removeAllListeners('entityMoved');
+                            bot.entities = {};
+
+                            if (bot.afkInterval) clearInterval(bot.afkInterval);
+                            bot.afkInterval = setInterval(() => {
+                                try {
+                                    bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    bot.entities = {};
+                                } catch (e) {}
+                            }, 60000);
+                        }, 10000);
+
+                    } catch (err) {
+                        console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
+                    }
+                }, 1800);
+            }
+        });
+
+        bot.on('spawn', () => {
+            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
+        });
+
+        bot.on('error', (err) => {
+            console.error(`[❌ Error] [${username}]: ${err.message}`);
+            updateStatus(username, 'Error', err.message, err.message);
+        });
+
+        bot.on('end', (reason) => {
+            if (bot.afkInterval) clearInterval(bot.afkInterval);
+            delete activeBots[username];
+            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
+            
+            if (botStatusMap[username]?.enabled) {
+                updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
+                console.log(`[i] [${username}] จะต่อใหม่ใน 25 วินาที...`);
+                createBotInstance(username, 25000);
+            } else {
+                updateStatus(username, 'Stopped', 'ระงับการทำงาน');
+            }
+        });
+
+    }, delayMs);
 }
 
 // ====================================================================
-// 🕹️ LEVER BOT (Lervy_Lever - Direct Packet Safe)
+// 🕹️ DIRECT SOCKET LEVER ENGINE
 // ====================================================================
-const LEVER_COORD = { x: 10456, y: 64, z: -5054 };
+let isLeverCycleRunning = false;
 
-async function clickLeverRaw(actionName = '') {
-    if (!botLever || !botLever._client || botLever._client.ended) {
-        console.log(`❌ [LEVER LOG] ยกเลิก: บอทไม่ออนไลน์`);
+// ⚡ พิกัดคันโยกและตำแหน่งยืนใหม่
+const LEVER_COORD = { x: 10383, y: 64, z: -5065 };
+const PLAYER_STAND_POS = { x: 10382.5, y: 64.0, z: -5065.5 };
+
+async function clickLeverSafe(actionName) {
+    const leverBot = activeBots['Lervy_Lever'];
+    if (!isBotOnline('Lervy_Lever')) {
+        console.log(`❌ [LEVER LOG] ยกเลิก: Lervy_Lever ไม่ออนไลน์`);
         return false;
     }
 
     try {
-        // หันหน้าไปยังคันโยก
-        if (botLever.look) {
-            try { botLever.look(Math.PI / 2, 0, true); } catch (e) {}
+        if (leverBot._client) {
+            leverBot._client.write('position_look', {
+                x: PLAYER_STAND_POS.x,
+                y: PLAYER_STAND_POS.y,
+                z: PLAYER_STAND_POS.z,
+                yaw: 90,
+                pitch: 0,
+                onGround: true
+            });
         }
-        await sleep(150);
+        await sleep(100);
 
-        // ส่ง Packet สับคันโยก (รองรับทั้ง use_item_on และ block_place)
-        const packetData = {
-            hand: 0,
-            location: { x: LEVER_COORD.x, y: LEVER_COORD.y, z: LEVER_COORD.z },
-            direction: 1,
-            cursorX: 0.5,
-            cursorY: 0.5,
-            cursorZ: 0.5,
-            insideBlock: false,
-            sequence: 0
-        };
-
-        try {
-            botLever._client.write('use_item_on', packetData);
-        } catch (err) {
-            botLever._client.write('block_place', packetData);
+        if (leverBot._client) {
+            leverBot._client.write('block_place', {
+                hand: 0,
+                location: { x: LEVER_COORD.x, y: LEVER_COORD.y, z: LEVER_COORD.z },
+                direction: 1,
+                cursorX: 0.5,
+                cursorY: 0.5,
+                cursorZ: 0.5,
+                insideBlock: false,
+                sequence: 0
+            });
         }
 
-        if (botLever.swingArm) botLever.swingArm('right');
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จ!`);
+        if (leverBot.swingArm) leverBot.swingArm('right');
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: เกิดข้อผิดพลาดในการส่ง Packet คันโยก: ${err.message}`);
+        console.log(`❌ [LEVER ERROR]: ${err.message}`);
         return false;
     }
 }
 
 async function triggerLeverCycle() {
-    console.log(`🔍 [CHECK ONLINE]: กำลังตรวจสอบผู้เล่น K555 และ K666 ในเซิร์ฟเวอร์...`);
-    
-    while (true) {
-        const check = checkPlayersFromLever();
+    if (isLeverCycleRunning) return;
+    isLeverCycleRunning = true;
 
-        if (check.isReady) {
-            console.log(`✅ [CHECK ONLINE]: พบผู้เล่น K555 และ K666 อยู่ในเซิร์ฟเวอร์ครบถ้วน!`);
-            break;
-        } else {
-            console.log(`⏳ [WAIT PLAYERS]: ผู้เล่นไม่ครบ (K555: ${check.hasK555 ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${check.hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'})`);
-            
-            if (!check.hasK666 && !isReconnectingK666 && (!botK666 || botK666._client?.ended)) {
-                console.log(`🔄 [AUTO RECONNECT K666]: ไม่พบ K666 สั่งเชื่อมต่อ K666 ใหม่ให้อัตโนมัติ...`);
-                startAFKBot();
-            }
+    try {
+        const hasLever = isBotOnline('Lervy_Lever');
+        const hasK666 = isBotOnline('K666');
 
-            console.log(`⏱️ รอ 1 นาทีเพื่อให้ผู้เล่นเข้าเซิร์ฟเวอร์ครบ แล้วจะเช็กใหม่อีกครั้ง...`);
-            await sleep(60000);
-        }
-    }
-
-    console.log(`\n🔴 [LEVER CYCLE]: สั่งสับปิดคันโยก (OFF)...`);
-    const successOff = await clickLeverRaw('ปิด (OFF)');
-    
-    if (successOff) {
-        console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 30 วินาที...`);
-        await sleep(30000);
-        
-        console.log(`🟢 [LEVER CYCLE]: สั่งสับเปิดคันโยกกลับคืน (ON)...`);
-        await clickLeverRaw('เปิด (ON)');
-        
-        if (botLever && botLever._client && !botLever._client.ended) {
-            botLever.chat('/home home2');
-            console.log(`🚀 [LEVER CYCLE]: สับเปิดสำเร็จ วาร์ปหลบไปที่ (/home home2) เรียบร้อย!`);
-        }
-        console.log(`✅ [LEVER CYCLE]: ทำงานครบไซเคิลเรียบร้อย!`);
-    }
-}
-
-function initScheduler() {
-    const CRON_PATTERN = '0 3,9,15,21,27,33,39,45,51,57 * * * *';
-
-    cron.schedule(CRON_PATTERN, async () => {
-        const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-
-        if ((hour === 5 && minute >= 35) || hour === 6) {
-            console.log(`⏸️ [SCHEDULER SKIP]: เวลา ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น. อยู่ในช่วงพัก (05:35 - 07:00) ข้ามการทำงานรอบนี้`);
+        // ⚡ ตรวจสอบเฉพาะ Lervy_Lever และ K666 (ตัด K555 ออก)
+        if (!hasLever || !hasK666) {
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ (Lervy_Lever: ${hasLever ? 'ออนไลน์' : '❌ ไม่อยู่'}, K666: ${hasK666 ? 'ออนไลน์' : '❌ ไม่อยู่'}) ข้ามรอบนี้`);
             return;
         }
 
-        console.log(`\n⏰ [CRON TRIGGER]: ถึงเวลาทำงานตามรอบ [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
-        await triggerLeverCycle();
-    });
+        console.log(`\n=================== 🔴 เริ่มต้นไซเคิลสับคันโยก ===================`);
+        const okClose = await clickLeverSafe('ปิดคันโยก (OFF)');
 
-    cron.schedule('45 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
-        const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
+        if (okClose) {
+            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 5 วินาที...`);
+            await sleep(5000);
 
-        if ((hour === 5 && minute >= 34) || hour === 6) return;
+            console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
+            await clickLeverSafe('เปิดคันโยก (ON)');
 
-        if (botLever && botLever._client && !botLever._client.ended) {
-            console.log(`\n🚶 [PRE-WARP 15s]: วาร์ปกลับมารอหน้าคันโยก (/home home) เพื่อเตรียมสับ`);
-            botLever.chat('/home home');
+            activeBots['Lervy_Lever'].chat('/home home2');
+            console.log(`🚀 [LEVER CYCLE]: สับเปิดสำเร็จ วาร์ปหลบไปที่ (/home home2) ทันที!`);
+            console.log(`✅ [LEVER CYCLE]: จบการทำงานรอบนี้เรียบร้อย!\n`);
         }
-    });
-
-    console.log(`⏱️ [SCHEDULER READY]: ตั้งระบบอัตโนมัติทุกนาทีที่ 3,9,15,21,27,33,39,45,51,57 (เว้นช่วงพัก 05:35 - 07:00 น.)`);
-}
-
-function startLeverBot() {
-    if (botLever && !botLever._client?.ended) {
-        try { botLever.quit(); } catch (e) {}
+    } finally {
+        isLeverCycleRunning = false;
     }
-
-    console.log('🔌 [Lervy_Lever] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
-    
-    botLever = mineflayer.createBot({ 
-        host: 'play.amorycraft.com', 
-        username: 'Lervy_Lever',
-        version: '1.21.11',
-        viewDistance: 1,
-        checkTimeoutInterval: 60000,
-        noResetWorld: true,
-        physicsEnabled: false
-    });
-
-    if (botLever._client) {
-        botLever._client.on('packet', (data, metadata) => {
-            if (!metadata || !metadata.name) return;
-            if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
-        });
-    }
-
-    let isSuccessfullyInSurvival = false;
-
-    const loginTimeout = setTimeout(() => {
-        if (!isSuccessfullyInSurvival && botLever) {
-            console.log(`⚠️ [Lervy_Lever]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
-            try { botLever.quit(); } catch (e) {}
-        }
-    }, 30000);
-
-    setupAmoryLogin(botLever, () => {
-        isSuccessfullyInSurvival = true;
-        clearTimeout(loginTimeout);
-    });
-
-    botLever.on('spawn', () => {
-        setTimeout(() => {
-            if (botLever && botLever.username) {
-                isSuccessfullyInSurvival = true;
-                clearTimeout(loginTimeout);
-            }
-        }, 12000);
-    });
-
-    botLever.once('spawn', () => {
-        console.log('Glory! 🛰️ บอท [Lervy_Lever] ออนไลน์สำเร็จ! (โหมด Extreme Low-CPU)');
-        neuterBotEngine(botLever);
-    });
-
-    botLever.on('kicked', (reason) => console.log(`\n🚨 [Lervy_Lever]: โดนเตะออก!! (${reason})`));
-    botLever.on('error', (err) => console.log(`\n❌ [Lervy_Lever Error]: ${err.message}`));
-
-    botLever.on('end', () => { 
-        clearTimeout(loginTimeout);
-        if (isReconnectingLever) return;
-        isReconnectingLever = true;
-        console.log(`🔄 [Lervy_Lever] หลุดการเชื่อมต่อ รอ 10 วินาทีเพื่อเชื่อมต่อใหม่...`);
-        setTimeout(() => {
-            isReconnectingLever = false;
-            startLeverBot();
-        }, 10000); 
-    });
 }
 
 // ====================================================================
-// 🤖 AFK BOT (K666)
+// ⏰ SCHEDULE ENGINE
 // ====================================================================
-function startAFKBot() {
-    if (botK666 && !botK666._client?.ended) {
-        try { botK666.quit(); } catch (e) {}
+cron.schedule('0 3,9,15,21,27,33,39,45,51,57 * * * *', async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    if ((hour === 5 && minute >= 35) || hour === 6) {
+        console.log(`⏸️ [SCHEDULER]: อยู่ในช่วงพักระบบ (05:35 - 07:00 น.)`);
+        return;
     }
 
-    isK666InSurvival = false;
-    console.log('🔌 [K666] กำลังเชื่อมต่อเข้าสู่เซิร์ฟเวอร์...');
-    
-    botK666 = mineflayer.createBot({ 
-        host: 'play.amorycraft.com', 
-        username: 'K666',
-        version: '1.21.11',
-        viewDistance: 1,
-        checkTimeoutInterval: 60000,
-        noResetWorld: true,
-        physicsEnabled: false
-    });
+    console.log(`\n⏰ [CRON TRIGGER]: ถึงรอบทำงาน [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
+    await triggerLeverCycle();
+});
 
-    if (botK666._client) {
-        botK666._client.on('packet', (data, metadata) => {
-            if (!metadata || !metadata.name) return;
-            if (DROP_PACKETS.includes(metadata.name)) metadata.size = 0;
-        });
+cron.schedule('45 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    if ((hour === 5 && minute >= 34) || hour === 6) return;
+
+    if (isBotOnline('Lervy_Lever')) {
+        console.log(`\n🚶 [PRE-WARP 15s]: วาร์ปกลับมารอหน้าคันโยก (/home home) เพื่อเตรียมสับ`);
+        activeBots['Lervy_Lever'].chat('/home home');
     }
-
-    const k666LoginTimeout = setTimeout(() => {
-        if (!isK666InSurvival && botK666) {
-            console.log(`⚠️ [K666]: ติดค้างใน Lobby เกิน 30 วินาที สั่ง Reconnect ใหม่...`);
-            try { botK666.quit(); } catch (e) {}
-        }
-    }, 30000);
-
-    setupAmoryLogin(botK666, () => {
-        isK666InSurvival = true;
-        clearTimeout(k666LoginTimeout);
-    });
-
-    botK666.on('spawn', () => {
-        setTimeout(() => {
-            if (botK666 && botK666.username) {
-                isK666InSurvival = true;
-                clearTimeout(k666LoginTimeout);
-            }
-        }, 12000);
-    });
-
-    botK666.once('spawn', () => {
-        console.log('Glory! 🛰️ บอท [K666] ออนไลน์และยืน AFK สำเร็จ! (โหมด Extreme Low-CPU)');
-        neuterBotEngine(botK666);
-    });
-
-    botK666.on('kicked', (reason) => {
-        isK666InSurvival = false;
-        console.log(`\n🚨 [K666]: โดนเตะออก!! (${reason})`);
-    });
-    
-    botK666.on('error', (err) => {
-        isK666InSurvival = false;
-        console.log(`\n❌ [K666 Error]: ${err.message}`);
-    });
-
-    botK666.on('end', () => { 
-        isK666InSurvival = false;
-        clearTimeout(k666LoginTimeout);
-        if (isReconnectingK666) return;
-        isReconnectingK666 = true;
-        console.log(`🔄 [K666] หลุดการเชื่อมต่อ รอ 10 วินาทีเพื่อเชื่อมต่อใหม่...`);
-        setTimeout(() => {
-            isReconnectingK666 = false;
-            startAFKBot();
-        }, 10000); 
-    });
-}
+});
 
 // ====================================================================
-// 🚀 STARTUP & CONSOLE INPUT
+// 🚀 เริ่มต้นทำงานทันที (Auto-Start)
 // ====================================================================
-initScheduler();
-startLeverBot();
-
-setTimeout(() => {
-    startAFKBot();
-}, 6000);
+let startIdx = 0;
+BOT_NAMES.forEach((bName) => {
+    createBotInstance(bName, startIdx * 10000);
+    startIdx++;
+});
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
 rl.on('line', async (line) => {
     const input = line.trim();
-    
     if (input === 'push') {
         await triggerLeverCycle();
-        return;
     }
-
     if (input === 'tpa') {
-        if (botLever && botLever._client && !botLever._client.ended) {
-            console.log('✍️ [Terminal Action] Lervy_Lever ยิงคำสั่ง -> /tpa DukDikauai');
-            botLever.chat('/tpa DukDikauai');
-        }
-        if (botK666 && botK666._client && !botK666._client.ended) {
-            console.log('✍️ [Terminal Action] K666 ยิงคำสั่ง -> /tpa DukDikauai');
-            botK666.chat('/tpa DukDikauai');
-        }
-        return;
+        BOT_NAMES.forEach(name => {
+            if (isBotOnline(name)) activeBots[name].chat('/tpa DukDikauai');
+        });
     }
 });
