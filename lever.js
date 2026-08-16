@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Multi-Bot &amp; Lever Controller</div>
+        <div class="title">⚡ Multi-Bot &amp; Detailed Lever Logger</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -294,7 +294,6 @@ function createBotInstance(username, delayMs = 0) {
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ');
                             }
 
-                            // ถอด Event ภาระหนักออก
                             bot.removeAllListeners('soundEffect');
                             bot.removeAllListeners('particle');
                             bot.removeAllListeners('entityMoved');
@@ -341,9 +340,12 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (ใช้ตรรกะเดิมที่สับติด 100% บนพิกัดใหม่)
+// 🕹️ LEVER LOGIC (พร้อมระบบ Full Diagnostics Log)
 // ====================================================================
 let isLeverCycleRunning = false;
+
+const LEVER_BLOCK_POS = new Vec3(10456, 64, -5053);
+const LEVER_AIM_TARGET = new Vec3(10456.5, 64.6, -5052.5);
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -352,37 +354,48 @@ async function clickLeverSafe(actionName) {
         return false;
     }
 
-    const leverPos = new Vec3(10456, 64, -5053);
-    let currentPos = leverBot.entity?.position ? leverBot.entity.position.floored() : null;
-    let distance = currentPos ? leverBot.entity.position.distanceTo(leverPos) : 9999;
+    const playerPos = leverBot.entity?.position;
+    const distance = playerPos ? playerPos.distanceTo(LEVER_BLOCK_POS).toFixed(2) : 'N/A';
+    console.log(`🔍 [LEVER DIAG] บอทยืนที่: [${playerPos ? `${playerPos.x.toFixed(1)}, ${playerPos.y.toFixed(1)}, ${playerPos.z.toFixed(1)}` : 'Unknown'}] | ระยะห่างถึงคันโยก: ${distance} บล็อก`);
 
-    if (distance > 3) {
-        console.log(`🚀 [LEVER LOG] วาร์ปกลับเข้าบ้าน (/home home) เพื่อสับคันโยก...`);
+    if (playerPos && playerPos.distanceTo(LEVER_BLOCK_POS) > 4) {
+        console.log(`🚀 [LEVER DIAG] บอทอยู่ไกลเกินไป สั่ง /home home ดึงตัวกลับ...`);
         leverBot.chat('/home home');
         await sleep(3500);
     }
 
     try {
-        await leverBot.lookAt(leverPos.offset(0.5, 0.5, 0.5), true);
-        await sleep(250);
+        console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่จุดสัมผัส: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
+        await leverBot.lookAt(LEVER_AIM_TARGET, true);
+        await sleep(400);
 
-        let block = leverBot.blockAt ? leverBot.blockAt(leverPos) : null;
+        const currentYaw = (leverBot.entity.yaw * (180 / Math.PI)).toFixed(1);
+        const currentPitch = (leverBot.entity.pitch * (180 / Math.PI)).toFixed(1);
+        console.log(`🎯 [LEVER DIAG] องศาปัจจุบัน: Yaw=${currentYaw}°, Pitch=${currentPitch}°`);
+
+        let block = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
+        console.log(`📦 [LEVER DIAG] ข้อมูลบล็อกที่พิกัด 10456, 64, -5053: Name=${block ? block.name : 'null'} | Type=${block ? block.type : 'null'}`);
+
         if (!block) {
+            console.log(`⚠️ [LEVER DIAG] ไม่พบบล็อกในหน่วยความจำ ใช้ Fallback Virtual Block Object`);
             block = {
-                position: leverPos,
+                position: LEVER_BLOCK_POS,
                 name: 'lever',
                 shapes: [[[0, 0, 0, 1, 1, 1]]]
             };
         }
 
+        console.log(`👆 [LEVER DIAG] ส่งคำสั่ง activateBlock ไปยังตัวบล็อก...`);
         await leverBot.activateBlock(block);
         if (leverBot.swingArm) leverBot.swingArm('right');
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
 
         await sleep(300);
+        const blockAfter = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์! (Block State หลังสับ: ${blockAfter?.getProperties() ? JSON.stringify(blockAfter.getProperties()) : 'N/A'})`);
+
         return true;
     } catch (err) {
-        console.log(`❌ [LEVER ERROR]: ${err.message}`);
+        console.log(`❌ [LEVER ERROR]: ข้อผิดพลาดตอนสับคันโยก -> ${err.message}`);
         return false;
     }
 }
@@ -397,7 +410,7 @@ async function triggerLeverCycle() {
         const hasK555 = isBotOnline('K555');
 
         if (!hasLever || !hasK666 || !hasK555) {
-            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้`);
+            console.log(`⏳ [SKIP CYCLE]: บอทไม่ครบ ข้ามรอบนี้ (Lever: ${hasLever}, K666: ${hasK666}, K555: ${hasK555})`);
             return;
         }
 
