@@ -86,7 +86,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ All-Lightweight Multi-Bot Controller (Zero World Load)</div>
+        <div class="title">⚡ Direct Packet Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -140,7 +140,7 @@ setInterval(() => {
 }, 5000);
 
 // ====================================================================
-// 🤖 BOT ENGINE (Lightweight For All)
+// 🤖 BOT ENGINE & AUTH LOGIC
 // ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
@@ -218,7 +218,6 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('windowOpen', async (window) => {
-            // STAGE 0: กด Slot 1 เปิด Anvil
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
                 console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังกด Slot 1 (สมุดรหัสผ่าน)...`);
@@ -227,10 +226,8 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
-
                         setTimeout(async () => {
                             if (bot.authStage === 1) {
-                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> สั่งข้ามไปกด Slot 2 ยืนยัน...`);
                                 bot.authStage = 3;
                                 await bot.clickWindow(2, 0, 0).catch(() => {});
                                 updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 10s)');
@@ -240,8 +237,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 2000);
             }
-
-            // STAGE 1: พิมพ์รหัสใส่ Anvil
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
                 console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> พิมพ์รหัสผ่าน ${botPassword}...`);
@@ -256,8 +251,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 1200);
             }
-
-            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กด Slot 2 (เข้าสู่ระบบ)...`);
@@ -271,8 +264,6 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 1500);
             }
-
-            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
                 console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> กดเลือก Survival (Slot 10)...`);
@@ -342,15 +333,11 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (พิกัดใหม่: ยืน 10457 64 -5053 | คันโยก 10456 64 -5053)
+// 🕹️ LEVER LOGIC (Direct Block Packet Write)
 // ====================================================================
 let isLeverCycleRunning = false;
 
-const VIRTUAL_LEVER = {
-    position: new Vec3(10456, 64, -5053),
-    name: 'lever',
-    shapes: [[[0, 0, 0, 1, 1, 1]]]
-};
+const LEVER_COORD = { x: 10456, y: 64, z: -5053 };
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -360,13 +347,27 @@ async function clickLeverSafe(actionName) {
     }
 
     try {
-        await leverBot.lookAt(VIRTUAL_LEVER.position.offset(0.5, 0.5, 0.5), true);
+        const lookTarget = new Vec3(LEVER_COORD.x + 0.5, LEVER_COORD.y + 0.5, LEVER_COORD.z + 0.5);
+        await leverBot.lookAt(lookTarget, true);
         await sleep(150);
 
-        leverBot.activateBlock(VIRTUAL_LEVER).catch(() => {});
+        // ส่ง Packet คลิกขวาที่ตัวบล็อกคันโยกตรงๆ
+        if (leverBot._client) {
+            leverBot._client.write('block_place', {
+                hand: 0,
+                location: { x: LEVER_COORD.x, y: LEVER_COORD.y, z: LEVER_COORD.z },
+                direction: 1, // Face: Top
+                cursorX: 0.5,
+                cursorY: 0.5,
+                cursorZ: 0.5,
+                insideBlock: false,
+                sequence: 0
+            });
+        }
+
         if (leverBot.swingArm) leverBot.swingArm('right');
         
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จ!`);
+        console.log(`✨ [LEVER LOG] ยิง Packet สับคันโยก ${actionName} สำเร็จ!`);
         return true;
     } catch (err) {
         console.log(`❌ [LEVER ERROR]: ${err.message}`);
