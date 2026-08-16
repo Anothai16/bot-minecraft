@@ -92,7 +92,7 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <div class="title">⚡ Ultra-Filtered Low CPU Farm Controller</div>
+        <div class="title">⚡ Zero-Lag Precise Lever Controller</div>
         <div class="header">
             <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
             <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
@@ -236,16 +236,16 @@ function createBotInstance(username, delayMs = 0) {
             disabledPlugins: disabledPlugins
         });
 
-        // ⚡ ดักสกัดแพ็กเก็ตขยะตั้งแต่ระดับ Network Socket ไม่ให้เข้ามาใน Event Loop
+        // ⚡ ดักสกัดแพ็กเก็ตขยะทั้งหมด รวมทั้ง Block Changes ของฟาร์ม
         if (bot._client) {
             const dropPacketsAFK = new Set([
                 'rel_entity_move', 'entity_velocity', 'multi_block_change', 'block_change', 
-                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 'entity_destroy'
+                'entity_teleport', 'entity_metadata', 'bundle_delimiter', 'spawn_entity', 'entity_destroy', 'update_light'
             ]);
 
             const dropPacketsLever = new Set([
                 'rel_entity_move', 'entity_velocity', 'entity_teleport', 'entity_metadata', 
-                'bundle_delimiter', 'spawn_entity', 'entity_destroy'
+                'bundle_delimiter', 'spawn_entity', 'entity_destroy', 'multi_block_change', 'block_change', 'update_light', 'world_event'
             ]);
 
             const origEmit = bot._client.emit;
@@ -259,7 +259,6 @@ function createBotInstance(username, delayMs = 0) {
             };
         }
 
-        // ดักเก็บสถิติ Packet ขาเข้า
         if (bot._client) {
             bot._client.on('packet', (data, meta) => {
                 const pName = meta?.name || 'unknown';
@@ -396,12 +395,19 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER LOGIC (ยืนแช่หน้าคันโยก สับตรงเวลา)
+// 🕹️ LEVER LOGIC (Direct Lever Interaction - Zero World Load)
 // ====================================================================
 let isLeverCycleRunning = false;
 
 const LEVER_BLOCK_POS = new Vec3(10456, 64, -5054);
 const LEVER_AIM_TARGET = new Vec3(10456.5, 64.5, -5053.5);
+
+// โครงสร้างคันโยกถาวร ไม่ต้องรอ World Parse
+const STATIC_LEVER_BLOCK = {
+    position: LEVER_BLOCK_POS,
+    name: 'lever',
+    shapes: [[[0, 0, 0, 1, 1, 1]]]
+};
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -414,37 +420,18 @@ async function clickLeverSafe(actionName) {
     const distance = playerPos ? playerPos.distanceTo(LEVER_BLOCK_POS).toFixed(2) : 'N/A';
     console.log(`🔍 [LEVER DIAG] บอทยืนที่: [${playerPos ? `${playerPos.x.toFixed(1)}, ${playerPos.y.toFixed(1)}, ${playerPos.z.toFixed(1)}` : 'Unknown'}] | ระยะห่างถึงคันโยก: ${distance} บล็อก`);
 
-    if (playerPos && playerPos.distanceTo(LEVER_BLOCK_POS) > 4) {
-        console.log(`🚀 [LEVER DIAG] บอทหลุดตำแหน่ง สั่ง /home home ดึงตัวกลับ...`);
-        leverBot.chat('/home home');
-        await sleep(3500);
-    }
-
     try {
         console.log(`👀 [LEVER DIAG] กำลังหันหน้าเล็งไปที่: [${LEVER_AIM_TARGET.x}, ${LEVER_AIM_TARGET.y}, ${LEVER_AIM_TARGET.z}]`);
         await leverBot.lookAt(LEVER_AIM_TARGET, true);
-        await sleep(400);
-
-        let block = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
-        console.log(`📦 [LEVER DIAG] ข้อมูลบล็อกที่พิกัด 10456, 64, -5054: Name=${block ? block.name : 'null'} | Type=${block ? block.type : 'null'}`);
-
-        if (!block) {
-            console.log(`⚠️ [LEVER DIAG] ไม่พบบล็อกในหน่วยความจำ ใช้ Fallback Virtual Block Object`);
-            block = {
-                position: LEVER_BLOCK_POS,
-                name: 'lever',
-                shapes: [[[0, 0, 0, 1, 1, 1]]]
-            };
-        }
+        await sleep(250);
 
         console.log(`👆 [LEVER DIAG] ส่งคำสั่ง activateBlock...`);
-        await leverBot.activateBlock(block);
+        
+        // ใช้ activateBlock กับ STATIC_LEVER_BLOCK โดยตรง (เร็วและไม่ติด Loop World Update)
+        await leverBot.activateBlock(STATIC_LEVER_BLOCK);
         if (leverBot.swingArm) leverBot.swingArm('right');
 
-        await sleep(300);
-        const blockAfter = leverBot.blockAt ? leverBot.blockAt(LEVER_BLOCK_POS) : null;
-        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์! (Block State: ${blockAfter?.getProperties() ? JSON.stringify(blockAfter.getProperties()) : 'N/A'})`);
-
+        console.log(`✨ [LEVER LOG] สับคันโยก ${actionName} สำเร็จสมบูรณ์!`);
         return true;
     } catch (err) {
         console.log(`❌ [LEVER ERROR]: ข้อผิดพลาด -> ${err.message}`);
@@ -470,7 +457,7 @@ async function triggerLeverCycle() {
         const okClose = await clickLeverSafe('ปิดคันโยก (OFF)');
 
         if (okClose) {
-            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาที...`);
+            console.log(`⏱️ [LEVER CYCLE]: สับปิดเรียบร้อย รอ 10 วินาทีตรงเป๊ะ...`);
             await sleep(10000);
 
             console.log(`\n=================== 🟢 จบเวลาทำงาน: สับเปิดระบบ ===================`);
