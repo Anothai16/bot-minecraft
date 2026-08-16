@@ -1,5 +1,4 @@
-const http = require('http');
-const os = require('os');
+const express = require('express');
 const mineflayer = require('mineflayer');
 const minecraftData = require('minecraft-data');
 const { Vec3 } = require('vec3');
@@ -16,7 +15,23 @@ const WEB_PORT = 3001;
 
 const sharedData = minecraftData(MC_VERSION);
 
-// รายชื่อและบทบาทของบอท
+// ====================================================================
+// 🌐 WEB DASHBOARD & LIVE LOGS (หน้าเว็บดีไซน์เดิม)
+// ====================================================================
+const logsBuffer = [];
+const MAX_LOGS = 100;
+
+const originalLog = console.log;
+console.log = (...args) => {
+    const timestamp = new Date().toLocaleTimeString('th-TH');
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+    logsBuffer.push(`[${timestamp}] ${message}`);
+    if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
+    originalLog(...args);
+};
+
+const app = express();
+
 const BOT_CONFIGS = [
     { name: 'Lervy_Lever', pass: '112233', role: 'lever' },
     { name: 'K666', pass: '112233', role: 'afk' },
@@ -37,6 +52,96 @@ BOT_NAMES.forEach(name => {
     };
 });
 
+function isBotOnline(username) {
+    const b = activeBots[username];
+    return b && b._client && !b._client.ended && botStatusMap[username]?.status.includes('Online');
+}
+
+app.get('/api/status', (req, res) => {
+    res.json({
+        lever: isBotOnline('Lervy_Lever'),
+        k666: isBotOnline('K666'),
+        k555: isBotOnline('K555'),
+        logs: logsBuffer.slice().reverse().join('\n')
+    });
+});
+
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Minecraft Bot Resource Controller</title>
+        <style>
+            body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
+            .header { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+            .card { background: #1e293b; padding: 12px 20px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+            .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+            .online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+            .offline { background: #ef4444; }
+            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; height: 72vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+            .title { margin: 0 0 16px 0; font-size: 20px; color: #38bdf8; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="title">⚡ Multi-Bot &amp; Lever Controller</div>
+        <div class="header">
+            <div class="card"><span id="dot-lever" class="dot offline"></span> Lervy_Lever: <b id="txt-lever">กำลังโหลด...</b></div>
+            <div class="card"><span id="dot-k666" class="dot offline"></span> K666: <b id="txt-k666">กำลังโหลด...</b></div>
+            <div class="card"><span id="dot-k555" class="dot offline"></span> K555: <b id="txt-k555">กำลังโหลด...</b></div>
+        </div>
+        <div class="log-box" id="logs">กำลังดึง Logs...</div>
+        <script>
+            async function update() {
+                try {
+                    const res = await fetch('/api/status');
+                    const data = await res.json();
+                    document.getElementById('dot-lever').className = 'dot ' + (data.lever ? 'online' : 'offline');
+                    document.getElementById('txt-lever').textContent = data.lever ? 'ออนไลน์ (Lever Ready)' : 'ออฟไลน์';
+                    document.getElementById('dot-k666').className = 'dot ' + (data.k666 ? 'online' : 'offline');
+                    document.getElementById('txt-k666').textContent = data.k666 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('dot-k555').className = 'dot ' + (data.k555 ? 'online' : 'offline');
+                    document.getElementById('txt-k555').textContent = data.k555 ? 'ออนไลน์ (AFK)' : 'ออฟไลน์';
+                    document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Log';
+                } catch(e) {}
+            }
+            setInterval(update, 2000);
+            update();
+        </script>
+    </body>
+    </html>`);
+});
+
+app.listen(WEB_PORT, () => console.log(`🌍 Dashboard พร้อมทำงานที่ http://localhost:${WEB_PORT}`));
+
+// ====================================================================
+// 📊 REAL-TIME CPU PROFILER
+// ====================================================================
+let lastCpuUsage = process.cpuUsage();
+let lastCpuTime = Date.now();
+
+setInterval(() => {
+    const elapsedMs = Date.now() - lastCpuTime;
+    const cpuDiff = process.cpuUsage(lastCpuUsage);
+    
+    const totalUserSystemMicros = cpuDiff.user + cpuDiff.system;
+    const cpuPercent = ((totalUserSystemMicros / (elapsedMs * 1000)) * 100).toFixed(1);
+
+    lastCpuUsage = process.cpuUsage();
+    lastCpuTime = Date.now();
+
+    const mem = process.memoryUsage();
+    const rssMB = Math.round(mem.rss / 1024 / 1024);
+    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+
+    console.log(`📊 [PROFILER 5s] CPU จริง: ${cpuPercent}% | RAM: ${rssMB}MB (Heap: ${heapMB}MB)`);
+}, 5000);
+
+// ====================================================================
+// 🤖 BOT ENGINE & AUTH LOGIC
+// ====================================================================
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
     botStatusMap[name].status = status;
@@ -52,9 +157,6 @@ function stopBotInstance(username) {
     }
 }
 
-// ====================================================================
-// 🧭 ฟังก์ชันค้นหาและคลิกเข็มทิศ
-// ====================================================================
 async function useCompass(bot, username) {
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
     console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
@@ -72,17 +174,11 @@ async function useCompass(bot, username) {
     }
 }
 
-// ====================================================================
-// 🤖 ฟังก์ชันสร้างตัวตนบอท (Life Cycle Engine)
-// ====================================================================
 function createBotInstance(username, delayMs = 0) {
     const currentStatus = botStatusMap[username]?.status || 'Stopped';
     const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
 
-    if (isAlreadyRunning) {
-        console.log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
-        return;
-    }
+    if (isAlreadyRunning) return;
 
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน');
@@ -241,14 +337,9 @@ function createBotInstance(username, delayMs = 0) {
 }
 
 // ====================================================================
-// 🕹️ LEVER INTERACTION ENGINE (Lervy_Lever)
+// 🕹️ LEVER LOGIC
 // ====================================================================
 let isLeverCycleRunning = false;
-
-function isBotOnline(username) {
-    const b = activeBots[username];
-    return b && b._client && !b._client.ended && botStatusMap[username]?.status.includes('Online');
-}
 
 async function clickLeverSafe(actionName) {
     const leverBot = activeBots['Lervy_Lever'];
@@ -352,193 +443,6 @@ cron.schedule('0 2,8,14,20,26,32,38,44,50,56 * * * *', async () => {
         console.log(`\n🚶 [PRE-WARP 1 MIN]: วาร์ปกลับบ้าน (/home home) มารอหน้าคันโยก [${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} น.]`);
         activeBots['Lervy_Lever'].chat('/home home');
     }
-});
-
-// ====================================================================
-// 🌐 WEB SERVER & CONTROL PANEL (Port 3001)
-// ====================================================================
-const server = http.createServer((req, res) => {
-    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-    const path = parsedUrl.pathname;
-
-    if (path === '/api/status') {
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify(botStatusMap));
-        return;
-    }
-
-    if (path === '/api/control') {
-        const action = parsedUrl.searchParams.get('action');
-        const name = parsedUrl.searchParams.get('name');
-
-        if (action === 'start-all') {
-            let launchIndex = 0;
-            BOT_NAMES.forEach((bName) => {
-                const currStatus = botStatusMap[bName]?.status || 'Stopped';
-                const isRunning = activeBots[bName] && (currStatus.includes('Online') || currStatus === 'Connecting' || currStatus === 'Logging in' || currStatus === 'In Lobby');
-
-                if (!isRunning) {
-                    botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 10000);
-                    launchIndex++;
-                }
-            });
-        } 
-        else if (action === 'stop-all') {
-            BOT_NAMES.forEach(bName => {
-                botStatusMap[bName].enabled = false;
-                stopBotInstance(bName);
-                updateStatus(bName, 'Stopped', 'ระงับการทำงาน');
-            });
-        } 
-        else if (name && botStatusMap[name]) {
-            if (action === 'start') {
-                botStatusMap[name].enabled = true;
-                botStatusMap[name].lastError = '-';
-                createBotInstance(name, 0);
-            } else if (action === 'stop') {
-                botStatusMap[name].enabled = false;
-                stopBotInstance(name);
-                updateStatus(name, 'Stopped', 'ระงับการทำงาน (User Disabled)');
-            }
-        }
-
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ success: true }));
-        return;
-    }
-
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Multi-Bot & Lever Dashboard</title>
-    <style>
-        body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
-        h2 { color: #4caf50; margin-bottom: 10px; display: inline-block; }
-        .btn-group { margin-bottom: 15px; float: right; display: flex; gap: 5px; flex-wrap: wrap; }
-        button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px; }
-        button:hover { background: #444; }
-        .btn-start { background: #2e7d32; border-color: #4caf50; }
-        .btn-stop { background: #c62828; border-color: #ef5350; }
-        .stats { margin-bottom: 15px; font-size: 14px; clear: both; }
-        table { width: 100%; border-collapse: collapse; background: #1e1e1e; font-size: 13px; }
-        th, td { border: 1px solid #333; padding: 6px 10px; text-align: left; }
-        th { background: #2a2a2a; color: #aaa; }
-        .Online { color: #4caf50; font-weight: bold; }
-        .Connecting, .Logging, .Selecting, .In { color: #ffeb3b; }
-        .Offline, .Kicked, .Error { color: #f44336; }
-        .Stopped { color: #757575; }
-        .err-log { color: #ff9800; font-size: 11px; max-width: 250px; word-break: break-all; }
-    </style>
-</head>
-<body>
-    <div>
-        <h2>🤖 Multi-Bot &amp; Lever Controller</h2>
-        <div class="btn-group">
-            <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
-            <button class="btn-stop" onclick="controlBot('', 'stop-all')">⏹ Stop All</button>
-        </div>
-    </div>
-    <div class="stats" id="summary">กำลังโหลดข้อมูล...</div>
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>ชื่อบอท</th>
-                <th>สถานะ</th>
-                <th>ขั้นตอนล่าสุด</th>
-                <th>ข้อผิดพลาดจากเซิร์ฟ (Error Log)</th>
-                <th>อัปเดตเมื่อ</th>
-                <th>จัดการ</th>
-            </tr>
-        </thead>
-        <tbody id="bot-table"></tbody>
-    </table>
-
-    <script>
-        async function controlBot(name, action) {
-            await fetch(\`/api/control?name=\${name}&action=\${action}\`);
-            fetchStatus();
-        }
-
-        async function fetchStatus() {
-            try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-                const tbody = document.getElementById('bot-table');
-                
-                let onlineCount = 0;
-                let total = 0;
-                let html = '';
-
-                Object.keys(data).forEach((name, index) => {
-                    total++;
-                    const bot = data[name];
-                    const isOnline = bot.status.includes('Online');
-                    if (isOnline) onlineCount++;
-
-                    let statusClass = 'Offline';
-                    if (isOnline) statusClass = 'Online';
-                    else if (bot.status === 'Stopped') statusClass = 'Stopped';
-                    else if (bot.status !== 'Offline') statusClass = 'Connecting';
-
-                    const toggleBtn = bot.enabled ? 
-                        \`<button class="btn-stop" onclick="controlBot('\${name}', 'stop')">Stop</button>\` : 
-                        \`<button class="btn-start" onclick="controlBot('\${name}', 'start')">Start</button>\`;
-
-                    html += \`<tr>
-                        <td>\${index + 1}</td>
-                        <td><b>\${name}</b></td>
-                        <td class="\${statusClass}">\${bot.status}</td>
-                        <td>\${bot.step}</td>
-                        <td class="err-log">\${bot.lastError}</td>
-                        <td>\${bot.lastUpdate}</td>
-                        <td>\${toggleBtn}</td>
-                    </tr>\`;
-                });
-
-                tbody.innerHTML = html;
-                document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | อัปเดตอัตโนมัติทุก 3 วินาที\`;
-            } catch (e) {}
-        }
-
-        fetchStatus();
-        setInterval(fetchStatus, 3000);
-    </script>
-</body>
-</html>
-    `);
-});
-
-function getLocalIP() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
-    }
-    return '127.0.0.1';
-}
-
-function printStartupLogs(ipAddress) {
-    console.log('==================================================');
-    console.log(`🚀 STARTING MULTI-BOT & LEVER CONTROLLER`);
-    console.log('==================================================');
-    console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (Lever + AFK)`);
-    console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
-    console.log('==================================================');
-}
-
-server.listen(WEB_PORT, () => {
-    printStartupLogs(getLocalIP());
 });
 
 // ====================================================================
