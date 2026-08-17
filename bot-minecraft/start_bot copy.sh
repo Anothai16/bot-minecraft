@@ -38,6 +38,7 @@ chmod +x ./MinecraftClient
 
   # ==========================================
   # ⏰ 5. ลูปตรวจสอบเวลาเครื่องจริง (Cron Loop)
+  # นาทีที่ 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
   # ==========================================
   LAST_TRIGGER_MIN=-1
 
@@ -45,21 +46,13 @@ chmod +x ./MinecraftClient
     HOUR=$(date +%-H)
     MIN=$(date +%-M)
 
-    # 🔄 06:50 น. สั่งปิดตัวลง เพื่อให้ PM2 รีสตาร์ตเริ่มระบบใหม่ตั้งแต่ต้น
-    if [ "$HOUR" -eq 6 ] && [ "$MIN" -eq 50 ]; then
-      NOW_TIME=$(date '+%H:%M:%S')
-      echo "🔄 [RESTART $NOW_TIME] ถึงเวลา 06:50 น. สั่งออกจากเซิร์ฟเวอร์เพื่อให้ PM2 รีสตาร์ต..." >&2
-      echo "/quit"
-      exit 0
-    fi
-
     # ⏸️ ช่วงพักระบบ (05:35 - 07:00 น.)
     if { [ "$HOUR" -eq 5 ] && [ "$MIN" -ge 35 ]; } || [ "$HOUR" -eq 6 ]; then
       sleep 5
       continue
     fi
 
-    # 🎯 เช็คว่าตรงรอบนาทีเป้าหมาย (MIN % 6 == 3) -> 3, 9, 15, 21, 27, 33, 39, 45, 51, 57
+    # 🎯 เช็คว่าตรงรอบนาทีเป้าหมาย (MIN % 6 == 3)
     if [ $(( MIN % 6 )) -eq 3 ] && [ "$MIN" -ne "$LAST_TRIGGER_MIN" ]; then
       LAST_TRIGGER_MIN=$MIN
       NOW_TIME=$(date '+%H:%M:%S')
@@ -80,4 +73,4 @@ chmod +x ./MinecraftClient
 
     sleep 1
   done
-) | ./MinecraftClient Lervy_Lever - play.amorycraft.com
+) | ./MinecraftClient Lervy_Lever - play.amorycraft.com 1.20.1
