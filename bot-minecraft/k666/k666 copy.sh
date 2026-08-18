@@ -34,8 +34,22 @@ chmod +x ./MinecraftClient
   # ==========================================
   sleep 8
   echo "/home home"
-  echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK (ประหยัด CPU) เรียบร้อย!" >&2
+  echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
-  # 🟢 รักษาสถานะค้างไว้แบบใช้ CPU 0%
-  cat
-) | ./MinecraftClient K666 - play.amorycraft.com 1.20.1
+  # ==========================================
+  # ⏰ 5. เช็กเวลาทุก 30 วินาทีเพื่อ Reconnect ตอน 06:45 น.
+  # ==========================================
+  while true; do
+    HOUR=$(date +%-H)
+    MIN=$(date +%-M)
+
+    if [ "$HOUR" -eq 6 ] && [ "$MIN" -eq 45 ]; then
+      NOW_TIME=$(date '+%H:%M:%S')
+      echo "🔄 [RESTART $NOW_TIME] ถึงเวลา 06:45 น. สั่งออกจากเซิร์ฟเวอร์เพื่อให้ PM2 รีสตาร์ต..." >&2
+      echo "/quit"
+      exit 0
+    fi
+
+    sleep 30
+  done
+) | ./MinecraftClient K666 - play.amorycraft.com
