@@ -38,7 +38,7 @@ trigger_restart() {
   
   sleep 8
   echo "/home home"
-  echo "[READY] บอทประจำการเรียบร้อย!" >&2
+  echo "[READY] บอทประจำการที่จุด (-2682 61 14543) เรียบร้อย!" >&2
 
   # --- ลูปเช็กเวลาสับคันโยก ---
   TRIGGERED_0550=false
@@ -53,11 +53,11 @@ trigger_restart() {
       TRIGGERED_0730=false
     fi
 
-    # 05:50 น. สับปิดระบบ
+    # 05:50 น. สับปิดระบบ (ตำแหน่งคันโยก: -2682 61 14542)
     if [ "$HOUR" -eq 5 ] && [ "$MIN" -eq 50 ] && [ "$TRIGGERED_0550" = false ]; then
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🛑 [LEVER $NOW_TIME] ถึงเวลา 05:50 น. สั่งสับคันโยก (ปิดระบบ)..." >&2
-      echo "/useblock 10383 64.00 -5064.51"
+      echo "/useblock -2682 61 14542"
       TRIGGERED_0550=true
     fi
 
@@ -69,11 +69,11 @@ trigger_restart() {
       exit 0
     fi
 
-    # 07:30 น. สับเปิดระบบ
+    # 07:30 น. สับเปิดระบบ (ตำแหน่งคันโยก: -2682 61 14542)
     if [ "$HOUR" -eq 7 ] && [ "$MIN" -eq 30 ] && [ "$TRIGGERED_0730" = false ]; then
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🟢 [LEVER $NOW_TIME] ถึงเวลา 07:30 น. สั่งสับคันโยก (เปิดระบบ)..." >&2
-      echo "/useblock 10383 64.00 -5064.51"
+      echo "/useblock -2682 61 14542"
       TRIGGERED_0730=true
     fi
 
