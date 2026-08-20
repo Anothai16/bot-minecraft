@@ -34,7 +34,7 @@ chmod +x ./MinecraftClient
   # ==========================================
   sleep 8
   echo "/home home"
-  echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
+  echo "[READY] บอท Kaitom_67 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
   # ==========================================
   # ⏰ 5. เช็กเวลาทุก 30 วินาทีเพื่อ Reconnect ตอน 07:20 น.
@@ -50,6 +50,13 @@ chmod +x ./MinecraftClient
       exit 0
     fi
 
+    # ส่ง Enter เปล่าๆ ป้องกันค้าง
+    echo ""
     sleep 30
   done
 ) | ./MinecraftClient Kaitom_67 - play.amorycraft.com
+
+# 🛑 ตรวจจับถ้าโปรเซสหลุดออกมา ให้จบสคริปต์ด้วย Error เพื่อให้ PM2 รีสตาร์ต
+EXIT_CODE=$?
+echo "[ERROR] MCC หยุดทำงาน (Exit Code: $EXIT_CODE) สั่งให้ PM2 รีสตาร์ต..." >&2
+exit 1
