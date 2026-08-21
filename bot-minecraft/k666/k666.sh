@@ -37,19 +37,10 @@ chmod +x ./MinecraftClient
   echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
   # ==========================================
-  # ⏰ 5. เช็กเวลาทุก 30 วินาทีเพื่อ Reconnect ตอน 07:20 น.
+  # 🔄 5. ลูป Keep-Alive ส่งสัญญาณป้องกันหลุด
   # ==========================================
   while true; do
-    HOUR=$(date +%-H)
-    MIN=$(date +%-M)
-
-    if [ "$HOUR" -eq 7 ] && [ "$MIN" -eq 20 ]; then
-      NOW_TIME=$(date '+%H:%M:%S')
-      echo "🔄 [RESTART $NOW_TIME] ถึงเวลา 07:20 น. สั่งออกจากเซิร์ฟเวอร์เพื่อให้ PM2 รีสตาร์ต..." >&2
-      echo "/quit"
-      exit 0
-    fi
-
+    echo ""
     sleep 30
   done
 ) | ./MinecraftClient K666 - play.amorycraft.com

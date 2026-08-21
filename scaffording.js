@@ -15,10 +15,10 @@ function log(msg) {
     console.log(`[${timestamp}] ${msg}`);
 }
 
-function saveProgress(layer, startX, startY, startZ, currentX, currentZ, endX) {
+function saveProgress(layer, startX, startY, startZ, currentX, endX) {
     if (!progressFilePath) return;
     try {
-        const data = `${layer},${startX},${startY},${startZ},${currentX},${currentZ},${endX}`;
+        const data = `${layer},${startX},${startY},${startZ},${currentX},${endX}`;
         fs.writeFileSync(progressFilePath, data, 'utf8');
     } catch (e) {}
 }
@@ -28,14 +28,13 @@ function loadProgress() {
     try {
         const data = fs.readFileSync(progressFilePath, 'utf8').trim();
         if (!data) return null;
-        const [layer, startX, startY, startZ, currentX, currentZ, endX] = data.split(',');
+        const [layer, startX, startY, startZ, currentX, endX] = data.split(',');
         return {
             layer: parseInt(layer),
             startX: parseInt(startX),
             startY: parseInt(startY),
             startZ: parseInt(startZ),
             currentX: parseInt(currentX),
-            currentZ: parseInt(currentZ),
             endX: parseInt(endX)
         };
     } catch (e) { return null; }
@@ -120,34 +119,33 @@ function startBot() {
     });
 
     bot.on('kicked', () => { buildActive = false; });
-    bot.on('error', (err) => { buildActive = false; });
+    bot.on('error', () => { buildActive = false; });
     bot.on('end', () => { 
         buildActive = false; 
         setTimeout(startBot, 10000); 
     });
 }
 
-// 🚶 เดินเข้าใกล้พิกัด
+// 🚶 เดินเข้าใกล้พิกัดแบบแม่นยำ
 async function walkToPositionSync(targetPos) {
-    if (!bot || !bot.entity) return false;
+    if (!bot || !bot.entity || !buildActive) return false;
 
     const destination = new Vec3(targetPos.x + 0.5, targetPos.y, targetPos.z + 0.5);
     let attempts = 0;
 
-    while (buildActive && bot && bot.entity && attempts < 30) {
+    while (buildActive && bot && bot.entity && attempts < 40) {
         const currentPos = bot.entity.position;
         const dx = destination.x - currentPos.x;
         const dz = destination.z - currentPos.z;
         const dist2D = Math.sqrt(dx * dx + dz * dz);
 
-        if (dist2D <= 0.6) {
+        if (dist2D <= 0.35) {
             bot.clearControlStates();
             return true;
         }
 
         bot.lookAt(new Vec3(destination.x, currentPos.y + 1.6, destination.z), true);
         bot.setControlState('forward', true);
-        bot.setControlState('sprint', true);
 
         await new Promise(res => setTimeout(res, 40));
         attempts++;
@@ -157,117 +155,225 @@ async function walkToPositionSync(targetPos) {
     return false;
 }
 
-// 🧱 ฟังก์ชันวางบล็อก Scaffolding เดี่ยว
-async function placeScaffoldBlock(targetPos) {
-    if (!buildActive || getTotalScaffoldingCount() <= 0) return false;
+// 🏊 ลอยตัวขึ้นไประดับ Y
+async function swimUpToHeight(targetY) {
+    if (!buildActive) return;
+    log(`🏊 กำลังลอยตัวขึ้นไปที่ระดับความสูง Y:${targetY}...`);
+    bot.setControlState('jump', true);
+    let swimAttempts = 0;
 
-    const currentBlock = bot.blockAt(targetPos, false);
-    if (currentBlock && currentBlock.name === 'scaffolding') return true;
+    while (buildActive && bot && bot.entity && swimAttempts < 40) {
+        if (bot.entity.position.y >= targetY - 0.2) break;
+        await new Promise(res => setTimeout(res, 80));
+        swimAttempts++;
+    }
+    bot.setControlState('jump', false);
+    await new Promise(res => setTimeout(res, 100));
+}
+
+// 🧱 Sneak วางบล็อกจุดเริ่มต้น
+async function placeStarterBlock(pos) {
+    if (!buildActive) return false;
+
+    const checkCurrent = bot.blockAt(pos, false);
+    if (checkCurrent && checkCurrent.name === 'scaffolding') {
+        log(`⏩ [SKIP] จุด (${pos.x}, ${pos.y}, ${pos.z}) มี Scaffolding อยู่แล้ว`);
+        return true;
+    }
 
     await equipScaffolding();
-
-    // เช็กบล็อกใต้เป้าหมาย
-    const underPos = targetPos.offset(0, -1, 0);
+    const underPos = pos.offset(0, -1, 0);
     const underBlock = bot.blockAt(underPos, false);
+
+    bot.setControlState('sneak', true);
+    await new Promise(res => setTimeout(res, 80));
 
     if (underBlock && underBlock.name !== 'air') {
         try {
             await bot.lookAt(underPos.offset(0.5, 1.0, 0.5), true);
             await bot.placeBlock(underBlock, new Vec3(0, 1, 0));
-            await new Promise(res => setTimeout(res, 40));
-            return true;
+            await new Promise(res => setTimeout(res, 80));
+            log(`🟢 [START] วางบล็อกเริ่มต้นที่ (${pos.x}, ${pos.y}, ${pos.z}) สำเร็จ`);
         } catch (e) {}
     }
-    return false;
+    bot.setControlState('sneak', false);
+    return true;
 }
 
-// 🚀 ระบบสร้างแบบ Layer-by-Layer
-async function startLayerBuilder(startX, startY, startZ, targetEndX = 10341) {
-    buildActive = true;
-    const stepX = startX <= targetEndX ? 1 : -1;
+// 🌉 เดินปูสะพาน Scaffolding ทีละบล็อกตามแนวแกน X
+async function bridgeAlongX(fromX, toX, targetY, targetZ) {
+    const stepX = fromX <= toX ? 1 : -1;
+    let currentX = fromX;
 
-    log(`\n🏗️ ================= [ เริ่มต้นระบบปู Scaffolding ทีละชั้น ] =================`);
-    log(`🎯 พิกัด X: ${startX} -> ${targetEndX} | Y เริ่มต้น: ${startY} (สร้าง 4 ชั้น) | Z แกนกลาง: ${startZ}`);
+    log(`🌉 เริ่มเดินปูสะพาน Scaffolding X:${fromX} -> X:${toX} (Y:${targetY})`);
+
+    while (buildActive && bot && bot.entity) {
+        if (getTotalScaffoldingCount() <= 0) {
+            log('❌ Scaffolding หมดกระเป๋า!');
+            buildActive = false;
+            return false;
+        }
+
+        const standPos = new Vec3(currentX, targetY, targetZ);
+        await walkToPositionSync(standPos);
+        if (!buildActive) return false;
+
+        // เช็กบล็อกเป้าหมายข้างหน้า
+        if (currentX !== toX) {
+            const nextX = currentX + stepX;
+            const nextPos = new Vec3(nextX, targetY, targetZ);
+            const nextBlock = bot.blockAt(nextPos, false);
+
+            if (!nextBlock || nextBlock.name !== 'scaffolding') {
+                await equipScaffolding();
+                const standBlock = bot.blockAt(standPos, false);
+                if (standBlock && standBlock.name === 'scaffolding') {
+                    try {
+                        const lookX = currentX + (stepX * 2);
+                        await bot.lookAt(new Vec3(lookX + 0.5, targetY, targetZ + 0.5), true);
+                        await bot.activateBlock(standBlock, new Vec3(stepX, 0, 0));
+                        await new Promise(res => setTimeout(res, 60));
+                    } catch (e) {}
+                }
+            }
+        }
+
+        if (currentX === toX) {
+            log(`✅ ปูสะพานชั้น Y:${targetY} เสร็จสิ้นสมบูรณ์`);
+            break;
+        }
+        currentX += stepX;
+    }
+    return buildActive;
+}
+
+// 🪽 กางปีก 6 บล็อก (เหนือ-ใต้)
+async function deployWings(baseX, topY, baseZ) {
+    if (!buildActive) return;
+    const standBlock = bot.blockAt(new Vec3(baseX, topY, baseZ), false);
+    if (!standBlock || standBlock.name !== 'scaffolding') return;
+
+    // 1. ปีกทิศเหนือ (Z-)
+    for (let i = 1; i <= 6; i++) {
+        if (!buildActive || getTotalScaffoldingCount() <= 0) break;
+        const targetWingPos = new Vec3(baseX, topY, baseZ - i);
+        const existingBlock = bot.blockAt(targetWingPos, false);
+        if (existingBlock && existingBlock.name === 'scaffolding') continue;
+
+        await equipScaffolding();
+        try {
+            await bot.lookAt(new Vec3(baseX + 0.5, topY, baseZ - 3), true);
+            await bot.activateBlock(standBlock, new Vec3(0, 0, -1));
+            await new Promise(res => setTimeout(res, 50));
+        } catch (e) {}
+    }
+
+    // 2. ปีกทิศใต้ (Z+)
+    for (let i = 1; i <= 6; i++) {
+        if (!buildActive || getTotalScaffoldingCount() <= 0) break;
+        const targetWingPos = new Vec3(baseX, topY, baseZ + i);
+        const existingBlock = bot.blockAt(targetWingPos, false);
+        if (existingBlock && existingBlock.name === 'scaffolding') continue;
+
+        await equipScaffolding();
+        try {
+            await bot.lookAt(new Vec3(baseX + 0.5, topY, baseZ + 3), true);
+            await bot.activateBlock(standBlock, new Vec3(0, 0, 1));
+            await new Promise(res => setTimeout(res, 50));
+        } catch (e) {}
+    }
+}
+
+// 🚀 ระบบคุมการทำงาน Layer-by-Layer
+async function startScaffoldSystem(startX, startY, startZ, targetEndX = 10341) {
+    buildActive = true;
+
+    log(`\n🚀 ================= [ เริ่มต้นระบบปู Scaffolding ทีละชั้น ] =================`);
+    log(`🎯 พิกัดเริ่ม: (${startX}, ${startY}, ${startZ}) -> ปลายทาง X: ${targetEndX}`);
 
     // ==========================================
-    // 🧱 ขั้นที่ 1: ปูเสากลางชั้นที่ 1 ถึง 3 (Y+0, Y+1, Y+2)
+    // 🧱 1. ทำแนวยาวชั้นที่ 1 ถึง 3 (Y+0, Y+1, Y+2)
     // ==========================================
     for (let layer = 0; layer < 3; layer++) {
+        if (!buildActive) break;
+
         const currentY = startY + layer;
-        const walkY = currentY; // บอทเดินบนชั้นเดิมที่เพิ่งวาง
         const isForward = (layer % 2 === 0);
         const fromX = isForward ? startX : targetEndX;
         const toX = isForward ? targetEndX : startX;
-        const layerStepX = fromX <= toX ? 1 : -1;
 
-        log(`\n🧱 [LAYER ${layer + 1}/4] ปูแนวเสากลางที่ความสูง Y:${currentY} (จาก X:${fromX} ไป X:${toX})`);
+        log(`\n🧱 [LAYER ${layer + 1}/4] เริ่มทำแนวยาวชั้น Y:${currentY} (จาก X:${fromX} ไป X:${toX})`);
 
-        let currentX = fromX;
-        while (buildActive && bot && bot.entity) {
-            if (getTotalScaffoldingCount() <= 0) {
-                log('❌ Scaffolding หมดกระเป๋า! หยุดการทำงาน');
-                clearProgress();
-                buildActive = false;
-                return;
-            }
+        await swimUpToHeight(currentY + 0.5);
+        if (!buildActive) break;
 
-            // บอทยืนเยื้องด้านข้างแกน Z เล็กน้อยเพื่อเดินวางสะดวก
-            const standPos = new Vec3(currentX, walkY, startZ + 1.1);
-            await walkToPositionSync(standPos);
+        await placeStarterBlock(new Vec3(fromX, currentY, startZ));
+        if (!buildActive) break;
 
-            const targetPos = new Vec3(currentX, currentY, startZ);
-            await placeScaffoldBlock(targetPos);
-
-            if (currentX === toX) break;
-            currentX += layerStepX;
-        }
-    }
-
-    // ==========================================
-    // 🪽 ขั้นที่ 2: ปูชั้นบนสุด (ชั้นที่ 4: Y+3) แบบกางปีกเต็มแผ่น
-    // Z: startZ - 6 (เหนือ) ถึง startZ + 6 (ใต้)
-    // ==========================================
-    const topY = startY + 3;
-    const minZ = startZ - 6;
-    const maxZ = startZ + 6;
-
-    log(`\n🪽 [LAYER 4/4 - WINGS] ปูแผ่นกางปีกชั้นบนสุด Y:${topY} (Z จาก ${minZ} ถึง ${maxZ})`);
-
-    let currentX = startX;
-    while (buildActive && bot && bot.entity) {
-        if (getTotalScaffoldingCount() <= 0) {
-            log('❌ Scaffolding หมดกระเป๋า! หยุดการทำงาน');
-            clearProgress();
-            buildActive = false;
+        const success = await bridgeAlongX(fromX, toX, currentY, startZ);
+        if (!success || !buildActive) {
+            log(`🛑 หยุดกระบวนการสร้างที่ชั้น Y:${currentY}`);
             return;
         }
-
-        const xIndex = Math.abs(currentX - startX);
-        const isNorthToSouth = (xIndex % 2 === 0);
-        const fromZ = isNorthToSouth ? minZ : maxZ;
-        const toZ = isNorthToSouth ? maxZ : minZ;
-        const stepZ = fromZ <= toZ ? 1 : -1;
-
-        let currentZ = fromZ;
-        while (buildActive && bot && bot.entity) {
-            const standPos = new Vec3(currentX, topY, currentZ + (stepZ * 0.8));
-            await walkToPositionSync(standPos);
-
-            const targetPos = new Vec3(currentX, topY, currentZ);
-            await placeScaffoldBlock(targetPos);
-
-            if (currentZ === toZ) break;
-            currentZ += stepZ;
-        }
-
-        if (currentX === targetEndX) break;
-        currentX += stepX;
     }
 
-    log(`\n🎉 [ALL COMPLETED] ปู Scaffolding ครบทั้ง 4 ชั้นเรียบร้อย! กำลังเดินกลับจุดเริ่มต้น...`);
-    clearProgress();
-    await walkToPositionSync(new Vec3(startX, startY, startZ + 1.1));
-    log(`🏁 กลับถึงจุดเริ่มต้นเรียบร้อย!`);
+    // ==========================================
+    // 🪽 2. ทำชั้นที่ 4 (Y+3) พร้อมกางปีก 6 บล็อก ซ้าย-ขวา
+    // ==========================================
+    if (buildActive) {
+        const topY = startY + 3;
+        log(`\n🪽 [LAYER 4/4] ขึ้นสู่ชั้นบนสุด Y:${topY} เพื่อปูสะพานและกางปีก 6 บล็อกสองฝั่ง`);
+
+        await swimUpToHeight(topY + 0.5);
+        if (buildActive) {
+            await placeStarterBlock(new Vec3(startX, topY, startZ));
+            
+            const stepX = startX <= targetEndX ? 1 : -1;
+            let currentX = startX;
+
+            while (buildActive && bot && bot.entity) {
+                if (getTotalScaffoldingCount() <= 0) {
+                    log('❌ Scaffolding หมดกระเป๋า!');
+                    break;
+                }
+
+                const standPos = new Vec3(currentX, topY, startZ);
+                await walkToPositionSync(standPos);
+                if (!buildActive) break;
+
+                // วางสะพานแกน X ไปข้างหน้า
+                if (currentX !== targetEndX) {
+                    const nextPos = new Vec3(currentX + stepX, topY, startZ);
+                    const nextBlock = bot.blockAt(nextPos, false);
+                    if (!nextBlock || nextBlock.name !== 'scaffolding') {
+                        const standBlock = bot.blockAt(standPos, false);
+                        if (standBlock && standBlock.name === 'scaffolding') {
+                            try {
+                                await equipScaffolding();
+                                const lookX = currentX + (stepX * 2);
+                                await bot.lookAt(new Vec3(lookX + 0.5, topY, startZ + 0.5), true);
+                                await bot.activateBlock(standBlock, new Vec3(stepX, 0, 0));
+                                await new Promise(res => setTimeout(res, 50));
+                            } catch (e) {}
+                        }
+                    }
+                }
+
+                // กางปีกซ้าย-ขวา
+                await deployWings(currentX, topY, startZ);
+
+                if (currentX === targetEndX) break;
+                currentX += stepX;
+            }
+        }
+    }
+
+    if (buildActive) {
+        log(`\n🎉 [ALL COMPLETED] ภารกิจเสร็จสิ้นสมบูรณ์! กำลังเดินกลับจุดเริ่มต้น...`);
+        clearProgress();
+        await walkToPositionSync(new Vec3(startX, startY + 3, startZ));
+        log(`🏁 กลับถึงจุดเริ่มต้นเรียบร้อย!`);
+    }
 
     if (bot) bot.clearControlStates();
     buildActive = false;
@@ -300,7 +406,7 @@ rl.on('line', async (line) => {
         const startZ = parseInt(args[3] || -5074);
         const endX = parseInt(args[4] || 10341);
 
-        startLayerBuilder(startX, startY, startZ, endX);
+        startScaffoldSystem(startX, startY, startZ, endX);
     }
 });
 
