@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minecraft Market Price</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --card-bg: rgba(22, 27, 44, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #10b981;
+      --accent-glow: rgba(16, 185, 129, 0.2);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      padding: 40px 20px;
+      background-image: radial-gradient(circle at top, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+    }
+
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 32px; }
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 40%, #10b981 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header p { color: var(--text-muted); margin-top: 6px; font-size: 0.95rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 10px 20px -8px rgba(0, 0, 0, 0.5);
+    }
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .item-icon-wrapper {
+      background: rgba(255, 255, 255, 0.04);
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .item-icon-img {
+      width: 36px;
+      height: 36px;
+      object-fit: contain;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+
+    .enchanted {
+      filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.8)) drop-shadow(0 0 12px rgba(216, 180, 254, 0.5));
+      animation: pulse-glow 2s infinite alternate ease-in-out;
+    }
+    @keyframes pulse-glow {
+      from { filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.7)); }
+      to { filter: drop-shadow(0 0 10px rgba(192, 132, 252, 0.95)); }
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 20px;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.1s;
+    }
+    .badge:active { transform: scale(0.95); }
+    .badge.in-stock {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge.out-of-stock {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .item-name {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #ff4b68;
+      text-shadow: 2px 2px 0px #4a0d18, 0px 0px 8px rgba(255, 75, 104, 0.3);
+      letter-spacing: 0.2px;
+      margin-bottom: 6px;
+    }
+    .item-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-bottom: 16px;
+      min-height: 2.4em;
+    }
+    .price-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fbbf24;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>MINECRAFT KNUYSHOP</h1>
+    </header>
+
+    <div class="grid" id="itemsGrid"></div>
+  </div>
+
+  <script src="item.js"></script>
+
+  <script>
+    let items = window.RAW_ITEMS || [];
+
+    function init() {
+      const savedStock = JSON.parse(localStorage.getItem('mc_item_stock') || '{}');
+      items.forEach(item => {
+        if (savedStock[item.id] !== undefined) {
+          item.inStock = savedStock[item.id];
+        }
+      });
+      renderItems();
+    }
+
+    function renderItems() {
+      const grid = document.getElementById('itemsGrid');
+
+      grid.innerHTML = items.map(item => `
+        <div class="card">
+          <div>
+            <div class="card-top">
+              <div class="item-icon-wrapper">
+                <img 
+                  class="item-icon-img ${item.isEnchanted ? 'enchanted' : ''}" 
+                  src="${item.img}" 
+                  alt="${item.name}"
+                />
+              </div>
+              <button 
+                class="badge ${item.inStock ? 'in-stock' : 'out-of-stock'}" 
+                onclick="toggleStock(${item.id})"
+                title="คลิกเพื่อสลับ มีของ / ของหมด"
+              >
+                ${item.inStock ? '● มีของ' : '○ ของหมด'}
+              </button>
+            </div>
+            <div class="item-name">${item.name}</div>
+            <div class="item-desc">${item.desc}</div>
+          </div>
+          <div class="price-tag">
+            ${item.customPrice || `${item.price} P`}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function toggleStock(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      item.inStock = !item.inStock;
+
+      const savedStock = JSON.parse(localStorage.getItem('mc_item_stock') || '{}');
+      savedStock[item.id] = item.inStock;
+      localStorage.setItem('mc_item_stock', JSON.stringify(savedStock));
+
+      renderItems();
+    }
+
+    init();
+  </script>
+</body>
+</html>
