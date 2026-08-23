@@ -75,24 +75,26 @@ function stopBotInstance(username) {
     }
 }
 
-// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ
+// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ (หน่วงเวลาถือ 3 วินาทีก่อนคลิกขวา)
 async function useCompass(bot, username) {
     if (!bot || !bot.inventory) return;
-    updateStatus(username, 'In Lobby', 'กดใช้งานเข็มทิศ');
-    console.log(`[🧭] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
+    console.log(`[🧭] [${username}] กำลังค้นหาและเตรียมถือเข็มทิศ...`);
     
     const compass = bot.inventory.items().find(i => i.name.includes('compass'));
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            await bot.sleep(1000);
+            console.log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 3s ให้เซิร์ฟเวอร์ Sync ก่อนคลิกขวา...`);
+            await bot.sleep(3000); // รอ 3 วินาที
             bot.activateItem();
+            console.log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย!`);
         } catch (e) {
             bot.activateItem();
         }
     } else {
         try {
-            await bot.sleep(500);
+            await bot.sleep(3000);
             bot.activateItem();
         } catch (e) {}
     }
@@ -134,7 +136,7 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         activeBots[username] = bot;
-        bot.authStage = 0; // 0: Init, 1: Anvil Open, 2: Pass Typed, 3: In Lobby (Wait Compass GUI), 4: Survival Selected
+        bot.authStage = 0;
 
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
@@ -162,7 +164,7 @@ function createBotInstance(username, delayMs = 0) {
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
                 console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
-                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
+                updateStatus(username, 'Logging in', `กำลังพิมพ์รหัสผ่าน`);
 
                 setTimeout(() => {
                     try {
@@ -174,7 +176,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ
+            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ -> รอ 13 วินาที เพื่อเริ่มหาเข็มทิศ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
@@ -183,12 +185,12 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        console.log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 8s เพื่อให้เข้า Lobby แล้วกดเข็มทิศ...`);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 8s)');
+                        console.log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 13s ให้ตัวละครโหลดเข้า Lobby ก่อนหาเข็มทิศ...`);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 13s)');
 
                         bot.compassTimer = setTimeout(() => {
                             useCompass(bot, username);
-                        }, 8000);
+                        }, 13000); // หน่วงเวลา 13 วินาที
 
                     } catch (e) {}
                 }, 2500);
