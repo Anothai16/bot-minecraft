@@ -11,6 +11,17 @@ const WEB_PORT = 3000;
 
 const sharedData = minecraftData(MC_VERSION);
 
+// ฟังก์ชันพิมพ์ Log พร้อม Timestamp [HH:MM:SS]
+function log(msg) {
+    const time = new Date().toLocaleTimeString('th-TH', { hour12: false });
+    console.log(`[${time}] ${msg}`);
+}
+
+function logError(msg) {
+    const time = new Date().toLocaleTimeString('th-TH', { hour12: false });
+    console.error(`[${time}] ${msg}`);
+}
+
 const BOT_CONFIGS = [
     { name: 'obs1', pass: '112233' },
     { name: 'Morgan05', pass: '112233' },
@@ -52,7 +63,7 @@ BOT_NAMES.forEach(name => {
     botStatusMap[name] = { 
         status: 'Stopped', 
         step: 'รอสั่งเปิดจากหน้าเว็บ...', 
-        lastUpdate: new Date().toLocaleTimeString('th-TH'),
+        lastUpdate: new Date().toLocaleTimeString('th-TH', { hour12: false }),
         lastError: '-',
         enabled: false 
     };
@@ -63,7 +74,7 @@ function updateStatus(name, status, step, errorReason = null) {
     botStatusMap[name].status = status;
     if (step) botStatusMap[name].step = step;
     if (errorReason) botStatusMap[name].lastError = errorReason;
-    botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH');
+    botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH', { hour12: false });
 }
 
 function stopBotInstance(username) {
@@ -75,26 +86,30 @@ function stopBotInstance(username) {
     }
 }
 
-// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ (หน่วงเวลาถือ 3 วินาทีก่อนคลิกขวา)
+// ฟังก์ชันสแกนถือและคลิกขวาเข็มทิศ
 async function useCompass(bot, username) {
     if (!bot || !bot.inventory) return;
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
-    console.log(`[🧭] [${username}] กำลังค้นหาและเตรียมถือเข็มทิศ...`);
+    log(`[🧭] [${username}] กำลังค้นหาและเตรียมถือเข็มทิศ...`);
     
     const compass = bot.inventory.items().find(i => i.name.includes('compass'));
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            console.log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 3s ให้เซิร์ฟเวอร์ Sync ก่อนคลิกขวา...`);
-            await bot.sleep(3000); // รอ 3 วินาที
+            log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 3s ให้เซิร์ฟเวอร์ Sync ก่อนคลิกขวา...`);
+            await bot.sleep(3000);
+            
+            bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
-            console.log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย!`);
+            log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย! (รอ GUI เมนูเปิด)`);
         } catch (e) {
+            bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         }
     } else {
         try {
             await bot.sleep(3000);
+            bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         } catch (e) {}
     }
@@ -105,7 +120,7 @@ function createBotInstance(username, delayMs = 0) {
     const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby');
 
     if (isAlreadyRunning) {
-        console.log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
+        log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
         return;
     }
 
@@ -119,7 +134,7 @@ function createBotInstance(username, delayMs = 0) {
 
         stopBotInstance(username);
 
-        console.log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
+        log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
         updateStatus(username, 'Connecting', 'กำลังเชื่อมต่อ...');
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
@@ -136,21 +151,21 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         activeBots[username] = bot;
-        bot.authStage = 0;
+        bot.authStage = 'START';
 
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
             try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
-            console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
+            logError(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
             updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
         });
 
         bot.on('windowOpen', async (window) => {
             
-            // STAGE 0: กด Slot 1 เปิด Anvil
-            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
-                bot.authStage = 1;
-                console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
+            // STAGE 1: พบหน้าต่างล็อกอินหลัก -> กด Slot 1 เปิด Anvil
+            if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'START') {
+                bot.authStage = 'OPENING_ANVIL';
+                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
                 updateStatus(username, 'Logging in', 'รอเปิด Anvil (Slot 1)');
 
                 setTimeout(async () => {
@@ -160,11 +175,11 @@ function createBotInstance(username, delayMs = 0) {
                 }, 3500);
             }
 
-            // STAGE 1: พิมพ์รหัสใส่ Anvil
-            else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
-                bot.authStage = 2;
-                console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
-                updateStatus(username, 'Logging in', `กำลังพิมพ์รหัสผ่าน`);
+            // STAGE 2: หน้าต่าง Anvil เปิดขึ้นมา -> พิมพ์รหัส
+            else if (window.type === 'minecraft:anvil' && (bot.authStage === 'OPENING_ANVIL' || bot.authStage === 'START')) {
+                bot.authStage = 'PASS_TYPED';
+                log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
+                updateStatus(username, 'Logging in', 'กำลังพิมพ์รหัสผ่าน');
 
                 setTimeout(() => {
                     try {
@@ -176,41 +191,41 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ -> รอ 13 วินาที เพื่อเริ่มหาเข็มทิศ
-            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
-                bot.authStage = 3;
-                console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
+            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2) แล้วเข้าสู่โหมดรอ Lobby 13 วิ
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'PASS_TYPED') {
+                bot.authStage = 'IN_LOBBY';
+                log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        console.log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 13s ให้ตัวละครโหลดเข้า Lobby ก่อนหาเข็มทิศ...`);
+                        log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 13s เต็มให้โหลดเข้า Lobby ก่อนเริ่มหาเข็มทิศ...`);
                         updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 13s)');
 
                         bot.compassTimer = setTimeout(() => {
                             useCompass(bot, username);
-                        }, 13000); // หน่วงเวลา 13 วินาที
+                        }, 13000);
 
                     } catch (e) {}
                 }, 2500);
             }
 
-            // STAGE 3: GUI เมนูเข็มทิศเปิดจริง -> กด Slot 10 (Survival)
-            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
-                bot.authStage = 4;
-                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
+            // STAGE 4: เมนูเข็มทิศเปิดขึ้นมาหลังจากคลิกขวาใช้งานจริงเท่านั้น -> กด Slot 10 (Survival)
+            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'WAIT_COMPASS_MENU') {
+                bot.authStage = 'SURVIVAL_DONE';
+                log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
                 updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (กำลังรอวาร์ปเข้าโลก 12 วินาที...)`);
+                        log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (กำลังรอวาร์ปเข้าโลก 12 วินาที...)`);
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 12s)');
 
                         setTimeout(() => {
                             bot.chat('/afk');
-                            console.log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+                            log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
                             updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
 
                             if (bot.afkInterval) clearInterval(bot.afkInterval);
@@ -223,18 +238,18 @@ function createBotInstance(username, delayMs = 0) {
                         }, 12000);
 
                     } catch (err) {
-                        console.error(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
+                        logError(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
                     }
                 }, 3000);
             }
         });
 
         bot.on('spawn', () => {
-            console.log(`[✓] [${username}] โหลดฉากสำเร็จ`);
+            log(`[✓] [${username}] โหลดฉากสำเร็จ`);
         });
 
         bot.on('error', (err) => {
-            console.error(`[❌ Error] [${username}]: ${err.message}`);
+            logError(`[❌ Error] [${username}]: ${err.message}`);
             updateStatus(username, 'Error', err.message, err.message);
         });
 
@@ -242,11 +257,11 @@ function createBotInstance(username, delayMs = 0) {
             if (bot.compassTimer) clearTimeout(bot.compassTimer);
             if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
-            console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
+            log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
             if (botStatusMap[username]?.enabled) {
                 updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                console.log(`[i] [${username}] จะต่อใหม่ใน 30 วินาที...`);
+                log(`[i] [${username}] จะต่อใหม่ใน 30 วินาที...`);
                 createBotInstance(username, 30000);
             } else {
                 updateStatus(username, 'Stopped', 'ระงับการทำงาน');
@@ -280,7 +295,7 @@ const server = http.createServer((req, res) => {
             const start = isNaN(startVal) ? 0 : startVal;
             const end = isNaN(endVal) ? BOT_NAMES.length : endVal;
 
-            console.log(`[Batch Command] สั่งรันช่วงดรรชนี ${start} ถึง ${end}`);
+            log(`[Batch Command] สั่งรันช่วงดรรชนี ${start} ถึง ${end}`);
 
             const targetBots = BOT_NAMES.slice(start, end);
             let launchIndex = 0;
@@ -294,7 +309,7 @@ const server = http.createServer((req, res) => {
                     createBotInstance(bName, launchIndex * 12000);
                     launchIndex++;
                 } else {
-                    console.log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
+                    log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
                 }
             });
         } 
@@ -460,13 +475,13 @@ function getLocalIP() {
 }
 
 function printStartupLogs(ipAddress) {
-    console.log('==================================================');
-    console.log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (STANDBY)`);
-    console.log('==================================================');
-    console.log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    console.log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
-    console.log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
-    console.log('==================================================');
+    log('==================================================');
+    log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (STANDBY)`);
+    log('==================================================');
+    log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
+    log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
+    log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
+    log('==================================================');
 }
 
 server.listen(WEB_PORT, () => {
