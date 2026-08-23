@@ -11,7 +11,6 @@ const WEB_PORT = 3000;
 
 const sharedData = minecraftData(MC_VERSION);
 
-// ฟังก์ชันพิมพ์ Log พร้อม Timestamp [HH:MM:SS]
 function log(msg) {
     const time = new Date().toLocaleTimeString('th-TH', { hour12: false });
     console.log(`[${time}] ${msg}`);
@@ -80,10 +79,23 @@ function updateStatus(name, status, step, errorReason = null) {
 function stopBotInstance(username) {
     if (activeBots[username]) {
         if (activeBots[username].compassTimer) clearTimeout(activeBots[username].compassTimer);
+        if (activeBots[username].anvilCheckTimer) clearTimeout(activeBots[username].anvilCheckTimer);
         if (activeBots[username].afkInterval) clearInterval(activeBots[username].afkInterval);
         try { activeBots[username].quit(); } catch (e) {}
         delete activeBots[username];
     }
+}
+
+// ฟังก์ชันเริ่มกระบวนการกดเข็มทิศเมื่อเข้า Lobby
+function triggerLobbyCompass(bot, username) {
+    if (bot.compassTimer) clearTimeout(bot.compassTimer);
+    bot.authStage = 'IN_LOBBY';
+    log(`[🏠] [${username}] อยู่ใน Lobby แล้ว -> รอ 13s ให้ฉากโหลดสมบูรณ์ก่อนหาเข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 13s)');
+
+    bot.compassTimer = setTimeout(() => {
+        useCompass(bot, username);
+    }, 13000);
 }
 
 // ฟังก์ชันสแกนถือและคลิกขวาเข็มทิศ
@@ -162,7 +174,7 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('windowOpen', async (window) => {
             
-            // STAGE 1: พบหน้าต่างล็อกอินหลัก -> กด Slot 1 เปิด Anvil
+            // STAGE 1: พบหน้าต่างล็อกอินหลัก -> กด Slot 1 (สมุด)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'START') {
                 bot.authStage = 'OPENING_ANVIL';
                 log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
@@ -171,12 +183,22 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
+
+                        // 🔍 Fallback Check: ถ้าผ่านไป 4 วิ ไม่มีหน้าต่าง Anvil เด้ง แปลว่าล็อกอินผ่านแล้ว
+                        bot.anvilCheckTimer = setTimeout(() => {
+                            if (bot.authStage === 'OPENING_ANVIL') {
+                                log(`[⚡] [${username}] ไม่พบหน้าต่าง Anvil (เคยล็อกอินแล้ว) -> ข้ามไปเข้า Lobby ทันที`);
+                                triggerLobbyCompass(bot, username);
+                            }
+                        }, 4000);
+
                     } catch (e) {}
                 }, 3500);
             }
 
-            // STAGE 2: หน้าต่าง Anvil เปิดขึ้นมา -> พิมพ์รหัส
+            // STAGE 2: หน้าต่าง Anvil เด้งเปิดจริง -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && (bot.authStage === 'OPENING_ANVIL' || bot.authStage === 'START')) {
+                if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
                 bot.authStage = 'PASS_TYPED';
                 log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
                 updateStatus(username, 'Logging in', 'กำลังพิมพ์รหัสผ่าน');
@@ -191,27 +213,20 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2) แล้วเข้าสู่โหมดรอ Lobby 13 วิ
+            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2) หลังพิมพ์รหัสเสร็จ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'PASS_TYPED') {
-                bot.authStage = 'IN_LOBBY';
                 log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 13s เต็มให้โหลดเข้า Lobby ก่อนเริ่มหาเข็มทิศ...`);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 13s)');
-
-                        bot.compassTimer = setTimeout(() => {
-                            useCompass(bot, username);
-                        }, 13000);
-
+                        triggerLobbyCompass(bot, username);
                     } catch (e) {}
                 }, 2500);
             }
 
-            // STAGE 4: เมนูเข็มทิศเปิดขึ้นมาหลังจากคลิกขวาใช้งานจริงเท่านั้น -> กด Slot 10 (Survival)
+            // STAGE 4: GUI เมนูเข็มทิศเปิดขึ้นมาหลังจากคลิกขวาใช้งานจริงเท่านั้น -> กด Slot 10 (Survival)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'WAIT_COMPASS_MENU') {
                 bot.authStage = 'SURVIVAL_DONE';
                 log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
@@ -255,6 +270,7 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('end', (reason) => {
             if (bot.compassTimer) clearTimeout(bot.compassTimer);
+            if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
             if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
             log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
