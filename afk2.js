@@ -68,15 +68,19 @@ function updateStatus(name, status, step, errorReason = null) {
 
 function stopBotInstance(username) {
     if (activeBots[username]) {
+        if (activeBots[username].compassTimer) clearTimeout(activeBots[username].compassTimer);
+        if (activeBots[username].afkInterval) clearInterval(activeBots[username].afkInterval);
         try { activeBots[username].quit(); } catch (e) {}
         delete activeBots[username];
     }
 }
 
-// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ (เพิ่ม Delay รองรับการโหลดไอเทม)
+// ฟังก์ชันสแกนถือและเปิดใช้เข็มทิศ
 async function useCompass(bot, username) {
-    updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
-    console.log(`[3.5/4] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    if (!bot || !bot.inventory) return;
+    updateStatus(username, 'In Lobby', 'กดใช้งานเข็มทิศ');
+    console.log(`[🧭] [${username}] กำลังค้นหาและคลิกขวาเข็มทิศ...`);
+    
     const compass = bot.inventory.items().find(i => i.name.includes('compass'));
     if (compass) {
         try {
@@ -87,9 +91,9 @@ async function useCompass(bot, username) {
             bot.activateItem();
         }
     } else {
-        try { 
+        try {
             await bot.sleep(500);
-            bot.activateItem(); 
+            bot.activateItem();
         } catch (e) {}
     }
 }
@@ -130,19 +134,18 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         activeBots[username] = bot;
-        bot.authStage = 0;
+        bot.authStage = 0; // 0: Init, 1: Anvil Open, 2: Pass Typed, 3: In Lobby (Wait Compass GUI), 4: Survival Selected
 
         bot.on('kicked', (reason) => {
             let kickReasonStr = reason;
             try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
-            
             console.error(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
             updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
         });
 
         bot.on('windowOpen', async (window) => {
             
-            // STAGE 0: กด Slot 1 เปิด Anvil (เพิ่ม Delay เป็น 3.5s)
+            // STAGE 0: กด Slot 1 เปิด Anvil
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 0) {
                 bot.authStage = 1;
                 console.log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
@@ -151,28 +154,15 @@ function createBotInstance(username, delayMs = 0) {
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(1, 0, 0);
-
-                        // แผนสำรองกรณี Anvil ไม่เปิด รอ 5 วินาที
-                        setTimeout(async () => {
-                            if (bot.authStage === 1) {
-                                console.log(`[i] [${username}] Anvil ไม่เด้งเปิด -> ข้ามไปกด Slot 2 ยืนยัน...`);
-                                bot.authStage = 3;
-                                await bot.clickWindow(2, 0, 0).catch(() => {});
-                                updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 12s)');
-
-                                setTimeout(() => useCompass(bot, username), 12000);
-                            }
-                        }, 5000);
-
                     } catch (e) {}
                 }, 3500);
             }
 
-            // STAGE 1: พิมพ์รหัสใส่ Anvil (เพิ่ม Delay พิมพ์ 2.5s และรอกดรับ 1.5s)
+            // STAGE 1: พิมพ์รหัสใส่ Anvil
             else if (window.type === 'minecraft:anvil' && bot.authStage === 1) {
                 bot.authStage = 2;
                 console.log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
-                updateStatus(username, 'Logging in', `กำลังพิมพ์รหัสผ่าน`);
+                updateStatus(username, 'Logging in', `พิมพ์รหัสผ่าน`);
 
                 setTimeout(() => {
                     try {
@@ -184,33 +174,36 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ (เพิ่ม Delay เป็น 2.5s และรอวาร์ป 12s)
+            // STAGE 2: กด Slot 2 ยืนยันเข้าสู่ระบบ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 2) {
                 bot.authStage = 3;
                 console.log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
-                updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยันเข้าสู่ระบบ');
+                updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(2, 0, 0);
-                        updateStatus(username, 'In Lobby', 'วาร์ปเข้าห้องโถง (รอ 12s)');
+                        console.log(`[🏠] [${username}] ยืนยันรหัสผ่านแล้ว -> รอ 8s เพื่อให้เข้า Lobby แล้วกดเข็มทิศ...`);
+                        updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 8s)');
 
-                        setTimeout(() => useCompass(bot, username), 12000);
+                        bot.compassTimer = setTimeout(() => {
+                            useCompass(bot, username);
+                        }, 8000);
 
                     } catch (e) {}
                 }, 2500);
             }
 
-            // STAGE 3: กดบล็อกหญ้า Survival (Slot 10) (เพิ่ม Delay เป็น 3s และรอโหลดโลก 12s)
+            // STAGE 3: GUI เมนูเข็มทิศเปิดจริง -> กด Slot 10 (Survival)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 3) {
                 bot.authStage = 4;
-                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดแล้ว -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
-                updateStatus(username, 'Selecting Mode', 'รอเลือก Survival');
+                console.log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
+                updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        console.log(`[>] [${username}] คลิกเลือก Survival แล้ว (กำลังรอวาร์ปสลับโลก 12 วินาที...)`);
+                        console.log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (กำลังรอวาร์ปเข้าโลก 12 วินาที...)`);
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 12s)');
 
                         setTimeout(() => {
@@ -244,6 +237,7 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('end', (reason) => {
+            if (bot.compassTimer) clearTimeout(bot.compassTimer);
             if (bot.afkInterval) clearInterval(bot.afkInterval);
             delete activeBots[username];
             console.log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
@@ -295,7 +289,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 12000); // ปล่อยห่างกันตัวละ 12 วินาที
+                    createBotInstance(bName, launchIndex * 12000);
                     launchIndex++;
                 } else {
                     console.log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
