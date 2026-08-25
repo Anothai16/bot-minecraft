@@ -37,4 +37,4 @@ chmod +x ./MinecraftClient
     echo ""
     sleep 30
   done
-) | ./MinecraftClient JaiyenKub - play.amorycraft.com
+) | ./MinecraftClient Sainom - play.amorycraft.com
