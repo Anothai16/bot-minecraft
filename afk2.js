@@ -51,7 +51,17 @@ const BOT_CONFIGS = [
     { name: '0zow31', pass: '112233' },
     { name: 'guguy555', pass: '112233' },
     { name: 'ginggong', pass: '112233' },
-    { name: 'JoinServer', pass: '112233' }
+    { name: 'JoinServer', pass: '112233' },
+    { name: 'Nigga58', pass: '112233' },
+    { name: 'Effe2', pass: '112233' },
+    { name: 'Yihai', pass: '112233' },
+    { name: 'Huyteelai', pass: '112233' },
+    { name: 'Amasterpeach', pass: '112233' },
+    { name: 'Water762', pass: '112233' },
+    { name: 'JumPBaa', pass: '112233' },
+    { name: 'd123', pass: '112233' },
+    { name: 'Yukina', pass: '112233' },
+    { name: 'shabu555', pass: '112233' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
