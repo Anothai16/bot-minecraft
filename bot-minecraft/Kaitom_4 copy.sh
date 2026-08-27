@@ -5,19 +5,13 @@ chmod +x ./MinecraftClient
 
 PM2_NAME="Kaitom_4lever"
 STATUS_FILE="$(pwd)/lever_status.txt"
-# 📝 แยกไฟล์ Log เฉพาะของ Kaitom_4
-LOG_FILE="$(pwd)/server_restart_kaitom4_logs.txt"
-LOCK_FILE="/tmp/mcc_kaitom_paused_$$"
 
-rm -f "$LOCK_FILE"
-
-# 📄 ตรวจสอบและสร้างไฟล์ lever_status.txt อัตโนมัติถ้ายังไม่มีในระบบ
+# 📄 ตรวจสอบและสร้างไฟล์ lever_status.txt อัตโนมัติถ้ายังไม่มีในระบบ Linux
 if [ ! -f "$STATUS_FILE" ]; then
   echo "open" > "$STATUS_FILE"
 fi
 
 trigger_restart() {
-  rm -f "$LOCK_FILE"
   echo "🚨 [FAIL-SAFE] ตรวจพบการตัดการเชื่อมต่อ! สั่ง PM2 Restart '$PM2_NAME' ทันที..." >&2
   pm2 restart "$PM2_NAME" --update-env
   exit 1
@@ -65,6 +59,8 @@ trigger_restart() {
   TOTAL_MINS=$(( CURRENT_HOUR * 60 + CURRENT_MIN ))
   CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
 
+  # 07:30 น. = 450 นาที | 05:50 น. = 350 นาที
+  # ถ้าเวลาปัจจุบันเลย 07:30 น. (หรือยังไม่ถึง 05:50 น.) แต่ไฟล์ยังค้างเป็น close
   if { [ "$TOTAL_MINS" -ge 450 ] || [ "$TOTAL_MINS" -lt 350 ]; } && [ "$CURRENT_STATUS" = "close" ]; then
     NOW_TIME=$(date '+%H:%M:%S')
     echo "⚠️ [CATCH-UP $NOW_TIME] บอทเข้าเซิร์ฟหลัง 07:30 น. และพบสถานะยังเป็น 'close' -> สั่งสับเปิดระบบทันที!" >&2
@@ -73,18 +69,12 @@ trigger_restart() {
   fi
 
   # ==========================================
-  # ⏰ 6. ลูปตรวจเช็กเวลาประจำวัน (มีเช็กระงับสับคันโยก)
+  # ⏰ 6. ลูปตรวจเช็กเวลาประจำวัน
   # ==========================================
   TRIGGERED_0550=false
   TRIGGERED_0730=false
 
   while true; do
-    # 🛑 ถ้าระบบตรวจพบแชทรีเซิร์ฟ ให้ข้ามการสับคันโยก
-    if [ -f "$LOCK_FILE" ]; then
-      sleep 2
-      continue
-    fi
-
     HOUR=$(date +%-H)
     MIN=$(date +%-M)
 
@@ -107,7 +97,6 @@ trigger_restart() {
     if [ "$HOUR" -eq 7 ] && [ "$MIN" -eq 10 ]; then
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🔄 [RESTART $NOW_TIME] ถึงเวลา 07:10 น. สั่ง PM2 Restart..." >&2
-      rm -f "$LOCK_FILE"
       pm2 restart "$PM2_NAME"
       exit 0
     fi
@@ -127,30 +116,7 @@ trigger_restart() {
 ) | ./MinecraftClient Kaitom_4 - play.amorycraft.com 2>&1 | while IFS= read -r line; do
   echo "$line"
 
-  # 🔍 1. ตรวจสอบการตัดการเชื่อมต่อเพื่อสั่ง Restart
   if [[ "$line" == *"Not connected to any server"* ]] || [[ "$line" == *"Failed to login to this server"* ]]; then
     trigger_restart
-  fi
-
-  # 🔍 2. ดักจับแชทรีสตาร์ตเซิร์ฟเวอร์ (กรองไม่เอาแชทผู้เล่น)
-  if ! echo "$line" | grep -qE "^<.*>|^\[.*\] [a-zA-Z0-9_]+:"; then
-    if { echo "$line" | grep -q "รี" && echo "$line" | grep -q "สตาร์ท"; } || \
-       echo "$line" | grep -q "ประจำวัน" || \
-       echo "$line" | grep -iq "restart"; then
-
-      FULL_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-      NOW=$(date '+%H:%M:%S')
-
-      # 📝 บันทึกลงไฟล์ server_restart_kaitom4_logs.txt
-      echo "[$FULL_TIME] $line" >> "$LOG_FILE"
-
-      echo "==================================================" >&2
-      echo "🚨 [ALERT $NOW] Kaitom_4 ตรวจพบประกาศรีสตาร์ตเซิร์ฟเวอร์!" >&2
-      echo "📝 บันทึกประโยคลง: $LOG_FILE" >&2
-      echo "🛑 สั่งระงับการสับคันโยกชั่วคราว..." >&2
-      echo "==================================================" >&2
-
-      touch "$LOCK_FILE"
-    fi
   fi
 done
