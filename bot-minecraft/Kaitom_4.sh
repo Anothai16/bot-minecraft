@@ -4,10 +4,13 @@ chmod +x ./MinecraftClient
 
 PM2_NAME="Kaitom_4lever"
 STATUS_FILE="$(pwd)/lever_status.txt"
+READY_FILE="$(pwd)/kaitom4_ready.txt"
 LOG_FILE="$(pwd)/server_restart_kaitom4_logs.txt"
 PIPE="/tmp/mcc_pipe_kaitom_cmd"
 
-# เคลียร์และสร้าง Named Pipe กลาง
+# เริ่มต้นให้สถานะเป็น offline ทันที (ยังไม่ถึงจุดยืน)
+echo "offline" > "$READY_FILE"
+
 rm -f "$PIPE"
 mkfifo "$PIPE"
 
@@ -15,8 +18,25 @@ if [ ! -f "$STATUS_FILE" ]; then
   echo "open" > "$STATUS_FILE"
 fi
 
-trigger_restart() {
+cleanup() {
+  echo "🛑 [STOP] ปิดโปรเซส..." >&2
+  echo "offline" > "$READY_FILE"
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
+  pkill -9 -f "MinecraftClient.*Kaitom_4" 2>/dev/null
   rm -f "$PIPE"
+  exit 0
+}
+
+trap cleanup SIGTERM SIGINT EXIT
+
+trigger_restart() {
+  echo "offline" > "$READY_FILE"
+  rm -f "$PIPE"
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
   echo "🚨 [FAIL-SAFE] หลุดการเชื่อมต่อ! สั่ง PM2 Restart '$PM2_NAME' ทันที..." >&2
   pm2 restart "$PM2_NAME" --update-env
   exit 1
@@ -59,7 +79,7 @@ done &
 MCC_PID=$!
 
 # ==========================================
-# 🔑 2. ขั้นตอนล็อกอิน & เดินทาง (ปรับเวลารอให้พอดี)
+# 🔑 2. ขั้นตอนล็อกอิน & เดินทาง
 # ==========================================
 echo "[LOGIN] กำลังรอเซิร์ฟเวอร์เชื่อมต่อและโหลดหน้า Dialog (16 วินาที)..." >&2
 sleep 16
@@ -79,7 +99,11 @@ echo "[LOBBY] เลือก Survival เรียบร้อย กำลั�
 
 sleep 10
 echo "/home home" > "$PIPE"
-echo "[READY] บอทประจำการที่จุด (-2682 61 14543) เรียบร้อย!" >&2
+sleep 2
+
+# ✅ ถึงจุดนี้แปลว่าผ่านขั้นตอนเลือกโหมดและวาร์ปมายืนประจำจุดสำเร็จแล้ว
+echo "online" > "$READY_FILE"
+echo "[READY] บอทประจำการที่จุด (-2682 61 14543) และสถานะเป็น ONLINE เรียบร้อย!" >&2
 
 # ==========================================
 # ⏰ 3. ลูปตรวจเช็กเวลาสับปิดอัตโนมัติ (05:40 น.)
@@ -88,6 +112,7 @@ TRIGGERED_0540=false
 
 while true; do
   if ! kill -0 $MCC_PID 2>/dev/null; then
+    echo "offline" > "$READY_FILE"
     break
   fi
 
@@ -118,6 +143,4 @@ while true; do
   sleep 5
 done
 
-kill $MCC_PID 2>/dev/null
-rm -f "$PIPE"
-exit 1
+cleanup

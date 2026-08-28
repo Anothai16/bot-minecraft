@@ -7,10 +7,11 @@ const PORT = 3003;
 
 const PIPE_PATH = '/tmp/mcc_pipe_kaitom_cmd';
 const STATUS_FILE = path.join(__dirname, 'lever_status.txt');
+const K4_READY_FILE = path.join(__dirname, 'kaitom4_ready.txt');
+const K67_READY_FILE = path.join(__dirname, 'k666', 'kaitom67_ready.txt');
 
 app.use(express.json());
 
-// อ่านสถานะคันโยก
 function getLeverStatus() {
     try {
         if (fs.existsSync(STATUS_FILE)) {
@@ -20,7 +21,6 @@ function getLeverStatus() {
     return 'unknown';
 }
 
-// บันทึกสถานะคันโยก
 function setLeverStatus(status) {
     try {
         fs.writeFileSync(STATUS_FILE, status.trim(), 'utf-8');
@@ -30,34 +30,43 @@ function setLeverStatus(status) {
     }
 }
 
-// ส่งคำสั่งดิบเข้าตัวบอท Kaitom_4
 function sendCommand(cmd) {
     if (fs.existsSync(PIPE_PATH)) {
         fs.appendFileSync(PIPE_PATH, cmd + '\n');
-        console.log(`[BOT CMD]: ${cmd}`);
         return true;
     }
     return false;
 }
 
-// เช็กสถานะการรันโปรเซสของบอทแต่ละตัว
-function checkProcessOnline(botName) {
+// ฟังก์ชันเช็กว่ารันอยู่จริง และผ่านขั้นตอนวาร์ปเข้าโลกแล้ว
+function checkBotInWorld(botName, readyFilePath) {
     return new Promise((resolve) => {
         exec(`pgrep -fa 'MinecraftClient.*${botName}'`, (err, stdout) => {
             if (err || !stdout.trim()) {
+                // ถ้าโปรเซสไม่รัน = OFFLINE
                 resolve(false);
             } else {
-                resolve(true);
+                // ถ้าโปรเซสรันอยู่ ต้องดูว่าวาร์ปเข้าโลกเสร็จหรือยัง
+                try {
+                    if (fs.existsSync(readyFilePath)) {
+                        const state = fs.readFileSync(readyFilePath, 'utf-8').trim();
+                        resolve(state === 'online');
+                    } else {
+                        resolve(false);
+                    }
+                } catch (e) {
+                    resolve(false);
+                }
             }
         });
     });
 }
 
-// 📌 API: ดึงสถานะรวมทั้งหมด
+// 📌 API ดึงสถานะ
 app.get('/api/status', async (req, res) => {
     const [kaitom4Online, kaitom67Online] = await Promise.all([
-        checkProcessOnline('Kaitom_4'),
-        checkProcessOnline('Kaitom_67')
+        checkBotInWorld('Kaitom_4', K4_READY_FILE),
+        checkBotInWorld('Kaitom_67', K67_READY_FILE)
     ]);
 
     res.json({
@@ -67,7 +76,6 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// 📌 API: บังคับแก้ไขประวัติสถานะในไฟล์
 app.post('/api/set-status', (req, res) => {
     const { status } = req.body;
     if (status !== 'open' && status !== 'close') {
@@ -80,7 +88,6 @@ app.post('/api/set-status', (req, res) => {
     }
 });
 
-// 📌 API: สับคันโยก
 app.post('/api/toggle-lever', (req, res) => {
     if (!fs.existsSync(PIPE_PATH)) {
         return res.status(500).json({ success: false, message: 'ไม่พบบอทในระบบ (ท่อคำสั่งไม่พร้อม)' });
@@ -99,7 +106,6 @@ app.post('/api/toggle-lever', (req, res) => {
     });
 });
 
-// 📌 API: สั่งวาร์ป /home home
 app.post('/api/go-home', (req, res) => {
     if (sendCommand('/home home')) {
         res.json({ success: true, message: 'ส่งคำสั่ง /home home เรียบร้อย' });
@@ -108,7 +114,6 @@ app.post('/api/go-home', (req, res) => {
     }
 });
 
-// 🌐 หน้า Web Dashboard
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -124,19 +129,17 @@ app.get('/', (req, res) => {
             h1 { font-size: 20px; color: #38bdf8; margin-bottom: 4px; font-weight: 700; }
             .sub { font-size: 12px; color: #64748b; margin-bottom: 20px; }
             
-            /* Status Layout */
             .status-main { background: #030712; border: 1px solid #1f2937; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
             .grid-status { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
             .status-container { background: #030712; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; }
             
             .status-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
             .status-val { font-size: 20px; font-weight: bold; }
-            .status-val-sm { font-size: 16px; font-weight: bold; }
+            .status-val-sm { font-size: 15px; font-weight: bold; }
             
             .color-open, .color-online { color: #34d399; }
             .color-close, .color-offline { color: #f87171; }
             
-            /* Buttons */
             .btn { width: 100%; padding: 13px; font-size: 15px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; transition: 0.15s; margin-bottom: 10px; }
             .btn-toggle { background: #0284c7; color: white; }
             .btn-toggle:hover { background: #0369a1; }
@@ -145,7 +148,6 @@ app.get('/', (req, res) => {
             .btn-home { background: #1f2937; color: #cbd5e1; border: 1px solid #374151; font-size: 13px; }
             .btn-home:hover { background: #374151; }
             
-            /* Edit Box */
             .edit-box { margin-top: 18px; padding-top: 16px; border-top: 1px solid #1f2937; text-align: left; }
             .edit-title { font-size: 12px; color: #94a3b8; font-weight: 600; margin-bottom: 8px; }
             .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -163,21 +165,19 @@ app.get('/', (req, res) => {
             <h1>🕹️ BOT CONTROLLER & MONITOR</h1>
             <div class="sub">พิกัดคันโยก: -2682 61 14542 (Port 3003)</div>
             
-            <!-- สถานะคันโยก -->
             <div class="status-main">
                 <div class="status-label">สถานะระบบคันโยก</div>
                 <div id="leverVal" class="status-val color-open">กำลังโหลด...</div>
             </div>
 
-            <!-- กล่องแสดงสถานะ 2 บอทคู่กัน -->
             <div class="grid-status">
                 <div class="status-container">
                     <div class="status-label">Kaitom_4 (คันโยก)</div>
-                    <div id="bot4Val" class="status-val-sm color-offline">กำลังเช็ก...</div>
+                    <div id="bot4Val" class="status-val-sm color-offline">OFFLINE</div>
                 </div>
                 <div class="status-container">
                     <div class="status-label">Kaitom_67 (AFK)</div>
-                    <div id="bot67Val" class="status-val-sm color-offline">กำลังเช็ก...</div>
+                    <div id="bot67Val" class="status-val-sm color-offline">OFFLINE</div>
                 </div>
             </div>
 
@@ -204,12 +204,10 @@ app.get('/', (req, res) => {
             }
 
             function updateUI(data) {
-                // คันโยก
                 const leverEl = document.getElementById('leverVal');
                 leverEl.innerText = data.status.toUpperCase();
                 leverEl.className = 'status-val ' + (data.status === 'open' ? 'color-open' : 'color-close');
 
-                // บอท Kaitom_4
                 const bot4El = document.getElementById('bot4Val');
                 if (data.kaitom4Online) {
                     bot4El.innerText = '🟢 ONLINE';
@@ -219,7 +217,6 @@ app.get('/', (req, res) => {
                     bot4El.className = 'status-val-sm color-offline';
                 }
 
-                // บอท Kaitom_67
                 const bot67El = document.getElementById('bot67Val');
                 if (data.kaitom67Online) {
                     bot67El.innerText = '🟢 ONLINE';
@@ -290,5 +287,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Kaitom_4 Web Controller รันบน http://localhost:${PORT}`);
+    console.log(`🚀 Kaitom Controller รันบน http://localhost:${PORT}`);
 });

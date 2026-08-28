@@ -3,21 +3,12 @@ cd "$(dirname "$0")"
 
 chmod +x ./MinecraftClient
 
-READY_FILE="$(pwd)/kaitom67_ready.txt"
-echo "offline" > "$READY_FILE"
-
-cleanup() {
-  echo "offline" > "$READY_FILE"
-  exit 0
-}
-trap cleanup SIGTERM SIGINT EXIT
-
 (
   # ==========================================
   # 🔑 1. รอให้หน้า Dialog โหลดขึ้นมา แล้วล็อกอิน
   # ==========================================
   echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
-  sleep 16
+  sleep 10
   echo "/dialog input pass 112233"
   
   sleep 3
@@ -28,24 +19,21 @@ trap cleanup SIGTERM SIGINT EXIT
   # 🧭 2. รอปลดล็อกล็อกอิน แล้วสั่งกดใช้เข็มทิศ
   # ==========================================
   echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
-  sleep 12
+  sleep 10
   echo "/useitem mainhand"
   
   # ==========================================
   # 📦 3. จิ้มเลือกสล็อต 10 (Survival)
   # ==========================================
-  sleep 3
+  sleep 1
   echo "/inventory container click 10 Left"
   echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
   
   # ==========================================
   # 🏠 4. รอโหลดเข้าโลก แล้ววาร์ปมาประจำจุด
   # ==========================================
-  sleep 10
+  sleep 8
   echo "/home home"
-  
-  # ✅ เข้าโลกและวาร์ปถึงจุดแล้ว จึงตั้งเป็น online
-  echo "online" > "$READY_FILE"
   echo "[READY] บอท Kaitom_67 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
   # ==========================================
@@ -58,17 +46,17 @@ trap cleanup SIGTERM SIGINT EXIT
     if [ "$HOUR" -eq 7 ] && [ "$MIN" -eq 20 ]; then
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🔄 [RESTART $NOW_TIME] ถึงเวลา 07:20 น. สั่งออกจากเซิร์ฟเวอร์เพื่อให้ PM2 รีสตาร์ต..." >&2
-      echo "offline" > "$READY_FILE"
       echo "/quit"
       exit 0
     fi
 
+    # ส่ง Enter เปล่าๆ ป้องกันค้าง
     echo ""
     sleep 30
   done
 ) | ./MinecraftClient Kaitom_67 - play.amorycraft.com
 
+# 🛑 ตรวจจับถ้าโปรเซสหลุดออกมา ให้จบสคริปต์ด้วย Error เพื่อให้ PM2 รีสตาร์ต
 EXIT_CODE=$?
-echo "offline" > "$READY_FILE"
 echo "[ERROR] MCC หยุดทำงาน (Exit Code: $EXIT_CODE) สั่งให้ PM2 รีสตาร์ต..." >&2
 exit 1
