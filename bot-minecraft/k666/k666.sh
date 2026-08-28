@@ -12,7 +12,7 @@ cleanup() {
 trap cleanup SIGTERM SIGINT EXIT
 
 (
-  echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
+  echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
   sleep 16
   echo "/dialog input pass 112233"
   
@@ -20,7 +20,7 @@ trap cleanup SIGTERM SIGINT EXIT
   echo "/dialog click 1"
   echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
   
-  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
+  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (12 วินาที)..." >&2
   sleep 12
   echo "/useitem mainhand"
   
@@ -31,13 +31,14 @@ trap cleanup SIGTERM SIGINT EXIT
   sleep 10
   echo "/home home"
   
-  # ✅ เข้าสู่โลกและถึงจุดยืนแล้ว
+  # ✅ เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
   echo "online" > "$READY_FILE"
   echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
+  # 🛑 วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา ป้องกัน subshell หลุด
   while true; do
-    echo ""
     sleep 30
+    echo ""
   done
 ) | ./MinecraftClient K666 - play.amorycraft.com
 
