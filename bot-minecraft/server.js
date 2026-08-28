@@ -11,11 +11,11 @@ const K4_STATUS_FILE = path.join(__dirname, 'lever_status.txt');
 const K4_READY_FILE = path.join(__dirname, 'kaitom4_ready.txt');
 const K67_READY_FILE = path.join(__dirname, 'k666', 'kaitom67_ready.txt');
 
-// Paths Lervy
+// Paths Lervy & K666
 const LERVY_PIPE = '/tmp/mcc_pipe_lervy_cmd';
 const LERVY_STATUS_FILE = path.join(__dirname, 'lervy_status.txt');
 const LERVY_READY_FILE = path.join(__dirname, 'lervy_ready.txt');
-const K666_READY_FILE = path.join(__dirname, 'k666_ready.txt');
+const K666_READY_FILE = path.join(__dirname, 'k666', 'k666_ready.txt'); // 👈 ชี้ตรงเข้าโฟลเดอร์ k666
 
 app.use(express.json());
 
@@ -49,13 +49,14 @@ function checkBotInWorld(botName, readyFilePath) {
             if (err || !stdout.trim()) {
                 resolve(false);
             } else {
-                resolve(readFile(readyFilePath) === 'online');
+                const status = readFile(readyFilePath, 'offline');
+                resolve(status === 'online');
             }
         });
     });
 }
 
-// 📌 API: ดึงสถานะรวมของบอททุกตัว
+// 📌 API ดึงสถานะรวม
 app.get('/api/status', async (req, res) => {
     const [k4Online, k67Online, lervyOnline, k666Online] = await Promise.all([
         checkBotInWorld('Kaitom_4', K4_READY_FILE),
@@ -109,7 +110,7 @@ app.post('/api/lervy/home', (req, res) => {
     res.json({ success: sendCommand(LERVY_PIPE, '/home home') });
 });
 
-// 🌐 หน้า Web Dashboard สองฝั่ง
+// 🌐 หน้า Web Dashboard
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
