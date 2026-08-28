@@ -1,114 +1,110 @@
 const express = require('express');
-const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
-
+const { exec } = require('child_process');
 const app = express();
-const WEB_PORT = 3001;
+const PORT = 3003;
+
+const PIPE_PATH = '/tmp/mcc_pipe_kaitom_cmd';
+const STATUS_FILE = path.join(__dirname, 'lever_status.txt');
 
 app.use(express.json());
 
-const logsBuffer = [];
-const MAX_LOGS = 200;
-
-function addLog(msg) {
-    const timestamp = new Date().toLocaleTimeString('th-TH');
-    logsBuffer.push(`[${timestamp}] ${msg}`);
-    if (logsBuffer.length > MAX_LOGS) logsBuffer.shift();
-    console.log(`[${timestamp}] ${msg}`);
+// ฟังก์ชันอ่านสถานะคันโยก
+function getLeverStatus() {
+    try {
+        if (fs.existsSync(STATUS_FILE)) {
+            return fs.readFileSync(STATUS_FILE, 'utf-8').trim();
+        }
+    } catch (e) {}
+    return 'unknown';
 }
 
-let mccProcess = null;
-let isConnected = false;
-
-function startMCC() {
-    addLog('[SYSTEM] กำลังเริ่มโปรเซส Minecraft Console Client...');
-    
-    // ⚡ รันโดยใช้การตั้งค่าจาก MinecraftClient.ini ในโฟลเดอร์โดยตรง
-    mccProcess = spawn(path.join(__dirname, 'MinecraftClient'), [], {
-        cwd: __dirname,
-        stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    mccProcess.stdout.on('data', (data) => {
-        const lines = data.toString().split('\n');
-        lines.forEach(l => {
-            const line = l.trim();
-            if (!line) return;
-            addLog(line);
-
-            // ดักจับว่าหน้าต่าง Dialog โผล่ขึ้นมาแล้ว
-            if (line.includes('Dialog #1') || line.includes('ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์')) {
-                handleDialogLogin();
-            }
-        });
-    });
-
-    mccProcess.stderr.on('data', (data) => {
-        const lines = data.toString().split('\n');
-        lines.forEach(l => {
-            const line = l.trim();
-            if (line) addLog(`[STDERR] ${line}`);
-        });
-    });
-
-    mccProcess.on('close', (code) => {
-        addLog(`[SYSTEM] MCC Process ปิดตัวลง (Code: ${code}) กำลังเปิดใหม่ใน 10 วินาที...`);
-        isConnected = false;
-        setTimeout(startMCC, 10000);
-    });
-}
-
-function sendCommand(cmd) {
-    if (mccProcess && mccProcess.stdin && !mccProcess.stdin.destroyed) {
-        addLog(`⌨️ [INPUT] ${cmd}`);
-        mccProcess.stdin.write(`${cmd}\n`);
-    } else {
-        addLog(`❌ [ERROR] ไม่สามารถส่งคำสั่งได้ Process ยังไม่พร้อม`);
+// ฟังก์ชันบันทึกสถานะคันโยก
+function setLeverStatus(status) {
+    try {
+        fs.writeFileSync(STATUS_FILE, status.trim(), 'utf-8');
+        return true;
+    } catch (e) {
+        return false;
     }
 }
 
-const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-
-async function handleDialogLogin() {
-    addLog('[LOGIN] ตรวจพบ Dialog! กำลังส่งรหัสผ่าน...');
-    await sleep(2000);
-    sendCommand('/dialog input pass 112233');
-
-    await sleep(1500);
-    sendCommand('/dialog click 1');
-    addLog('[LOGIN] กดยืนยัน Dialog สำเร็จ');
-
-    await sleep(8000);
-    addLog('[LOBBY] กดใช้งานเข็มทิศ...');
-    sendCommand('/useitem mainhand');
-
-    await sleep(1500);
-    addLog('[LOBBY] เลือกห้อง Survival (Slot 10)...');
-    sendCommand('/inventory container click 10 Left');
-
-    await sleep(10000);
-    addLog('[WARP] วาร์ปไปที่จุดคันโยก (/home home)...');
-    sendCommand('/home home');
-    addLog('✅ [READY] Lervy_Lever พร้อมทำงาน! ทดสอบกดปุ่มบนเว็บได้เลย');
-    isConnected = true;
+// ฟังก์ชันส่งคำสั่งดิบเข้าตัวบอทคันโยก
+function sendCommand(cmd) {
+    if (fs.existsSync(PIPE_PATH)) {
+        fs.appendFileSync(PIPE_PATH, cmd + '\n');
+        console.log(`[BOT CMD]: ${cmd}`);
+        return true;
+    }
+    return false;
 }
 
-startMCC();
+// ฟังก์ชันเช็กสถานะโปรเซส Kaitom_67 ว่าทำงานอยู่ไหม
+function checkKaitom67Online() {
+    return new Promise((resolve) => {
+        // ค้นหาโปรเซส MinecraftClient ที่มีชื่อ Kaitom_67
+        exec("pgrep -fa 'MinecraftClient.*Kaitom_67'", (err, stdout) => {
+            if (err || !stdout.trim()) {
+                resolve(false); // ไม่พบโปรเซส = OFFLINE
+            } else {
+                resolve(true);  // พบโปรเซส = ONLINE
+            }
+        });
+    });
+}
 
-// ====================================================================
-// 🌐 API ROUTES & WEB DASHBOARD
-// ====================================================================
-app.post('/api/send', (req, res) => {
-    const { cmd } = req.body;
-    if (!cmd) return res.status(400).json({ error: 'No command specified' });
-    sendCommand(cmd);
-    res.json({ status: 'ok', sent: cmd });
+// 📌 API: ดึงสถานะรวม (สถานะคันโยก + สถานะออนไลน์ Kaitom_67)
+app.get('/api/status', async (req, res) => {
+    const isKaitom67Online = await checkKaitom67Online();
+    res.json({
+        status: getLeverStatus(),
+        kaitom67Online: isKaitom67Online
+    });
 });
 
-app.get('/api/logs', (req, res) => {
-    res.json({ logs: logsBuffer.slice().reverse().join('\n') });
+// 📌 API: บังคับแก้ไขประวัติสถานะในไฟล์
+app.post('/api/set-status', (req, res) => {
+    const { status } = req.body;
+    if (status !== 'open' && status !== 'close') {
+        return res.status(400).json({ success: false, message: 'สถานะต้องเป็น open หรือ close เท่านั้น' });
+    }
+    if (setLeverStatus(status)) {
+        res.json({ success: true, status: status, message: `แก้ไขสถานะเป็น '${status}' เรียบร้อยแล้ว` });
+    } else {
+        res.status(500).json({ success: false, message: 'ไม่สามารถบันทึกไฟล์สถานะได้' });
+    }
 });
 
+// 📌 API: สับคันโยก
+app.post('/api/toggle-lever', (req, res) => {
+    if (!fs.existsSync(PIPE_PATH)) {
+        return res.status(500).json({ success: false, message: 'ไม่พบบอทในระบบ (ท่อคำสั่งไม่พร้อม)' });
+    }
+
+    sendCommand('/useblock -2682 61 14542');
+
+    const current = getLeverStatus();
+    const newStatus = current === 'open' ? 'close' : 'open';
+    setLeverStatus(newStatus);
+
+    res.json({
+        success: true,
+        newStatus: newStatus,
+        message: `สับคันโยกเรียบร้อย! สถานะปัจจุบัน: ${newStatus.toUpperCase()}`
+    });
+});
+
+// 📌 API: สั่งวาร์ป /home home
+app.post('/api/go-home', (req, res) => {
+    if (sendCommand('/home home')) {
+        res.json({ success: true, message: 'ส่งคำสั่ง /home home เรียบร้อย' });
+    } else {
+        res.status(500).json({ success: false, message: 'ส่งคำสั่งไม่สำเร็จ บอทไม่ได้ออนไลน์' });
+    }
+});
+
+// 🌐 หน้า Web Dashboard
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -116,95 +112,160 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MCC Lever Command Tester</title>
+        <title>Server Bot Dashboard</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
-            .container { max-width: 1000px; margin: auto; }
-            h1 { font-size: 22px; color: #38bdf8; margin-bottom: 20px; }
-            .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
-            .btn { background: #1e293b; color: #38bdf8; border: 1px solid #334155; padding: 14px; font-size: 14px; border-radius: 8px; cursor: pointer; text-align: left; transition: all 0.2s; }
-            .btn:hover { background: #334155; border-color: #38bdf8; }
-            .btn:active { transform: scale(0.98); }
-            .btn span { display: block; font-size: 11px; color: #94a3b8; margin-top: 4px; font-family: monospace; }
-            .custom-box { display: flex; gap: 8px; margin-bottom: 20px; }
-            .custom-box input { flex: 1; background: #020617; border: 1px solid #334155; padding: 12px 16px; border-radius: 6px; color: #fff; font-family: monospace; font-size: 14px; outline: none; }
-            .custom-box button { background: #2563eb; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-            .log-box { background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; height: 50vh; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; color: #cbd5e1; }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+            body { background: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+            .card { background: #111827; padding: 28px; border-radius: 18px; border: 1px solid #1f2937; width: 100%; max-width: 440px; box-shadow: 0 12px 30px rgba(0,0,0,0.6); text-align: center; }
+            h1 { font-size: 20px; color: #38bdf8; margin-bottom: 4px; font-weight: 700; }
+            .sub { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+            
+            /* Status Grid */
+            .grid-status { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+            .status-container { background: #030712; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; }
+            .status-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+            .status-val { font-size: 18px; font-weight: bold; }
+            
+            .color-open, .color-online { color: #34d399; }
+            .color-close, .color-offline { color: #f87171; }
+            
+            /* Buttons */
+            .btn { width: 100%; padding: 13px; font-size: 15px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; transition: 0.15s; margin-bottom: 10px; }
+            .btn-toggle { background: #0284c7; color: white; }
+            .btn-toggle:hover { background: #0369a1; }
+            .btn-toggle:disabled { background: #374151; cursor: not-allowed; }
+            
+            .btn-home { background: #1f2937; color: #cbd5e1; border: 1px solid #374151; font-size: 13px; }
+            .btn-home:hover { background: #374151; }
+            
+            /* Edit Box */
+            .edit-box { margin-top: 18px; padding-top: 16px; border-top: 1px solid #1f2937; text-align: left; }
+            .edit-title { font-size: 12px; color: #94a3b8; font-weight: 600; margin-bottom: 8px; }
+            .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .btn-state { padding: 9px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid #374151; cursor: pointer; background: #1f2937; color: #e2e8f0; }
+            .btn-state-open:hover { background: #065f46; border-color: #059669; }
+            .btn-state-close:hover { background: #7f1d1d; border-color: #dc2626; }
+
+            #msg { margin-top: 14px; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
+            .msg-success { background: #064e3b; color: #6ee7b7; }
+            .msg-error { background: #7f1d1d; color: #fca5a5; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>🕹️ MCC Lever Command Tester (Port 3001)</h1>
+        <div class="card">
+            <h1>🕹️ BOT DASHBOARD</h1>
+            <div class="sub">พิกัดคันโยก: -2682 61 14542 (Port 3003)</div>
             
-            <div class="grid">
-                <button class="btn" onclick="exec('/useblock 10383 64 -5065')">
-                    📌 1. /useblock
-                    <span>/useblock 10383 64 -5065</span>
-                </button>
-                <button class="btn" onclick="exec('/interact 10383 64 -5065')">
-                    📌 2. /interact
-                    <span>/interact 10383 64 -5065</span>
-                </button>
-                <button class="btn" onclick="exec('/look 10383 64 -5065\\n/useitem')">
-                    📌 3. Look + UseItem
-                    <span>/look + /useitem</span>
-                </button>
-                <button class="btn" onclick="exec('/loc')">
-                    📍 เช็คพิกัดปัจจุบัน
-                    <span>/loc</span>
-                </button>
-                <button class="btn" onclick="exec('/home home')">
-                    🏠 วาร์ปกลับจุดคันโยก
-                    <span>/home home</span>
-                </button>
-                <button class="btn" onclick="exec('/reconnect')">
-                    🔄 ต่อเซิร์ฟเวอร์ใหม่
-                    <span>/reconnect</span>
-                </button>
+            <div class="grid-status">
+                <div class="status-container">
+                    <div class="status-label">สถานะคันโยก</div>
+                    <div id="leverVal" class="status-val color-open">กำลังโหลด...</div>
+                </div>
+                <div class="status-container">
+                    <div class="status-label">Kaitom_67 (AFK)</div>
+                    <div id="bot67Val" class="status-val color-offline">กำลังเช็ก...</div>
+                </div>
             </div>
 
-            <div class="custom-box">
-                <input type="text" id="customCmd" placeholder="พิมพ์คำสั่งสดเองที่นี่..." onkeydown="if(event.key==='Enter') sendCustom()">
-                <button onclick="sendCustom()">ส่งคำสั่ง</button>
+            <button id="toggleBtn" class="btn btn-toggle" onclick="toggleLever()">⚡ สับคันโยก (สลับสถานะ)</button>
+            <button class="btn btn-home" onclick="sendHome()">📍 วาร์ปไปจุดประจำการ (/home home)</button>
+            
+            <div class="edit-box">
+                <div class="edit-title">🛠️ บังคับแก้ไขประวัติสถานะ (ไม่กดสับในเกม):</div>
+                <div class="edit-grid">
+                    <button class="btn-state btn-state-open" onclick="overrideStatus('open')">🟢 ตั้งเป็น OPEN</button>
+                    <button class="btn-state btn-state-close" onclick="overrideStatus('close')">🔴 ตั้งเป็น CLOSE</button>
+                </div>
             </div>
 
-            <div class="log-box" id="logs">กำลังดึง Logs...</div>
+            <div id="msg"></div>
         </div>
 
         <script>
-            async function exec(cmd) {
-                await fetch('/api/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cmd })
-                });
-                updateLogs();
+            function showMsg(text, isError = false) {
+                const box = document.getElementById('msg');
+                box.style.display = 'block';
+                box.className = isError ? 'msg-error' : 'msg-success';
+                box.innerText = text;
             }
 
-            function sendCustom() {
-                const input = document.getElementById('customCmd');
-                if (input.value.trim()) {
-                    exec(input.value.trim());
-                    input.value = '';
+            function updateUI(data) {
+                // อัปเดตสถานะคันโยก
+                const leverEl = document.getElementById('leverVal');
+                leverEl.innerText = data.status.toUpperCase();
+                leverEl.className = 'status-val ' + (data.status === 'open' ? 'color-open' : 'color-close');
+
+                // อัปเดตสถานะบอท Kaitom_67
+                const bot67El = document.getElementById('bot67Val');
+                if (data.kaitom67Online) {
+                    bot67El.innerText = '🟢 ONLINE';
+                    bot67El.className = 'status-val color-online';
+                } else {
+                    bot67El.innerText = '🔴 OFFLINE';
+                    bot67El.className = 'status-val color-offline';
                 }
             }
 
-            async function updateLogs() {
+            async function fetchStatus() {
                 try {
-                    const res = await fetch('/api/logs');
+                    const res = await fetch('/api/status');
                     const data = await res.json();
-                    document.getElementById('logs').textContent = data.logs || 'ไม่มีข้อมูล Logs';
+                    updateUI(data);
                 } catch(e) {}
             }
 
-            setInterval(updateLogs, 1500);
-            updateLogs();
+            async function toggleLever() {
+                const btn = document.getElementById('toggleBtn');
+                btn.disabled = true;
+                btn.innerText = '⏳ กำลังส่งคำสั่ง...';
+                
+                try {
+                    const res = await fetch('/api/toggle-lever', { method: 'POST' });
+                    const data = await res.json();
+                    showMsg(data.message, !data.success);
+                    fetchStatus();
+                } catch(e) {
+                    showMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', true);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = '⚡ สับคันโยก (สลับสถานะ)';
+                }
+            }
+
+            async function overrideStatus(newStatus) {
+                try {
+                    const res = await fetch('/api/set-status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    const data = await res.json();
+                    showMsg(data.message, !data.success);
+                    fetchStatus();
+                } catch(e) {
+                    showMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', true);
+                }
+            }
+
+            async function sendHome() {
+                try {
+                    const res = await fetch('/api/go-home', { method: 'POST' });
+                    const data = await res.json();
+                    showMsg(data.message, !data.success);
+                } catch(e) {
+                    showMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', true);
+                }
+            }
+
+            // โหลดครั้งแรก + อัปเดตอัตโนมัติทุก 3 วินาที
+            fetchStatus();
+            setInterval(fetchStatus, 3000);
         </script>
     </body>
     </html>
     `);
 });
 
-app.listen(WEB_PORT, () => {
-    addLog(`🌍 Web Tester พร้อมทำงานที่ http://localhost:${WEB_PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Web Controller รันบน http://localhost:${PORT}`);
 });
