@@ -11,7 +11,6 @@ PIPE="/tmp/mcc_pipe_kaitom_cmd"
 rm -f "$PIPE"
 mkfifo "$PIPE"
 
-# ตรวจสอบและสร้างไฟล์สถานะเริ่มต้นถ้ายังไม่มี
 if [ ! -f "$STATUS_FILE" ]; then
   echo "open" > "$STATUS_FILE"
 fi
@@ -29,12 +28,10 @@ trigger_restart() {
 tail -f "$PIPE" | ./MinecraftClient Kaitom_4 - play.amorycraft.com 2>&1 | while IFS= read -r line; do
   echo "$line"
 
-  # ตรวจจับการหลุดการเชื่อมต่อ
   if [[ "$line" == *"Not connected to any server"* ]] || [[ "$line" == *"Failed to login to this server"* ]]; then
     trigger_restart
   fi
 
-  # ตรวจจับประกาศรีสตาร์ตเซิร์ฟเวอร์
   if ! echo "$line" | grep -qE "^<.*>|^\[.*\] [a-zA-Z0-9_]+:"; then
     if { echo "$line" | grep -q "รี" && echo "$line" | grep -q "สตาร์ท"; } || \
        echo "$line" | grep -q "ประจำวัน" || \
@@ -49,7 +46,6 @@ tail -f "$PIPE" | ./MinecraftClient Kaitom_4 - play.amorycraft.com 2>&1 | while 
       echo "==================================================" >&2
       echo "🚨 [ALERT $NOW] Kaitom_4 ตรวจพบประกาศรีเซิร์ฟ!" >&2
       
-      # ถ้าสถานะเดิมเปิดอยู่ ให้สับปิดทันทีก่อนเซิร์ฟดับ
       if [ "$CURRENT_STATUS" = "open" ]; then
         echo "🛑 สั่งสับคันโยก (ปิดระบบ) ก่อนเซิร์ฟดับ..." >&2
         echo "/useblock -2682 61 14542" > "$PIPE"
@@ -63,25 +59,25 @@ done &
 MCC_PID=$!
 
 # ==========================================
-# 🔑 2. ขั้นตอนล็อกอิน & เดินทาง
+# 🔑 2. ขั้นตอนล็อกอิน & เดินทาง (ปรับเวลารอให้พอดี)
 # ==========================================
-echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
-sleep 10
-echo "/dialog input pass 112233" > "$PIPE"
+echo "[LOGIN] กำลังรอเซิร์ฟเวอร์เชื่อมต่อและโหลดหน้า Dialog (16 วินาที)..." >&2
+sleep 16
 
+echo "/dialog input pass 112233" > "$PIPE"
 sleep 3
 echo "/dialog click 1" > "$PIPE"
 echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
 
-echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
-sleep 10
+echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (12 วินาที)..." >&2
+sleep 12
 echo "/useitem mainhand" > "$PIPE"
 
-sleep 1
+sleep 3
 echo "/inventory container click 10 Left" > "$PIPE"
 echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
 
-sleep 8
+sleep 10
 echo "/home home" > "$PIPE"
 echo "[READY] บอทประจำการที่จุด (-2682 61 14543) เรียบร้อย!" >&2
 
@@ -98,12 +94,10 @@ while true; do
   HOUR=$(date +%-H)
   MIN=$(date +%-M)
 
-  # รีเซ็ต Flag เที่ยงคืน
   if [ "$HOUR" -eq 0 ] && [ "$MIN" -eq 0 ]; then
     TRIGGERED_0540=false
   fi
 
-  # 🔴 05:40 น. -> สับปิดระบบอัตโนมัติ + บันทึก 'close'
   if [ "$HOUR" -eq 5 ] && [ "$MIN" -eq 40 ] && [ "$TRIGGERED_0540" = false ]; then
     NOW_TIME=$(date '+%H:%M:%S')
     CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
