@@ -2,116 +2,150 @@
 cd "$(dirname "$0")"
 chmod +x ./MinecraftClient
 
-LOG_FILE="$(dirname "$0")/server_restart_chat_logs.txt"
-PIPE="/tmp/mcc_pipe_lever_$$"
-LOCK_FILE="/tmp/mcc_lever_paused_$$"
+PM2_NAME="Lervy_Lever"
+STATUS_FILE="$(pwd)/lervy_status.txt"
+READY_FILE="$(pwd)/lervy_ready.txt"
+LOG_FILE="$(pwd)/server_restart_lervy_logs.txt"
+PIPE="/tmp/mcc_pipe_lervy_cmd"
 
-rm -f "$PIPE" "$LOCK_FILE"
+echo "offline" > "$READY_FILE"
+rm -f "$PIPE"
 mkfifo "$PIPE"
 
+if [ ! -f "$STATUS_FILE" ]; then
+  echo "open" > "$STATUS_FILE"
+fi
+
+cleanup() {
+  echo "🛑 [STOP] ปิดโปรเซส Lervy_Lever..." >&2
+  echo "offline" > "$READY_FILE"
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
+  pkill -9 -f "MinecraftClient.*Lervy_Lever" 2>/dev/null
+  rm -f "$PIPE"
+  exit 0
+}
+
+trap cleanup SIGTERM SIGINT EXIT
+
+trigger_restart() {
+  echo "offline" > "$READY_FILE"
+  rm -f "$PIPE"
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
+  echo "🚨 [FAIL-SAFE] หลุดการเชื่อมต่อ! สั่ง PM2 Restart '$PM2_NAME' ทันที..." >&2
+  pm2 restart "$PM2_NAME" --update-env
+  exit 1
+}
+
 # ==========================================
-# 👂 1. Background Reader: ดักฟังแชท + บันทึกลง .txt
+# 👂 1. Background Reader: ดักฟังแชท + รัน MCC
 # ==========================================
-./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" | while IFS= read -r LINE; do
-    echo "$LINE"
+tail -f "$PIPE" | ./MinecraftClient Lervy_Lever - play.amorycraft.com 2>&1 | while IFS= read -r line; do
+  echo "$line"
 
-    # กรองตรวจจับเฉพาะข้อความระบบ/ประกาศ (ไม่เอาแชทผู้เล่นทั่วไป)
-    if ! echo "$LINE" | grep -qE "^<.*>|^\[.*\] [a-zA-Z0-9_]+:"; then
-        
-        # ตรวจสอบคีย์เวิร์ด: ("รี" และ "สตาร์ท") หรือ ("ประจำวัน") หรือ ("Restart")
-        if { echo "$LINE" | grep -q "รี" && echo "$LINE" | grep -q "สตาร์ท"; } || \
-           echo "$LINE" | grep -q "ประจำวัน" || \
-           echo "$LINE" | grep -iq "restart"; then
-           
-            FULL_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-            NOW=$(date '+%H:%M:%S')
+  if [[ "$line" == *"Not connected to any server"* ]] || [[ "$line" == *"Failed to login to this server"* ]]; then
+    trigger_restart
+  fi
 
-            # 📝 บันทึกประโยคเต็ม + เวลาเครื่องจริง ลงไฟล์ .txt
-            echo "[$FULL_TIME] $LINE" >> "$LOG_FILE"
+  if ! echo "$line" | grep -qE "^<.*>|^\[.*\] [a-zA-Z0-9_]+:"; then
+    if { echo "$line" | grep -q "รี" && echo "$line" | grep -q "สตาร์ท"; } || \
+       echo "$line" | grep -q "ประจำวัน" || \
+       echo "$line" | grep -iq "restart"; then
 
-            echo "==================================================" >&2
-            echo "🚨 [ALERT $NOW] ตรวจพบประกาศรีสตาร์ตเซิร์ฟเวอร์!" >&2
-            echo "📝 บันทึกข้อความลงไฟล์: $LOG_FILE เรียบร้อย" >&2
-            echo "🛑 สั่งระงับการสับคันโยกทันที และรอเซิร์ฟเวอร์รีสตาร์ต..." >&2
-            echo "==================================================" >&2
-            
-            # สร้าง Lock File เพื่อสั่งเบรก Cron Loop
-            touch "$LOCK_FILE"
-        fi
+      FULL_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+      NOW=$(date '+%H:%M:%S')
+
+      echo "[$FULL_TIME] $line" >> "$LOG_FILE"
+      echo "==================================================" >&2
+      echo "🚨 [ALERT $NOW] Lervy_Lever ตรวจพบประกาศรีเซิร์ฟ!" >&2
+      echo "🛑 สั่งระงับลูปการสับคันโยกทันที..." >&2
+      echo "close" > "$STATUS_FILE"
+      echo "==================================================" >&2
     fi
+  fi
 done &
 
 MCC_PID=$!
-exec 3>"$PIPE"
 
 # ==========================================
-# 🔑 2. กระบวนการล็อกอิน & ประจำจุด
+# 🔑 2. ล็อกอิน & เดินทาง
 # ==========================================
-sleep 10
-echo "/dialog input pass 112233" >&3
+echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
+sleep 16
+echo "/dialog input pass 112233" > "$PIPE"
 sleep 3
-echo "/dialog click 1" >&3
+echo "/dialog click 1" > "$PIPE"
+echo "[LOGIN] ปลดล็อก Dialog เรียบร้อย" >&2
+
+echo "[LOBBY] กำลังรอวาร์ปเข้า Spawn (12 วินาที)..." >&2
+sleep 12
+echo "/useitem mainhand" > "$PIPE"
+sleep 3
+echo "/inventory container click 10 Left" > "$PIPE"
+echo "[LOBBY] เลือก Survival เรียบร้อย..." >&2
+
 sleep 10
-echo "/useitem mainhand" >&3
-sleep 1
-echo "/inventory container click 10 Left" >&3
-sleep 8
-echo "/home home" >&3
-echo "[READY] Lervy_Lever ประจำการที่จุดคันโยกเรียบร้อย!" >&2
+echo "/home home" > "$PIPE"
+sleep 2
+
+echo "online" > "$READY_FILE"
+echo "[READY] Lervy_Lever ประจำการที่จุดคันโยกและ ONLINE เรียบร้อย!" >&2
 
 # ==========================================
-# ⏰ 3. Cron Loop สำหรับสับคันโยก (มีตัวเช็กสถานะรีสตาร์ต)
+# ⏰ 3. ลูป Cron สับคันโยก (พิกัด: 10383 64.00 -5064.51)
 # ==========================================
 LAST_TRIGGER_MIN=-1
+TRIGGERED_0540=false
 
 while true; do
-    # ตรวจสอบว่าโปรเซส MCC ยังมีชีวิตอยู่หรือไม่
-    if ! kill -0 $MCC_PID 2>/dev/null; then
-        echo "[INFO] MCC หลุดการเชื่อมต่อ จบสคริปต์เพื่อให้ PM2 ต่อใหม่..." >&2
-        break
-    fi
+  if ! kill -0 $MCC_PID 2>/dev/null; then
+    echo "offline" > "$READY_FILE"
+    break
+  fi
 
-    # 🛑 หากตรวจพบประกาศรีสตาร์ต ให้หยุดทำงานการสับคันโยกทั้งหมด
-    if [ -f "$LOCK_FILE" ]; then
-        sleep 2
-        continue
-    fi
+  HOUR=$(date +%-H)
+  MIN=$(date +%-M)
 
-    HOUR=$(date +%-H)
-    MIN=$(date +%-M)
+  # รีเซ็ต Flag เที่ยงคืน
+  if [ "$HOUR" -eq 0 ] && [ "$MIN" -eq 0 ]; then
+    TRIGGERED_0540=false
+  fi
 
-    # ⏸️ ช่วงพักระบบเดิม (05:50 - 07:30 น.)
-    if { [ "$HOUR" -eq 5 ] && [ "$MIN" -ge 50 ]; } || [ "$HOUR" -eq 6 ] || { [ "$HOUR" -eq 7 ] && [ "$MIN" -le 30 ]; }; then
-        sleep 5
-        continue
-    fi
+  # 🛑 05:40 น. -> สั่งพักระบบ (close) และไม่ทำลูปต่อ
+  if [ "$HOUR" -eq 5 ] && [ "$MIN" -eq 40 ] && [ "$TRIGGERED_0540" = false ]; then
+    NOW_TIME=$(date '+%H:%M:%S')
+    echo "🛑 [AUTO-PAUSE $NOW_TIME] ถึงเวลา 05:40 น. สั่งหยุดลูปการสับคันโยก..." >&2
+    echo "close" > "$STATUS_FILE"
+    TRIGGERED_0540=true
+  fi
 
-    # 🎯 เช็กรอบสับคันโยก (MIN % 6 == 3)
+  CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
+
+  # 🎯 ทำงานเฉพาะเมื่อสถานะเป็น "open"
+  if [ "$CURRENT_STATUS" = "open" ]; then
     if [ $(( MIN % 6 )) -eq 3 ] && [ "$MIN" -ne "$LAST_TRIGGER_MIN" ]; then
-        LAST_TRIGGER_MIN=$MIN
-        NOW_TIME=$(date '+%H:%M:%S')
+      LAST_TRIGGER_MIN=$MIN
+      NOW_TIME=$(date '+%H:%M:%S')
 
-        echo "==================================================" >&2
-        echo "⏰ [CRON $NOW_TIME] ถึงรอบทำงาน! สั่งสับปิดคันโยก (OFF)..." >&2
-        echo "/useblock 10383 64.00 -5064.51" >&3
-        
-        echo "⏱️ [CRON $NOW_TIME] รอ 5 วินาที..." >&2
-        sleep 5
-        
-        NOW_TIME=$(date '+%H:%M:%S')
-        echo "🟢 [CRON $NOW_TIME] จบเวลาทำงาน: สั่งสับเปิดระบบ (ON)..." >&2
-        echo "/useblock 10383 64.00 -5064.51" >&3
-        echo "✅ [CRON $NOW_TIME] ไซเคิลรอบนี้เสร็จสมบูรณ์!" >&2
-        echo "==================================================" >&2
+      echo "==================================================" >&2
+      echo "⏰ [CRON $NOW_TIME] ถึงรอบทำงาน! สั่งสับปิดคันโยก (OFF)..." >&2
+      echo "/useblock 10383 64.00 -5064.51" > "$PIPE"
+      
+      echo "⏱️ [CRON $NOW_TIME] รอ 5 วินาที..." >&2
+      sleep 5
+      
+      NOW_TIME=$(date '+%H:%M:%S')
+      echo "🟢 [CRON $NOW_TIME] จบเวลาทำงาน: สั่งสับเปิดระบบ (ON)..." >&2
+      echo "/useblock 10383 64.00 -5064.51" > "$PIPE"
+      echo "✅ [CRON $NOW_TIME] ไซเคิลรอบนี้เสร็จสมบูรณ์!" >&2
+      echo "==================================================" >&2
     fi
+  fi
 
-    sleep 1
+  sleep 1
 done
 
-# ==========================================
-# 🧹 เคลียร์ท่อและคืนค่าให้ PM2 ทำงานต่อ
-# ==========================================
-kill $MCC_PID 2>/dev/null
-exec 3>&-
-rm -f "$PIPE" "$LOCK_FILE"
-exit 1
+cleanup
