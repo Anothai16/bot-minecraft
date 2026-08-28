@@ -15,7 +15,7 @@ const K67_READY_FILE = path.join(__dirname, 'k666', 'kaitom67_ready.txt');
 const LERVY_PIPE = '/tmp/mcc_pipe_lervy_cmd';
 const LERVY_STATUS_FILE = path.join(__dirname, 'lervy_status.txt');
 const LERVY_READY_FILE = path.join(__dirname, 'lervy_ready.txt');
-const K666_READY_FILE = path.join(__dirname, 'k666', 'k666_ready.txt'); // 👈 ชี้ตรงเข้าโฟลเดอร์ k666
+const K666_READY_FILE = path.join(__dirname, 'k666', 'k666_ready.txt');
 
 app.use(express.json());
 
@@ -91,14 +91,16 @@ app.post('/api/k4/home', (req, res) => {
     res.json({ success: sendCommand(K4_PIPE, '/home home') });
 });
 
-// 📌 Lervy Actions
-app.post('/api/lervy/toggle-once', (req, res) => {
-    if (!fs.existsSync(LERVY_PIPE)) return res.status(500).json({ success: false, message: 'บอท Lervy_Lever ไม่พร้อม' });
-    sendCommand(LERVY_PIPE, '/useblock 10383 64.00 -5064.51');
-    setTimeout(() => {
-        sendCommand(LERVY_PIPE, '/useblock 10383 64.00 -5064.51');
-    }, 5000);
-    res.json({ success: true, message: 'สับคันโยก (สับลง-รอ 5 วิ-สับขึ้น) เรียบร้อย' });
+// 📌 Lervy Actions (สลับเปิด-ปิดระบบ Auto Loop)
+app.post('/api/lervy/toggle-loop', (req, res) => {
+    const current = readFile(LERVY_STATUS_FILE, 'open');
+    const newStatus = current === 'open' ? 'close' : 'open';
+    writeFile(LERVY_STATUS_FILE, newStatus);
+    res.json({
+        success: true,
+        newStatus: newStatus,
+        message: newStatus === 'open' ? 'เปิดระบบ Auto Loop แล้ว (จะสับตามรอบเวลาอัตโนมัติ)' : 'ปิดระบบ Auto Loop แล้ว (หยุดการสับคันโยก)'
+    });
 });
 
 app.post('/api/lervy/set-status', (req, res) => {
@@ -137,11 +139,15 @@ app.get('/', (req, res) => {
             .color-open, .color-online { color: #34d399; }
             .color-close, .color-offline { color: #f87171; }
             
-            .btn { width: 100%; padding: 11px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.15s; margin-bottom: 8px; }
+            .btn { width: 100%; padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.15s; margin-bottom: 8px; }
             .btn-blue { background: #0284c7; color: white; }
             .btn-blue:hover { background: #0369a1; }
-            .btn-green { background: #059669; color: white; }
-            .btn-green:hover { background: #047857; }
+            
+            .btn-lervy-open { background: #059669; color: white; }
+            .btn-lervy-open:hover { background: #047857; }
+            .btn-lervy-close { background: #dc2626; color: white; }
+            .btn-lervy-close:hover { background: #b91c1c; }
+            
             .btn-dark { background: #1f2937; color: #cbd5e1; border: 1px solid #374151; font-size: 12px; }
             .btn-dark:hover { background: #374151; }
             
@@ -194,7 +200,7 @@ app.get('/', (req, res) => {
                 <div class="sub">พิกัดคันโยก: 10383 64.00 -5064.51</div>
                 
                 <div class="status-main">
-                    <div class="status-label">สถานะ Auto Loop (MIN % 6 == 3)</div>
+                    <div class="status-label">สถานะระบบ Auto Loop (MIN % 6 == 3)</div>
                     <div id="lervyStatus" class="status-val color-open">...</div>
                 </div>
 
@@ -209,14 +215,15 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <button class="btn btn-green" onclick="action('/api/lervy/toggle-once')">⚡ สับ 1 ไซเคิล (สับลง-รอ 5 วิ-สับขึ้น)</button>
+                <!-- ปุ่มสลับเปิด/ปิดลูปหลัก -->
+                <button id="lervyToggleBtn" class="btn btn-lervy-close" onclick="action('/api/lervy/toggle-loop')">⏸️ ปิดระบบ Auto Loop (CLOSE)</button>
                 <button class="btn btn-dark" onclick="action('/api/lervy/home')">📍 วาร์ปไปจุดประจำการ (/home home)</button>
                 
                 <div class="edit-box">
-                    <div class="edit-title">🕹️ สวิตช์ควบคุมระบบ Auto Loop:</div>
+                    <div class="edit-title">🛠️ สวิตช์ตั้งค่าสถานะตรง:</div>
                     <div class="edit-grid">
-                        <button class="btn-state btn-state-open" onclick="setStatus('/api/lervy/set-status', 'open')">🟢 เปิด Loop Auto</button>
-                        <button class="btn-state btn-state-close" onclick="setStatus('/api/lervy/set-status', 'close')">🔴 ปิด Loop Auto</button>
+                        <button class="btn-state btn-state-open" onclick="setStatus('/api/lervy/set-status', 'open')">🟢 บังคับ OPEN</button>
+                        <button class="btn-state btn-state-close" onclick="setStatus('/api/lervy/set-status', 'close')">🔴 บังคับ CLOSE</button>
                     </div>
                 </div>
             </div>
@@ -239,8 +246,18 @@ app.get('/', (req, res) => {
 
                 // Lervy
                 const lervyStat = document.getElementById('lervyStatus');
-                lervyStat.innerText = data.lervy.status === 'open' ? 'RUNNING (OPEN)' : 'PAUSED (CLOSE)';
-                lervyStat.className = 'status-val ' + (data.lervy.status === 'open' ? 'color-open' : 'color-close');
+                const isLervyOpen = data.lervy.status === 'open';
+                lervyStat.innerText = isLervyOpen ? '🟢 RUNNING (OPEN)' : '🔴 PAUSED (CLOSE)';
+                lervyStat.className = 'status-val ' + (isLervyOpen ? 'color-open' : 'color-close');
+
+                const lervyBtn = document.getElementById('lervyToggleBtn');
+                if (isLervyOpen) {
+                    lervyBtn.innerText = '⏸️ กดเพื่อปิดระบบ (CLOSE)';
+                    lervyBtn.className = 'btn btn-lervy-close';
+                } else {
+                    lervyBtn.innerText = '▶️ กดเพื่อเปิดระบบลูป (OPEN)';
+                    lervyBtn.className = 'btn btn-lervy-open';
+                }
 
                 const lervyOn = document.getElementById('lervyOnline');
                 lervyOn.innerText = data.lervy.online ? '🟢 ONLINE' : '🔴 OFFLINE';
