@@ -45,9 +45,12 @@ trigger_restart() {
 }
 
 # ==========================================
-# 👂 1. Background Reader: รัน MCC ผ่านท่อ
+# 👂 1. Background Reader: ดักฟังแชท + รัน MCC
 # ==========================================
-./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
+coproc MCC_PROC { ./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1; }
+MCC_PID=$MCC_PROC_PID
+
+while IFS= read -r -u "${MCC_PROC[0]}" line; do
   echo "$line"
 
   if [[ "$line" == *"Not connected to any server"* ]] || \
@@ -76,8 +79,6 @@ trigger_restart() {
   fi
 done &
 
-MCC_PID=$!
-
 # ==========================================
 # 🔑 2. ล็อกอิน & เดินทาง
 # ==========================================
@@ -99,7 +100,6 @@ sleep 10
 echo "/home home" >&3
 sleep 2
 
-# บันทึก timestamp เริ่มต้น
 date +%s > "$READY_FILE"
 echo "[READY] Lervy_Lever ประจำการที่จุดคันโยกและ ONLINE เรียบร้อย!" >&2
 
@@ -118,7 +118,7 @@ while true; do
 
   NOW_SEC=$(date +%s)
 
-  # 💓 อัปเดต Heartbeat Timestamp ทุก 10 วินาที
+  # 💓 อัปเดต Heartbeat ให้ Dashboard ทุก 10 วินาที
   if [ $(( NOW_SEC - LAST_HEARTBEAT )) -ge 10 ]; then
     echo "$NOW_SEC" > "$READY_FILE"
     LAST_HEARTBEAT=$NOW_SEC
@@ -141,6 +141,7 @@ while true; do
 
   CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
 
+  # 🎯 ทำงานเฉพาะเมื่อสถานะเป็น "open"
   if [ "$CURRENT_STATUS" = "open" ]; then
     if [ $(( MIN % 6 )) -eq 3 ] && [ "$MIN" -ne "$LAST_TRIGGER_MIN" ]; then
       LAST_TRIGGER_MIN=$MIN
