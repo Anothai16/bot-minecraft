@@ -73,25 +73,6 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// 🔄 API สั่ง Restart PM2
-app.post('/api/pm2-restart', (req, res) => {
-    const { name } = req.body;
-    const allowedProcesses = ['Kaitom_4lever', 'Kaitom_67', 'mcc-lever', 'bot-k666'];
-    
-    if (!allowedProcesses.includes(name)) {
-        return res.status(400).json({ success: false, message: 'ชื่อโปรเซสไม่ถูกต้อง' });
-    }
-
-    exec(`pm2 restart ${name} --update-env`, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`[PM2 Error]: ${stderr}`);
-            return res.status(500).json({ success: false, message: `Restart ${name} ล้มเหลว` });
-        }
-        console.log(`[PM2 Restart]: ${name}`);
-        res.json({ success: true, message: `สั่ง Restart ${name} เรียบร้อยแล้ว` });
-    });
-});
-
 // 📌 Kaitom Actions
 app.post('/api/k4/toggle', (req, res) => {
     if (!fs.existsSync(K4_PIPE)) return res.status(500).json({ success: false, message: 'บอท Kaitom_4 ไม่พร้อม' });
@@ -110,7 +91,7 @@ app.post('/api/k4/home', (req, res) => {
     res.json({ success: sendCommand(K4_PIPE, '/home home') });
 });
 
-// 📌 Lervy Actions
+// 📌 Lervy Actions (สลับเปิด-ปิดระบบ Auto Loop)
 app.post('/api/lervy/toggle-loop', (req, res) => {
     const current = readFile(LERVY_STATUS_FILE, 'open');
     const newStatus = current === 'open' ? 'close' : 'open';
@@ -118,7 +99,7 @@ app.post('/api/lervy/toggle-loop', (req, res) => {
     res.json({
         success: true,
         newStatus: newStatus,
-        message: newStatus === 'open' ? 'เปิดระบบ Auto Loop แล้ว' : 'ปิดระบบ Auto Loop แล้ว'
+        message: newStatus === 'open' ? 'เปิดระบบ Auto Loop แล้ว (จะสับตามรอบเวลาอัตโนมัติ)' : 'ปิดระบบ Auto Loop แล้ว (หยุดการสับคันโยก)'
     });
 });
 
@@ -169,18 +150,13 @@ app.get('/', (req, res) => {
             
             .btn-dark { background: #1f2937; color: #cbd5e1; border: 1px solid #374151; font-size: 12px; }
             .btn-dark:hover { background: #374151; }
-
-            .section-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid #1f2937; text-align: left; }
-            .section-title { font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 6px; }
-            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
             
+            .edit-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid #1f2937; text-align: left; }
+            .edit-title { font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 6px; }
+            .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
             .btn-state { padding: 8px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #374151; cursor: pointer; background: #1f2937; color: #e2e8f0; }
             .btn-state-open:hover { background: #065f46; border-color: #059669; }
             .btn-state-close:hover { background: #7f1d1d; border-color: #dc2626; }
-
-            .btn-restart { padding: 8px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #475569; cursor: pointer; background: #1e293b; color: #f59e0b; }
-            .btn-restart:hover { background: #334155; border-color: #f59e0b; }
-            .btn-restart:active { transform: scale(0.98); }
         </style>
     </head>
     <body>
@@ -209,17 +185,9 @@ app.get('/', (req, res) => {
                 <button class="btn btn-blue" onclick="action('/api/k4/toggle')">⚡ สับคันโยก (สลับสถานะ)</button>
                 <button class="btn btn-dark" onclick="action('/api/k4/home')">📍 วาร์ปไปจุดประจำการ (/home home)</button>
                 
-                <div class="section-box">
-                    <div class="section-title">🔄 สั่ง PM2 Restart บอท:</div>
-                    <div class="grid-2">
-                        <button class="btn-restart" onclick="pm2Restart('Kaitom_4lever')">🔄 Restart K4</button>
-                        <button class="btn-restart" onclick="pm2Restart('Kaitom_67')">🔄 Restart K67</button>
-                    </div>
-                </div>
-
-                <div class="section-box">
-                    <div class="section-title">🛠️ บังคับแก้สถานะในไฟล์:</div>
-                    <div class="grid-2">
+                <div class="edit-box">
+                    <div class="edit-title">🛠️ บังคับแก้สถานะในไฟล์:</div>
+                    <div class="edit-grid">
                         <button class="btn-state btn-state-open" onclick="setStatus('/api/k4/set-status', 'open')">🟢 OPEN</button>
                         <button class="btn-state btn-state-close" onclick="setStatus('/api/k4/set-status', 'close')">🔴 CLOSE</button>
                     </div>
@@ -247,20 +215,13 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
+                <!-- ปุ่มสลับเปิด/ปิดลูปหลัก -->
                 <button id="lervyToggleBtn" class="btn btn-lervy-close" onclick="action('/api/lervy/toggle-loop')">⏸️ ปิดระบบ Auto Loop (CLOSE)</button>
                 <button class="btn btn-dark" onclick="action('/api/lervy/home')">📍 วาร์ปไปจุดประจำการ (/home home)</button>
                 
-                <div class="section-box">
-                    <div class="section-title">🔄 สั่ง PM2 Restart บอท:</div>
-                    <div class="grid-2">
-                        <button class="btn-restart" onclick="pm2Restart('mcc-lever')">🔄 Restart Lervy</button>
-                        <button class="btn-restart" onclick="pm2Restart('bot-k666')">🔄 Restart K666</button>
-                    </div>
-                </div>
-
-                <div class="section-box">
-                    <div class="section-title">🛠️ สวิตช์ตั้งค่าสถานะตรง:</div>
-                    <div class="grid-2">
+                <div class="edit-box">
+                    <div class="edit-title">🛠️ สวิตช์ตั้งค่าสถานะตรง:</div>
+                    <div class="edit-grid">
                         <button class="btn-state btn-state-open" onclick="setStatus('/api/lervy/set-status', 'open')">🟢 บังคับ OPEN</button>
                         <button class="btn-state btn-state-close" onclick="setStatus('/api/lervy/set-status', 'close')">🔴 บังคับ CLOSE</button>
                     </div>
@@ -328,17 +289,6 @@ app.get('/', (req, res) => {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status })
-                    });
-                    fetchStatus();
-                } catch(e) {}
-            }
-
-            async function pm2Restart(name) {
-                try {
-                    await fetch('/api/pm2-restart', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name })
                     });
                     fetchStatus();
                 } catch(e) {}
