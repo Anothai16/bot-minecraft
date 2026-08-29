@@ -22,9 +22,6 @@ cleanup() {
   echo "🛑 [STOP] ปิดโปรเซส Lervy_Lever..." >&2
   echo "offline" > "$READY_FILE"
   exec 3>&-
-  if [ -n "$MCC_PID" ]; then
-    kill -9 "$MCC_PID" 2>/dev/null
-  fi
   pkill -9 -f "MinecraftClient.*Lervy_Lever" 2>/dev/null
   rm -f "$PIPE"
   exit 0
@@ -36,18 +33,15 @@ trigger_restart() {
   echo "offline" > "$READY_FILE"
   exec 3>&-
   rm -f "$PIPE"
-  if [ -n "$MCC_PID" ]; then
-    kill -9 "$MCC_PID" 2>/dev/null
-  fi
+  pkill -9 -f "MinecraftClient.*Lervy_Lever" 2>/dev/null
   echo "🚨 [FAIL-SAFE] หลุดการเชื่อมต่อ! สั่ง PM2 Restart '$PM2_NAME' ทันที..." >&2
   pm2 restart "$PM2_NAME" --update-env
   exit 1
 }
 
 # ==========================================
-# 👂 1. รัน MCC + ดักฟัง Log (แบบเสถียร ไม่ใช้ coproc)
+# 👂 1. Background Reader: ดักฟัง Log
 # ==========================================
-# รัน MCC ตรงๆ และเก็บ PID ตัวจริง 100%
 ./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
@@ -87,7 +81,7 @@ sleep 3
 echo "/dialog click 1" >&3
 echo "[LOGIN] ปลดล็อก Dialog เรียบร้อย" >&2
 
-echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (12 วินาที)..." >&2
+echo "[LOBBY] กำลังรอวาร์ปเข้า Spawn (12 วินาที)..." >&2
 sleep 12
 echo "/useitem mainhand" >&3
 sleep 3
@@ -109,7 +103,6 @@ TRIGGERED_0540=false
 LAST_HEARTBEAT=0
 
 while true; do
-  # เช็กการมีชีวิตอยู่ของ MinecraftClient โดยใช้ pgrep เจาะจงชื่อบอท ป้องกันปัญหา PID หลอก
   if ! pgrep -fa "MinecraftClient.*Lervy_Lever" >/dev/null 2>&1; then
     echo "offline" > "$READY_FILE"
     echo "🚨 [EXIT] ตรวจไม่พบโปรเซส MinecraftClient ออกจากสคริปต์..." >&2
