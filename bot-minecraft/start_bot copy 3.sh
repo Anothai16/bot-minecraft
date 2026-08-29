@@ -45,9 +45,8 @@ trigger_restart() {
 }
 
 # ==========================================
-# 👂 1. รัน MCC + ดักฟัง Log (แบบเสถียร ไม่ใช้ coproc)
+# 👂 1. Background Reader: รัน MCC ผ่านท่อ
 # ==========================================
-# รัน MCC ตรงๆ และเก็บ PID ตัวจริง 100%
 ./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
@@ -77,6 +76,8 @@ trigger_restart() {
   fi
 done &
 
+MCC_PID=$!
+
 # ==========================================
 # 🔑 2. ล็อกอิน & เดินทาง
 # ==========================================
@@ -98,6 +99,7 @@ sleep 10
 echo "/home home" >&3
 sleep 2
 
+# บันทึก timestamp เริ่มต้น
 date +%s > "$READY_FILE"
 echo "[READY] Lervy_Lever ประจำการที่จุดคันโยกและ ONLINE เรียบร้อย!" >&2
 
@@ -109,16 +111,14 @@ TRIGGERED_0540=false
 LAST_HEARTBEAT=0
 
 while true; do
-  # เช็กการมีชีวิตอยู่ของ MinecraftClient โดยใช้ pgrep เจาะจงชื่อบอท ป้องกันปัญหา PID หลอก
-  if ! pgrep -fa "MinecraftClient.*Lervy_Lever" >/dev/null 2>&1; then
+  if ! kill -0 $MCC_PID 2>/dev/null; then
     echo "offline" > "$READY_FILE"
-    echo "🚨 [EXIT] ตรวจไม่พบโปรเซส MinecraftClient ออกจากสคริปต์..." >&2
     break
   fi
 
   NOW_SEC=$(date +%s)
 
-  # 💓 อัปเดต Heartbeat ให้ Dashboard ทุก 10 วินาที
+  # 💓 อัปเดต Heartbeat Timestamp ทุก 10 วินาที
   if [ $(( NOW_SEC - LAST_HEARTBEAT )) -ge 10 ]; then
     echo "$NOW_SEC" > "$READY_FILE"
     LAST_HEARTBEAT=$NOW_SEC
@@ -141,7 +141,6 @@ while true; do
 
   CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
 
-  # 🎯 ทำงานเฉพาะเมื่อสถานะเป็น "open"
   if [ "$CURRENT_STATUS" = "open" ]; then
     if [ $(( MIN % 6 )) -eq 3 ] && [ "$MIN" -ne "$LAST_TRIGGER_MIN" ]; then
       LAST_TRIGGER_MIN=$MIN
