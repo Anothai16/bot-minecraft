@@ -43,6 +43,7 @@ function sendCommand(pipePath, cmd) {
     return false;
 }
 
+// 💓 เช็กสถานะออนไลน์ผ่าน Process + Heartbeat Timestamp
 function checkBotInWorld(botName, readyFilePath) {
     return new Promise((resolve) => {
         exec(`pgrep -fa 'MinecraftClient.*${botName}'`, (err, stdout) => {
@@ -50,13 +51,31 @@ function checkBotInWorld(botName, readyFilePath) {
                 resolve(false);
             } else {
                 const status = readFile(readyFilePath, 'offline');
-                resolve(status === 'online');
+                if (status === 'offline') {
+                    resolve(false);
+                    return;
+                }
+                
+                // ถ้ารองรับ Heartbeat (เป็นตัวเลข Timestamp วินาที)
+                const lastTimestamp = parseInt(status, 10);
+                if (!isNaN(lastTimestamp)) {
+                    const currentSec = Math.floor(Date.now() / 1000);
+                    // ถ้า Timestamp ขาดการส่งเกิน 25 วินาที = บอทหลุด/ค้าง ให้ตีเป็น OFFLINE
+                    if (currentSec - lastTimestamp <= 25) {
+                        resolve(true);
+                    } else {
+                        resolve(false);
+                    }
+                } else {
+                    // แบบเดิม (คำว่า 'online')
+                    resolve(status === 'online');
+                }
             }
         });
     });
 }
 
-// 📌 API ดึงสถานะรวม
+// 📌 API ดึงสถานะรวมของบอททุกตัว
 app.get('/api/status', async (req, res) => {
     const [k4Online, k67Online, lervyOnline, k666Online] = await Promise.all([
         checkBotInWorld('Kaitom_4', K4_READY_FILE),
@@ -73,7 +92,7 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// 🔄 API สั่ง Restart PM2
+// 🔄 API สั่ง PM2 Restart
 app.post('/api/pm2-restart', (req, res) => {
     const { name } = req.body;
     const allowedProcesses = ['Kaitom_4lever', 'Kaitom_67', 'mcc-lever', 'bot-k666'];

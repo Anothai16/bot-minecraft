@@ -8,19 +8,20 @@ READY_FILE="$(pwd)/kaitom4_ready.txt"
 LOG_FILE="$(pwd)/server_restart_kaitom4_logs.txt"
 PIPE="/tmp/mcc_pipe_kaitom_cmd"
 
-# เริ่มต้นให้สถานะเป็น offline ทันที (ยังไม่ถึงจุดยืน)
 echo "offline" > "$READY_FILE"
 
 rm -f "$PIPE"
 mkfifo "$PIPE"
+exec 3<>"$PIPE"
 
 if [ ! -f "$STATUS_FILE" ]; then
   echo "open" > "$STATUS_FILE"
 fi
 
 cleanup() {
-  echo "🛑 [STOP] ปิดโปรเซส..." >&2
+  echo "🛑 [STOP] ปิดโปรเซส Kaitom_4..." >&2
   echo "offline" > "$READY_FILE"
+  exec 3>&-
   if [ -n "$MCC_PID" ]; then
     kill -9 "$MCC_PID" 2>/dev/null
   fi
@@ -33,6 +34,7 @@ trap cleanup SIGTERM SIGINT EXIT
 
 trigger_restart() {
   echo "offline" > "$READY_FILE"
+  exec 3>&-
   rm -f "$PIPE"
   if [ -n "$MCC_PID" ]; then
     kill -9 "$MCC_PID" 2>/dev/null
@@ -42,13 +44,14 @@ trigger_restart() {
   exit 1
 }
 
-# ==========================================
-# 👂 1. Background Reader: ดักฟังแชท + รัน MCC
-# ==========================================
-tail -f "$PIPE" | ./MinecraftClient Kaitom_4 - play.amorycraft.com 2>&1 | while IFS= read -r line; do
+./MinecraftClient Kaitom_4 - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
-  if [[ "$line" == *"Not connected to any server"* ]] || [[ "$line" == *"Failed to login to this server"* ]]; then
+  if [[ "$line" == *"Not connected to any server"* ]] || \
+     [[ "$line" == *"Failed to login to this server"* ]] || \
+     [[ "$line" == *"Connection lost"* ]] || \
+     [[ "$line" == *"Server is full"* ]] || \
+     [[ "$line" == *"Kicked by server"* ]]; then
     trigger_restart
   fi
 
@@ -68,7 +71,7 @@ tail -f "$PIPE" | ./MinecraftClient Kaitom_4 - play.amorycraft.com 2>&1 | while 
       
       if [ "$CURRENT_STATUS" = "open" ]; then
         echo "🛑 สั่งสับคันโยก (ปิดระบบ) ก่อนเซิร์ฟดับ..." >&2
-        echo "/useblock -2682 61 14542" > "$PIPE"
+        echo "/useblock -2682 61 14542" >&3
         echo "close" > "$STATUS_FILE"
       fi
       echo "==================================================" >&2
@@ -78,42 +81,42 @@ done &
 
 MCC_PID=$!
 
-# ==========================================
-# 🔑 2. ขั้นตอนล็อกอิน & เดินทาง
-# ==========================================
-echo "[LOGIN] กำลังรอเซิร์ฟเวอร์เชื่อมต่อและโหลดหน้า Dialog (16 วินาที)..." >&2
+echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
 sleep 16
-
-echo "/dialog input pass 112233" > "$PIPE"
+echo "/dialog input pass 112233" >&3
 sleep 3
-echo "/dialog click 1" > "$PIPE"
+echo "/dialog click 1" >&3
 echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
 
 echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (12 วินาที)..." >&2
 sleep 12
-echo "/useitem mainhand" > "$PIPE"
-
+echo "/useitem mainhand" >&3
 sleep 3
-echo "/inventory container click 10 Left" > "$PIPE"
+echo "/inventory container click 10 Left" >&3
 echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
 
 sleep 10
-echo "/home home" > "$PIPE"
+echo "/home home" >&3
 sleep 2
 
-# ✅ ถึงจุดนี้แปลว่าผ่านขั้นตอนเลือกโหมดและวาร์ปมายืนประจำจุดสำเร็จแล้ว
-echo "online" > "$READY_FILE"
+date +%s > "$READY_FILE"
 echo "[READY] บอทประจำการที่จุด (-2682 61 14543) และสถานะเป็น ONLINE เรียบร้อย!" >&2
 
-# ==========================================
-# ⏰ 3. ลูปตรวจเช็กเวลาสับปิดอัตโนมัติ (05:40 น.)
-# ==========================================
 TRIGGERED_0540=false
+LAST_HEARTBEAT=0
 
 while true; do
   if ! kill -0 $MCC_PID 2>/dev/null; then
     echo "offline" > "$READY_FILE"
     break
+  fi
+
+  NOW_SEC=$(date +%s)
+
+  # 💓 อัปเดต Heartbeat Timestamp
+  if [ $(( NOW_SEC - LAST_HEARTBEAT )) -ge 10 ]; then
+    echo "$NOW_SEC" > "$READY_FILE"
+    LAST_HEARTBEAT=$NOW_SEC
   fi
 
   HOUR=$(date +%-H)
@@ -131,7 +134,7 @@ while true; do
     
     if [ "$CURRENT_STATUS" = "open" ]; then
       echo "🛑 สถานะเป็น 'open' -> สั่งสับคันโยก (ปิดระบบ) ทันที!" >&2
-      echo "/useblock -2682 61 14542" > "$PIPE"
+      echo "/useblock -2682 61 14542" >&3
     else
       echo "ℹ️ สถานะเป็น '$CURRENT_STATUS' อยู่แล้ว ข้ามการสับคันโยก" >&2
     fi
@@ -140,7 +143,7 @@ while true; do
     TRIGGERED_0540=true
   fi
 
-  sleep 5
+  sleep 1
 done
 
 cleanup

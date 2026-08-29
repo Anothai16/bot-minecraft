@@ -2,15 +2,17 @@
 cd "$(dirname "$0")"
 chmod +x ./MinecraftClient
 
-PM2_NAME="Lervy_Lever"
+PM2_NAME="mcc-lever"
 STATUS_FILE="$(pwd)/lervy_status.txt"
 READY_FILE="$(pwd)/lervy_ready.txt"
 LOG_FILE="$(pwd)/server_restart_lervy_logs.txt"
 PIPE="/tmp/mcc_pipe_lervy_cmd"
 
 echo "offline" > "$READY_FILE"
+
 rm -f "$PIPE"
 mkfifo "$PIPE"
+exec 3<>"$PIPE"
 
 if [ ! -f "$STATUS_FILE" ]; then
   echo "open" > "$STATUS_FILE"
@@ -19,6 +21,7 @@ fi
 cleanup() {
   echo "🛑 [STOP] ปิดโปรเซส Lervy_Lever..." >&2
   echo "offline" > "$READY_FILE"
+  exec 3>&-
   if [ -n "$MCC_PID" ]; then
     kill -9 "$MCC_PID" 2>/dev/null
   fi
@@ -31,6 +34,7 @@ trap cleanup SIGTERM SIGINT EXIT
 
 trigger_restart() {
   echo "offline" > "$READY_FILE"
+  exec 3>&-
   rm -f "$PIPE"
   if [ -n "$MCC_PID" ]; then
     kill -9 "$MCC_PID" 2>/dev/null
@@ -41,12 +45,16 @@ trigger_restart() {
 }
 
 # ==========================================
-# 👂 1. Background Reader: ดักฟังแชท + รัน MCC
+# 👂 1. Background Reader: รัน MCC ผ่านท่อ
 # ==========================================
-tail -f "$PIPE" | ./MinecraftClient Lervy_Lever - play.amorycraft.com 2>&1 | while IFS= read -r line; do
+./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
-  if [[ "$line" == *"Not connected to any server"* ]] || [[ "$line" == *"Failed to login to this server"* ]]; then
+  if [[ "$line" == *"Not connected to any server"* ]] || \
+     [[ "$line" == *"Failed to login to this server"* ]] || \
+     [[ "$line" == *"Connection lost"* ]] || \
+     [[ "$line" == *"Server is full"* ]] || \
+     [[ "$line" == *"Kicked by server"* ]]; then
     trigger_restart
   fi
 
@@ -75,30 +83,32 @@ MCC_PID=$!
 # ==========================================
 echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
 sleep 16
-echo "/dialog input pass 112233" > "$PIPE"
+echo "/dialog input pass 112233" >&3
 sleep 3
-echo "/dialog click 1" > "$PIPE"
+echo "/dialog click 1" >&3
 echo "[LOGIN] ปลดล็อก Dialog เรียบร้อย" >&2
 
-echo "[LOBBY] กำลังรอวาร์ปเข้า Spawn (12 วินาที)..." >&2
+echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (12 วินาที)..." >&2
 sleep 12
-echo "/useitem mainhand" > "$PIPE"
+echo "/useitem mainhand" >&3
 sleep 3
-echo "/inventory container click 10 Left" > "$PIPE"
+echo "/inventory container click 10 Left" >&3
 echo "[LOBBY] เลือก Survival เรียบร้อย..." >&2
 
 sleep 10
-echo "/home home" > "$PIPE"
+echo "/home home" >&3
 sleep 2
 
-echo "online" > "$READY_FILE"
+# บันทึก timestamp เริ่มต้น
+date +%s > "$READY_FILE"
 echo "[READY] Lervy_Lever ประจำการที่จุดคันโยกและ ONLINE เรียบร้อย!" >&2
 
 # ==========================================
-# ⏰ 3. ลูป Cron สับคันโยก (พิกัด: 10383 64.00 -5064.51)
+# ⏰ 3. ลูป Cron สับคันโยก + Heartbeat
 # ==========================================
 LAST_TRIGGER_MIN=-1
 TRIGGERED_0540=false
+LAST_HEARTBEAT=0
 
 while true; do
   if ! kill -0 $MCC_PID 2>/dev/null; then
@@ -106,15 +116,22 @@ while true; do
     break
   fi
 
+  NOW_SEC=$(date +%s)
+
+  # 💓 อัปเดต Heartbeat Timestamp ทุก 10 วินาที
+  if [ $(( NOW_SEC - LAST_HEARTBEAT )) -ge 10 ]; then
+    echo "$NOW_SEC" > "$READY_FILE"
+    LAST_HEARTBEAT=$NOW_SEC
+  fi
+
   HOUR=$(date +%-H)
   MIN=$(date +%-M)
 
-  # รีเซ็ต Flag เที่ยงคืน
   if [ "$HOUR" -eq 0 ] && [ "$MIN" -eq 0 ]; then
     TRIGGERED_0540=false
   fi
 
-  # 🛑 05:40 น. -> สั่งพักระบบ (close) และไม่ทำลูปต่อ
+  # 🛑 05:40 น. -> สั่งพักระบบ (close)
   if [ "$HOUR" -eq 5 ] && [ "$MIN" -eq 40 ] && [ "$TRIGGERED_0540" = false ]; then
     NOW_TIME=$(date '+%H:%M:%S')
     echo "🛑 [AUTO-PAUSE $NOW_TIME] ถึงเวลา 05:40 น. สั่งหยุดลูปการสับคันโยก..." >&2
@@ -124,7 +141,6 @@ while true; do
 
   CURRENT_STATUS=$(cat "$STATUS_FILE" 2>/dev/null | tr -d '[:space:]')
 
-  # 🎯 ทำงานเฉพาะเมื่อสถานะเป็น "open"
   if [ "$CURRENT_STATUS" = "open" ]; then
     if [ $(( MIN % 6 )) -eq 3 ] && [ "$MIN" -ne "$LAST_TRIGGER_MIN" ]; then
       LAST_TRIGGER_MIN=$MIN
@@ -132,14 +148,14 @@ while true; do
 
       echo "==================================================" >&2
       echo "⏰ [CRON $NOW_TIME] ถึงรอบทำงาน! สั่งสับปิดคันโยก (OFF)..." >&2
-      echo "/useblock 10383 64.00 -5064.51" > "$PIPE"
+      echo "/useblock 10383 64.00 -5064.51" >&3
       
       echo "⏱️ [CRON $NOW_TIME] รอ 5 วินาที..." >&2
       sleep 5
       
       NOW_TIME=$(date '+%H:%M:%S')
       echo "🟢 [CRON $NOW_TIME] จบเวลาทำงาน: สั่งสับเปิดระบบ (ON)..." >&2
-      echo "/useblock 10383 64.00 -5064.51" > "$PIPE"
+      echo "/useblock 10383 64.00 -5064.51" >&3
       echo "✅ [CRON $NOW_TIME] ไซเคิลรอบนี้เสร็จสมบูรณ์!" >&2
       echo "==================================================" >&2
     fi
