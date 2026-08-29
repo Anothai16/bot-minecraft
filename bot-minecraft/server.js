@@ -204,9 +204,9 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <div class="wrapper">
-            <!-- 🕹️ ฝั่งซ้าย: KAITOM CONTROLLER -->
+            <!-- 🕹️ ฝั่งซ้าย: PUMPKIN CONTROLLER -->
             <div class="card">
-                <h1>🕹️ KAITOM CONTROLLER</h1>
+                <h1>🕹️ PUMPKIN CONTROLLER</h1>
                 <div class="sub">พิกัดคันโยก: -2682 61 14542</div>
                 
                 <div class="status-main">
@@ -245,9 +245,9 @@ app.get('/', (req, res) => {
                 </div>
             </div>
 
-            <!-- ⚙️ ฝั่งขวา: LERVY CONTROLLER -->
+            <!-- ⚙️ ฝั่งขวา: KELP CONTROLLER -->
             <div class="card">
-                <h1>⚙️ LERVY CONTROLLER</h1>
+                <h1>⚙️ KELP CONTROLLER</h1>
                 <div class="sub">พิกัดคันโยก: 10383 64.00 -5064.51</div>
                 
                 <div class="status-main">
