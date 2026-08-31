@@ -17,11 +17,41 @@ const LERVY_STATUS_FILE = path.join(__dirname, 'lervy_status.txt');
 const LERVY_READY_FILE = path.join(__dirname, 'lervy_ready.txt');
 const K666_READY_FILE = path.join(__dirname, 'k666', 'k666_ready.txt');
 
+// Path Log File (วันต่อวัน)
+const DAILY_LOG_FILE = path.join(__dirname, 'auto_open_daily.log');
+
 app.use(express.json());
+
+// 📝 ฟังก์ชันบันทึก Log วันต่อวัน (ข้ามวันใหม่จะเขียนทับของเดิมทันที)
+let lastLoggedDate = '';
+function logDaily(message) {
+    const now = new Date();
+    const today = now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const time = now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const logLine = `[${today} ${time}] ${message}\n`;
+
+    console.log(logLine.trim());
+
+    try {
+        if (lastLoggedDate !== today) {
+            // วันใหม่ -> ลบของเก่าทิ้งแล้วเริ่มเขียนใหม่
+            fs.writeFileSync(DAILY_LOG_FILE, `=== บันทึกกิจกรรมประจำวันที่ ${today} ===\n` + logLine, 'utf-8');
+            lastLoggedDate = today;
+        } else {
+            // วันเดิม -> ต่อท้ายบรรทัดเดิม
+            fs.appendFileSync(DAILY_LOG_FILE, logLine, 'utf-8');
+        }
+    } catch (e) {
+        console.error('Error writing daily log:', e);
+    }
+}
 
 function readFile(file, fallback = 'unknown') {
     try {
-        if (fs.existsSync(file)) return fs.readFileSync(file, 'utf-8').trim();
+        if (fs.existsSync(file)) {
+            const data = fs.readFileSync(file, 'utf-8').trim();
+            return data || fallback;
+        }
     } catch (e) {}
     return fallback;
 }
@@ -35,12 +65,17 @@ function writeFile(file, data) {
     }
 }
 
+// 🛡️ ป้องกัน Pipe Block ค้าง Event Loop ด้วย non-blocking command
 function sendCommand(pipePath, cmd) {
-    if (fs.existsSync(pipePath)) {
-        fs.appendFileSync(pipePath, cmd + '\n');
+    if (!fs.existsSync(pipePath)) return false;
+    try {
+        exec(`echo "${cmd}" > ${pipePath}`, (err) => {
+            if (err) console.error(`[PIPE ERROR]: ไม่สามารถส่ง '${cmd}' ไปยัง ${pipePath}`);
+        });
         return true;
+    } catch (e) {
+        return false;
     }
-    return false;
 }
 
 // 💓 เช็กสถานะออนไลน์ผ่าน Process + Heartbeat Timestamp
@@ -51,7 +86,7 @@ function checkBotInWorld(botName, readyFilePath) {
                 resolve(false);
             } else {
                 const status = readFile(readyFilePath, 'offline');
-                if (status === 'offline') {
+                if (status === 'offline' || !status) {
                     resolve(false);
                     return;
                 }
@@ -59,6 +94,7 @@ function checkBotInWorld(botName, readyFilePath) {
                 const lastTimestamp = parseInt(status, 10);
                 if (!isNaN(lastTimestamp)) {
                     const currentSec = Math.floor(Date.now() / 1000);
+                    // หาก Timestamp ขาดการอัปเดตเกิน 25 วินาที = บอทหลุด/ค้าง
                     if (currentSec - lastTimestamp <= 25) {
                         resolve(true);
                     } else {
@@ -73,20 +109,26 @@ function checkBotInWorld(botName, readyFilePath) {
 }
 
 // ==========================================
-// ⏰ AUTO-OPEN CRON LOOP (เวลา 07:30 น.)
+// ⏰ AUTO-OPEN CRON LOOP (เวลา 07:30 น. เวลาไทย)
 // ==========================================
 let triggered0730 = false;
 
 setInterval(async () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
+    const bkkTimeStr = new Date().toLocaleTimeString('en-US', {
+        timeZone: 'Asia/Bangkok',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const [hourStr, minStr] = bkkTimeStr.split(':');
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minStr, 10);
 
     // ทำงานเฉพาะเวลา 07:30 น.
     if (hour === 7 && minute === 30) {
         if (!triggered0730) {
             triggered0730 = true;
-            console.log(`\n⏰ [AUTO-OPEN 07:30] เริ่มตรวจสอบสถานะเพื่อเปิดระบบ...`);
+            logDaily(`⏰ [START 07:30] เริ่มตรวจสอบเงื่อนไข Auto-Open ประจำวัน...`);
 
             // 1. ตรวจสอบฝั่ง Pumpkin (Kaitom_4 + Kaitom_67)
             const [k4Online, k67Online] = await Promise.all([
@@ -97,14 +139,14 @@ setInterval(async () => {
 
             if (k4Online && k67Online) {
                 if (k4Status === 'close') {
-                    console.log(`🟢 [07:30] Pumpkin: บอทออนไลน์ครบทั้งคู่และเป็น CLOSE -> สั่งสับคันโยก OPEN ทันที!`);
                     sendCommand(K4_PIPE, '/useblock -2682 61 14542');
                     writeFile(K4_STATUS_FILE, 'open');
+                    logDaily(`🟢 [PUMPKIN] เข้าเงื่อนไข (K4: Online, K67: Online, Status: close) -> สั่ง /useblock สับคันโยก OPEN สำเร็จ!`);
                 } else {
-                    console.log(`ℹ️ [07:30] Pumpkin: สถานะเป็น '${k4Status}' อยู่แล้ว`);
+                    logDaily(`ℹ️ [PUMPKIN] บอทออนไลน์ครบ แต่สถานะเป็น '${k4Status}' อยู่แล้ว จึงไม่ต้องสับคันโยก`);
                 }
             } else {
-                console.log(`⚠️ [07:30] Pumpkin: บอทออนไลน์ไม่ครบ (K4: ${k4Online}, K67: ${k67Online}) ข้ามการเปิด`);
+                logDaily(`⚠️ [PUMPKIN] ข้ามการทำงานเนื่องจากออนไลน์ไม่ครบ (K4: ${k4Online ? 'Online' : 'Offline'}, K67: ${k67Online ? 'Online' : 'Offline'})`);
             }
 
             // 2. ตรวจสอบฝั่ง Kelp (Lervy_Lever + K666)
@@ -116,24 +158,24 @@ setInterval(async () => {
 
             if (lervyOnline && k666Online) {
                 if (lervyStatus === 'close') {
-                    console.log(`🟢 [07:30] Kelp: บอทออนไลน์ครบทั้งคู่และเป็น CLOSE -> สั่งเปิดระบบ Auto Loop (OPEN) ทันที!`);
                     writeFile(LERVY_STATUS_FILE, 'open');
+                    logDaily(`🟢 [KELP] เข้าเงื่อนไข (Lervy: Online, K666: Online, Status: close) -> ปรับไฟล์สถานะเป็น OPEN เริ่มลูป Auto สำเร็จ!`);
                 } else {
-                    console.log(`ℹ️ [07:30] Kelp: สถานะเป็น '${lervyStatus}' อยู่แล้ว`);
+                    logDaily(`ℹ️ [KELP] บอทออนไลน์ครบ แต่สถานะเป็น '${lervyStatus}' อยู่แล้ว`);
                 }
             } else {
-                console.log(`⚠️ [07:30] Kelp: บอทออนไลน์ไม่ครบ (Lervy: ${lervyOnline}, K666: ${k666Online}) ข้ามการเปิด`);
+                logDaily(`⚠️ [KELP] ข้ามการทำงานเนื่องจากออนไลน์ไม่ครบ (Lervy: ${lervyOnline ? 'Online' : 'Offline'}, K666: ${k666Online ? 'Online' : 'Offline'})`);
             }
         }
     } else {
-        // รีเซ็ต Flag เมื่อพ้นช่วง 07:30 น.
+        // รีเซ็ต Flag เมื่อพ้นช่วงเวลา 07:30 น.
         if (triggered0730) {
             triggered0730 = false;
         }
     }
-}, 1000 * 10); // เช็กทุก 10 วินาที
+}, 1000 * 10);
 
-// 📌 API ดึงสถานะรวมของบอททุกตัว
+// 📌 API ดึงสถานะรวม + Log ประจำวัน
 app.get('/api/status', async (req, res) => {
     const [k4Online, k67Online, lervyOnline, k666Online] = await Promise.all([
         checkBotInWorld('Kaitom_4', K4_READY_FILE),
@@ -142,11 +184,14 @@ app.get('/api/status', async (req, res) => {
         checkBotInWorld('K666', K666_READY_FILE)
     ]);
 
+    const dailyLog = readFile(DAILY_LOG_FILE, 'ยังไม่มีบันทึกการทำงานของวันนี้');
+
     res.json({
         k4: { status: readFile(K4_STATUS_FILE, 'open'), online: k4Online },
         k67: { online: k67Online },
         lervy: { status: readFile(LERVY_STATUS_FILE, 'open'), online: lervyOnline },
-        k666: { online: k666Online }
+        k666: { online: k666Online },
+        dailyLog: dailyLog
     });
 });
 
@@ -219,8 +264,8 @@ app.get('/', (req, res) => {
         <title>Dual Bot Controller Dashboard</title>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
-            body { background: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-            .wrapper { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; max-width: 960px; width: 100%; }
+            body { background: #0b0f19; color: #f8fafc; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+            .wrapper { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; max-width: 960px; width: 100%; margin-bottom: 20px; }
             .card { background: #111827; padding: 24px; border-radius: 18px; border: 1px solid #1f2937; flex: 1; min-width: 320px; max-width: 450px; box-shadow: 0 12px 30px rgba(0,0,0,0.6); text-align: center; }
             h1 { font-size: 18px; color: #38bdf8; margin-bottom: 2px; }
             .sub { font-size: 11px; color: #64748b; margin-bottom: 16px; }
@@ -258,6 +303,11 @@ app.get('/', (req, res) => {
             .btn-restart { padding: 8px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #475569; cursor: pointer; background: #1e293b; color: #f59e0b; }
             .btn-restart:hover { background: #334155; border-color: #f59e0b; }
             .btn-restart:active { transform: scale(0.98); }
+
+            /* กล่องแสดง Log ประจำวัน */
+            .log-panel { max-width: 960px; width: 100%; background: #111827; border: 1px solid #1f2937; border-radius: 18px; padding: 18px 24px; box-shadow: 0 12px 30px rgba(0,0,0,0.6); }
+            .log-title { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+            .log-box { font-family: 'JetBrains Mono', monospace, Consolas; font-size: 11px; background: #030712; border: 1px solid #1f2937; border-radius: 10px; height: 110px; overflow-y: auto; padding: 12px; color: #94a3b8; line-height: 1.6; white-space: pre-wrap; }
         </style>
     </head>
     <body>
@@ -345,6 +395,12 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
+        <!-- 📜 กล่อง Log ประจำวัน -->
+        <div class="log-panel">
+            <div class="log-title">📜 บันทึกการตรวจสอบ 07:30 น. (รายวัน)</div>
+            <div id="logBox" class="log-box">กำลังโหลดข้อมูล...</div>
+        </div>
+
         <script>
             function updateUI(data) {
                 // Kaitom
@@ -382,6 +438,10 @@ app.get('/', (req, res) => {
                 const k666On = document.getElementById('k666Online');
                 k666On.innerText = data.k666.online ? '🟢 ONLINE' : '🔴 OFFLINE';
                 k666On.className = 'status-val-sm ' + (data.k666.online ? 'color-online' : 'color-offline');
+
+                // Daily Log Box
+                const logBox = document.getElementById('logBox');
+                logBox.innerText = data.dailyLog || 'ยังไม่มีบันทึกกิจกรรมของวันนี้';
             }
 
             async function fetchStatus() {
