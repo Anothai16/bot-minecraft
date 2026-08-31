@@ -56,24 +56,82 @@ function checkBotInWorld(botName, readyFilePath) {
                     return;
                 }
                 
-                // ถ้ารองรับ Heartbeat (เป็นตัวเลข Timestamp วินาที)
                 const lastTimestamp = parseInt(status, 10);
                 if (!isNaN(lastTimestamp)) {
                     const currentSec = Math.floor(Date.now() / 1000);
-                    // ถ้า Timestamp ขาดการส่งเกิน 25 วินาที = บอทหลุด/ค้าง ให้ตีเป็น OFFLINE
                     if (currentSec - lastTimestamp <= 25) {
                         resolve(true);
                     } else {
                         resolve(false);
                     }
                 } else {
-                    // แบบเดิม (คำว่า 'online')
                     resolve(status === 'online');
                 }
             }
         });
     });
 }
+
+// ==========================================
+// ⏰ AUTO-OPEN CRON LOOP (เวลา 07:30 น.)
+// ==========================================
+let triggered0730 = false;
+
+setInterval(async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    // ทำงานเฉพาะเวลา 07:30 น.
+    if (hour === 7 && minute === 30) {
+        if (!triggered0730) {
+            triggered0730 = true;
+            console.log(`\n⏰ [AUTO-OPEN 07:30] เริ่มตรวจสอบสถานะเพื่อเปิดระบบ...`);
+
+            // 1. ตรวจสอบฝั่ง Pumpkin (Kaitom_4 + Kaitom_67)
+            const [k4Online, k67Online] = await Promise.all([
+                checkBotInWorld('Kaitom_4', K4_READY_FILE),
+                checkBotInWorld('Kaitom_67', K67_READY_FILE)
+            ]);
+            const k4Status = readFile(K4_STATUS_FILE, 'close');
+
+            if (k4Online && k67Online) {
+                if (k4Status === 'close') {
+                    console.log(`🟢 [07:30] Pumpkin: บอทออนไลน์ครบทั้งคู่และเป็น CLOSE -> สั่งสับคันโยก OPEN ทันที!`);
+                    sendCommand(K4_PIPE, '/useblock -2682 61 14542');
+                    writeFile(K4_STATUS_FILE, 'open');
+                } else {
+                    console.log(`ℹ️ [07:30] Pumpkin: สถานะเป็น '${k4Status}' อยู่แล้ว`);
+                }
+            } else {
+                console.log(`⚠️ [07:30] Pumpkin: บอทออนไลน์ไม่ครบ (K4: ${k4Online}, K67: ${k67Online}) ข้ามการเปิด`);
+            }
+
+            // 2. ตรวจสอบฝั่ง Kelp (Lervy_Lever + K666)
+            const [lervyOnline, k666Online] = await Promise.all([
+                checkBotInWorld('Lervy_Lever', LERVY_READY_FILE),
+                checkBotInWorld('K666', K666_READY_FILE)
+            ]);
+            const lervyStatus = readFile(LERVY_STATUS_FILE, 'close');
+
+            if (lervyOnline && k666Online) {
+                if (lervyStatus === 'close') {
+                    console.log(`🟢 [07:30] Kelp: บอทออนไลน์ครบทั้งคู่และเป็น CLOSE -> สั่งเปิดระบบ Auto Loop (OPEN) ทันที!`);
+                    writeFile(LERVY_STATUS_FILE, 'open');
+                } else {
+                    console.log(`ℹ️ [07:30] Kelp: สถานะเป็น '${lervyStatus}' อยู่แล้ว`);
+                }
+            } else {
+                console.log(`⚠️ [07:30] Kelp: บอทออนไลน์ไม่ครบ (Lervy: ${lervyOnline}, K666: ${k666Online}) ข้ามการเปิด`);
+            }
+        }
+    } else {
+        // รีเซ็ต Flag เมื่อพ้นช่วง 07:30 น.
+        if (triggered0730) {
+            triggered0730 = false;
+        }
+    }
+}, 1000 * 10); // เช็กทุก 10 วินาที
 
 // 📌 API ดึงสถานะรวมของบอททุกตัว
 app.get('/api/status', async (req, res) => {
