@@ -6,16 +6,16 @@ const app = express();
 const PORT = 3005;
 
 const PIPE = '/tmp/mcc_pipe_satang_cmd';
-const CONSOLE_LOG = path.join(__dirname, 'satang_console.log');
 const HISTORY_FILE = path.join(__dirname, 'satang_pay_history.json');
+const BALANCE_FILE = path.join(__dirname, 'satang_balance.json');
 
 app.use(express.json());
 
-// 🛡️ ป้องกันแชทรั่วไหล: ส่งได้เฉพาะคำสั่งที่มี / เท่านั้น
+// 🛡️ ส่งได้เฉพาะคำสั่งที่มี / นำหน้าเท่านั้น (ห้ามแชทรั่ว)
 function sendCommand(cmd) {
   if (!fs.existsSync(PIPE)) return false;
   if (!cmd.startsWith('/')) {
-    console.error(`[SECURITY BLOCKED]: '${cmd}' ถูกระงับเนื่องจากไม่มี / นำหน้า`);
+    console.error(`[SECURITY BLOCKED]: '${cmd}' ไม่มี / นำหน้า ถูกระงับ`);
     return false;
   }
   try {
@@ -26,7 +26,26 @@ function sendCommand(cmd) {
   }
 }
 
-// โหลดประวัติ Log จากไฟล์ JSON
+// โหลด/บันทึกยอดเงินคงเหลือ
+function getBalance() {
+  try {
+    if (fs.existsSync(BALANCE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(BALANCE_FILE, 'utf-8'));
+      return data.balance !== undefined ? data.balance : 0;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function saveBalance(amount) {
+  try {
+    fs.writeFileSync(BALANCE_FILE, JSON.stringify({ balance: amount }, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Save balance error:', e);
+  }
+}
+
+// โหลด/บันทึกประวัติการโอน
 function getHistory() {
   try {
     if (fs.existsSync(HISTORY_FILE)) {
@@ -36,62 +55,33 @@ function getHistory() {
   return [];
 }
 
-// เซฟประวัติ Log เพิ่มลงไฟล์ JSON
 function saveHistory(entry) {
   try {
     const list = getHistory();
-    list.unshift(entry); // เอาอันล่าสุดขึ้นก่อน
+    list.unshift(entry);
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(list, null, 2), 'utf-8');
   } catch (e) {
     console.error('Save history error:', e);
   }
 }
 
-// 📌 API เช็คยอดเงิน (/money)
-app.get('/api/check-balance', async (req, res) => {
-  if (!fs.existsSync(PIPE)) {
-    return res.status(500).json({ success: false, message: 'บอท Satang13 ไม่ออนไลน์' });
-  }
-
-  const startSize = fs.existsSync(CONSOLE_LOG) ? fs.statSync(CONSOLE_LOG).size : 0;
-  sendCommand('/money');
-
-  let foundBalance = null;
-  let rawText = '';
-
-  for (let i = 0; i < 15; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-
-    if (fs.existsSync(CONSOLE_LOG)) {
-      const currentSize = fs.statSync(CONSOLE_LOG).size;
-      if (currentSize > startSize) {
-        const stream = fs.readFileSync(CONSOLE_LOG, 'utf-8');
-        const newLines = stream.slice(startSize).split('\n');
-
-        for (const line of newLines) {
-          const cleanLine = line.replace(/§[0-9a-fk-or]/gi, '').trim();
-          if (/economy|เงิน|balance|คงเหลือ|คอยน์|\$/i.test(cleanLine)) {
-            const match = cleanLine.match(/[\d,]+(?:\.\d+)?/);
-            if (match) {
-              foundBalance = match[0];
-              rawText = cleanLine;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (foundBalance) break;
-  }
-
-  if (foundBalance) {
-    return res.json({ success: true, balance: foundBalance, raw: rawText });
-  }
-
-  res.json({ success: false, message: 'ไม่พบข้อความตอบกลับ (ลองใหม่อีกครั้ง)' });
+// 📌 API ดึงยอดเงินปัจจุบัน
+app.get('/api/balance', (req, res) => {
+  res.json({ success: true, balance: getBalance() });
 });
 
-// 📌 API สั่งโอนเงิน
+// 📌 API ตั้งค่ายอดเงินเริ่มต้นใหม่
+app.post('/api/set-balance', (req, res) => {
+  const { balance } = req.body;
+  const num = parseFloat(balance);
+  if (isNaN(num) || num < 0) {
+    return res.status(400).json({ success: false, message: 'กรุณากรอกตัวเลขยอดเงินที่ถูกต้อง' });
+  }
+  saveBalance(num);
+  res.json({ success: true, balance: num, message: 'อัปเดตยอดเงินคงเหลือเรียบร้อย' });
+});
+
+// 📌 API สั่งโอนเงิน และหักยอดเงินอัตโนมัติ
 app.post('/api/pay', (req, res) => {
   let { player, amount } = req.body;
 
@@ -99,21 +89,35 @@ app.post('/api/pay', (req, res) => {
   amount = parseInt(amount, 10);
 
   if (!player || isNaN(amount) || amount <= 0) {
-    return res.status(400).json({ success: false, message: 'ข้อมูลไม่ถูกต้อง' });
+    return res.status(400).json({ success: false, message: 'ชื่อผู้เล่นหรือจำนวนเงินไม่ถูกต้อง' });
   }
 
   if (!fs.existsSync(PIPE)) {
     return res.status(500).json({ success: false, message: 'บอท Satang13 ไม่ออนไลน์' });
   }
 
+  const currentBal = getBalance();
+  if (currentBal < amount) {
+    return res.status(400).json({ 
+      success: false, 
+      message: `ยอดเงินคงเหลือไม่พอ (มีอยู่ ${currentBal.toLocaleString()} แต่ต้องการโอน ${amount.toLocaleString()})` 
+    });
+  }
+
+  // 1. ส่งคำสั่ง /pay
   sendCommand(`/pay ${player} ${amount}`);
 
+  // 2. ส่งคำสั่งกดยืนยัน GUI
   setTimeout(() => {
     sendCommand('/inventory container click 11 Left');
     sendCommand('/dialog click 1');
   }, 1200);
 
-  // บันทึก Log ประวัติ
+  // 3. หักลบยอดเงินคงเหลือ
+  const newBal = currentBal - amount;
+  saveBalance(newBal);
+
+  // 4. บันทึกประวัติ Log
   const timeNow = new Date().toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' });
   const dateNow = new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' });
   saveHistory({
@@ -124,10 +128,14 @@ app.post('/api/pay', (req, res) => {
     timestamp: Date.now()
   });
 
-  res.json({ success: true, message: `ส่งคำสั่ง /pay ${player} ${amount} เรียบร้อยแล้ว` });
+  res.json({ 
+    success: true, 
+    balance: newBal,
+    message: `ส่งคำสั่ง /pay ${player} ${amount} เรียบร้อยแล้ว (ยอดคงเหลือ: ${newBal.toLocaleString()})` 
+  });
 });
 
-// 📌 API ดึงประวัติ Log ทั้งหมด
+// 📌 API ดึงประวัติทั้งหมด
 app.get('/api/logs', (req, res) => {
   res.json({ logs: getHistory() });
 });
@@ -147,10 +155,9 @@ app.get('/', (req, res) => {
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
-        /* พื้นหลัง Texture Stone Bricks จาก Minecraft */
         background-color: #1a1a1a;
         background-image: 
-          radial-gradient(circle, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.85) 100%),
+          radial-gradient(circle, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.9) 100%),
           url('https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/stone_bricks.png');
         background-repeat: repeat;
         background-size: auto, 64px 64px;
@@ -166,9 +173,8 @@ app.get('/', (req, res) => {
 
       .container { width: 100%; max-width: 580px; }
 
-      /* กรอบสไตล์ GUI Minecraft */
       .card {
-        background: rgba(24, 26, 32, 0.92);
+        background: rgba(24, 26, 32, 0.94);
         backdrop-filter: blur(8px);
         border: 2px solid #4a5568;
         border-radius: 12px;
@@ -187,7 +193,7 @@ app.get('/', (req, res) => {
       }
       .sub { color: #94a3b8; font-size: 0.85rem; text-align: center; margin-bottom: 16px; }
 
-      /* ส่วนยอดเงิน */
+      /* การ์ดยอดเงินคงเหลือ */
       .balance-box {
         background: rgba(10, 12, 16, 0.85);
         border: 2px solid #2d3748;
@@ -206,7 +212,7 @@ app.get('/', (req, res) => {
         font-weight: 800;
         text-shadow: 2px 2px #000;
       }
-      .btn-balance {
+      .btn-setbal {
         background: #2b3544;
         color: #38bdf8;
         border: 2px solid #38bdf8;
@@ -218,7 +224,7 @@ app.get('/', (req, res) => {
         transition: 0.15s;
         font-family: 'Bai Jamjuree', sans-serif;
       }
-      .btn-balance:hover { background: #38bdf8; color: #000; }
+      .btn-setbal:hover { background: #38bdf8; color: #000; }
 
       .form-group { margin-bottom: 14px; text-align: left; }
       label { display: block; font-size: 0.85rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; text-shadow: 1px 1px #000; }
@@ -256,7 +262,7 @@ app.get('/', (req, res) => {
 
       /* 🎮 กล่องแชท MINECRAFT ตามภาพต้นฉบับ */
       .chat-screen-container {
-        background: rgba(0, 0, 0, 0.75);
+        background: rgba(0, 0, 0, 0.8);
         border: 2px solid #374151;
         border-radius: 10px;
         padding: 16px;
@@ -283,7 +289,7 @@ app.get('/', (req, res) => {
       }
 
       .mc-chat-line {
-        background: rgba(0, 0, 0, 0.55);
+        background: rgba(0, 0, 0, 0.6);
         padding: 8px 12px;
         border-radius: 4px;
         line-height: 1.45;
@@ -291,20 +297,17 @@ app.get('/', (req, res) => {
         font-size: 1.35rem;
         font-weight: 700;
         letter-spacing: 0.5px;
-        /* เงาข้อความแบบคมกริบสไตล์ Minecraft */
         text-shadow: 2px 2px 0px #000000;
         display: block;
         border-left: 3px solid #e67e22;
       }
 
-      /* ถอดแบบสีตามรูปต้นฉบับเป๊ะๆ */
       .mc-tag { color: #e67e22; font-weight: 900; }     /* [ECONOMY] สีส้มเข้ม */
       .mc-white { color: #ffffff; }                     /* คุณโอนเงินจำนวน */
       .mc-amount { color: #ffff55; }                    /* ตัวเลข สีเหลือง */
       .mc-player { color: #e67e22; }                    /* ชื่อผู้เล่น สีส้ม */
       .mc-time { font-size: 0.85rem; color: #64748b; margin-left: 8px; font-family: 'JetBrains Mono', monospace; }
 
-      /* เหรียญทอง Coin icon ในเกม */
       .mc-coin-icon {
         display: inline-block;
         width: 16px;
@@ -334,22 +337,22 @@ app.get('/', (req, res) => {
         <h1>💸 SATANG13 PAY CONTROLLER</h1>
         <div class="sub">ระบบโอนเงินสั่งการตรงผ่าน Named Pipe</div>
 
-        <!-- ยอดเงิน -->
+        <!-- กล่องยอดเงิน -->
         <div class="balance-box">
           <div>
             <div class="balance-label">ยอดเงินคงเหลือในกระเป๋า</div>
-            <div class="balance-val" id="displayBalance">---</div>
+            <div class="balance-val" id="displayBalance">0</div>
           </div>
-          <button class="btn-balance" onclick="checkBalance()">🔄 เช็คยอดเงิน</button>
+          <button class="btn-setbal" onclick="setManualBalance()">✏️ กำหนดยอดเงิน</button>
         </div>
 
         <div class="form-group">
           <label>ชื่อผู้เล่นปลายทาง</label>
-          <input type="text" id="targetPlayer" placeholder="เช่น Satang13" autocomplete="off" />
+          <input type="text" id="targetPlayer" placeholder="เช่น Kaitom_4" autocomplete="off" />
         </div>
 
         <div class="form-group">
-          <label>จำนวนเงิน</label>
+          <label>จำนวนเงินที่ต้องการโอน</label>
           <input type="number" id="payAmount" placeholder="เช่น 1 หรือ 100" min="1" />
         </div>
 
@@ -363,31 +366,45 @@ app.get('/', (req, res) => {
           <span id="logCount" style="color: #ffff55;">0 รายการ</span>
         </div>
         <div class="chat-scroll" id="chatBox">
-          <div style="color: #64748b; font-size: 0.9rem; text-align: center; padding: 20px;">กำลังโหลดประวัติ...</div>
+          <div style="color: #64748b; font-size: 0.9rem; text-align: center; padding: 20px;">ยังไม่มีประวัติการโอนเงิน</div>
         </div>
       </div>
     </div>
 
     <script>
-      async function checkBalance() {
-        const btn = document.querySelector('.btn-balance');
-        const display = document.getElementById('displayBalance');
-        btn.innerText = 'กำลังเช็ค...';
-        btn.disabled = true;
-
+      async function fetchBalance() {
         try {
-          const res = await fetch('/api/check-balance');
+          const res = await fetch('/api/balance');
           const data = await res.json();
           if (data.success) {
-            display.innerText = data.balance;
+            document.getElementById('displayBalance').innerText = Number(data.balance).toLocaleString();
+          }
+        } catch (e) {}
+      }
+
+      async function setManualBalance() {
+        const input = prompt('ใส่จำนวนเงินเริ่มต้นที่มีอยู่ในตัวละคร:');
+        if (input === null) return;
+        const bal = parseFloat(input);
+        if (isNaN(bal) || bal < 0) {
+          alert('กรุณากรอกตัวเลขจำนวนเต็มบวก');
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/set-balance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ balance: bal })
+          });
+          const data = await res.json();
+          if (data.success) {
+            document.getElementById('displayBalance').innerText = Number(data.balance).toLocaleString();
           } else {
-            alert(data.message || 'ไม่สามารถดึงยอดเงินได้');
+            alert(data.message);
           }
         } catch (e) {
-          alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
-        } finally {
-          btn.innerText = '🔄 เช็คยอดเงิน';
-          btn.disabled = false;
+          alert('ไม่สามารถอัปเดตยอดเงินได้');
         }
       }
 
@@ -410,9 +427,9 @@ app.get('/', (req, res) => {
           });
           const data = await res.json();
           if (data.success) {
+            document.getElementById('displayBalance').innerText = Number(data.balance).toLocaleString();
             amountInput.value = '';
             fetchLogs();
-            setTimeout(checkBalance, 2000);
           } else {
             alert(data.message);
           }
@@ -433,7 +450,7 @@ app.get('/', (req, res) => {
 
         box.innerHTML = logs.map(item => \`
           <div class="mc-chat-line">
-            <span class="mc-tag">[ECONOMY]</span> <span class="mc-white">คุณโอนเงินจำนวน</span> <span class="mc-amount">\${item.amount}</span> <span class="mc-coin-icon"></span><br>
+            <span class="mc-tag">[ECONOMY]</span> <span class="mc-white">คุณโอนเงินจำนวน</span> <span class="mc-amount">\${Number(item.amount).toLocaleString()}</span> <span class="mc-coin-icon"></span><br>
             <span class="mc-white">ให้กับผู้เล่น</span> <span class="mc-player">\${item.player}</span>
             <span class="mc-time">(\${item.time})</span>
           </div>
@@ -450,7 +467,7 @@ app.get('/', (req, res) => {
         } catch (e) {}
       }
 
-      checkBalance();
+      fetchBalance();
       fetchLogs();
       setInterval(fetchLogs, 4000);
     </script>
