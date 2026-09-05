@@ -1,55 +1,46 @@
-const CONSOLE_LOG = path.join(__dirname, 'satang_console.log');
+#!/bin/bash
+cd "$(dirname "$0")"
+chmod +x ./MinecraftClient
 
-// 📌 API สั่งเช็คยอดเงิน /money
-app.get('/api/check-balance', async (req, res) => {
-  if (!fs.existsSync(PIPE)) {
-    return res.status(500).json({ success: false, message: 'บอท Satang13 ไม่ออนไลน์' });
-  }
+PIPE="/tmp/mcc_pipe_satang_cmd"
+CONSOLE_LOG="$(pwd)/satang_console.log"
 
-  const startSize = fs.existsSync(CONSOLE_LOG) ? fs.statSync(CONSOLE_LOG).size : 0;
+rm -f "$PIPE"
+mkfifo "$PIPE"
+exec 3<>"$PIPE"
 
-  // ส่งคำสั่ง /money ตรงเข้าตัวบอท
-  sendCommand('/money');
+cleanup() {
+  echo "🛑 ปิดโปรเซส Satang13..." >&2
+  exec 3>&-
+  pkill -9 -f "MinecraftClient.*Satang13" 2>/dev/null
+  rm -f "$PIPE"
+  exit 0
+}
 
-  // รอข้อความตอบกลับจากเซิร์ฟเวอร์ (วนลูปเช็กสูงสุด 3 วินาที)
-  let foundBalance = null;
-  let rawText = '';
+trap cleanup SIGTERM SIGINT EXIT
 
-  for (let i = 0; i < 15; i++) {
-    await new Promise((r) => setTimeout(r, 200));
+# รัน MCC และส่ง output ออกทั้งหน้าจอและบันทึกลง satang_console.log
+./MinecraftClient Satang13 - play.amorycraft.com < "$PIPE" 2>&1 | tee -a "$CONSOLE_LOG" &
 
-    if (fs.existsSync(CONSOLE_LOG)) {
-      const currentSize = fs.statSync(CONSOLE_LOG).size;
-      if (currentSize > startSize) {
-        const stream = fs.readFileSync(CONSOLE_LOG, 'utf-8');
-        const newLines = stream.slice(startSize).split('\n');
+# ==========================================
+# 🔑 ล็อกอิน & เดินทางเข้า Survival
+# ==========================================
+echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
+sleep 10
+echo "/dialog input pass 112233" >&3
+sleep 3
+echo "/dialog click 1" >&3
+echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
 
-        for (const line of newLines) {
-          // ล้างโค้ดสี (§a, §e, §r ฯลฯ)
-          const cleanLine = line.replace(/§[0-9a-fk-or]/gi, '').trim();
+echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
+sleep 10
+echo "/useitem mainhand" >&3
+sleep 2
+echo "/inventory container click 10 Left" >&3
+echo "[LOBBY] เลือก Survival เรียบร้อย..." >&2
 
-          // ตรวจหาคำที่เกี่ยวข้องกับเงิน
-          if (/economy|เงิน|balance|คงเหลือ|คอยน์|\$/i.test(cleanLine)) {
-            // แกะตัวเลขยอดเงิน (รองรับแบบมีจุลภาค เช่น 1,500 หรือทศนิยม 250.00)
-            const match = cleanLine.match(/[\d,]+(?:\.\d+)?/);
-            if (match) {
-              foundBalance = match[0];
-              rawText = cleanLine;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (foundBalance) break;
-  }
-
-  if (foundBalance) {
-    return res.json({ success: true, balance: foundBalance, raw: rawText });
-  }
-
-  res.json({
-    success: false,
-    message: 'ไม่พบข้อความตอบกลับจากเซิร์ฟเวอร์ (ลองกดเช็กอีกครั้ง)'
-  });
-});
+# Keep-alive loop ป้องกันหลุด
+while true; do
+  sleep 25
+  echo "" >&3
+done
