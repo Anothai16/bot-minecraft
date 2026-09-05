@@ -11,7 +11,7 @@ const BALANCE_FILE = path.join(__dirname, 'satang_balance.json');
 
 app.use(express.json());
 
-// 🛡️ ส่งได้เฉพาะคำสั่งที่มี / นำหน้าเท่านั้น (ห้ามแชทรั่ว)
+// 🛡️ ส่งได้เฉพาะคำสั่งที่มี / นำหน้าเท่านั้น (ป้องกันแชทรั่วไหล 100%)
 function sendCommand(cmd) {
   if (!fs.existsSync(PIPE)) return false;
   if (!cmd.startsWith('/')) {
@@ -150,7 +150,7 @@ app.get('/', (req, res) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minecraft Pay Controller</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Bai+Jamjuree:wght@600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@600;700&family=Silkscreen&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -163,7 +163,7 @@ app.get('/', (req, res) => {
         background-size: auto, 64px 64px;
         image-rendering: pixelated;
         color: #f0f6fc;
-        font-family: 'Bai Jamjuree', sans-serif;
+        font-family: 'Kanit', sans-serif;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
@@ -222,7 +222,7 @@ app.get('/', (req, res) => {
         border-radius: 6px;
         cursor: pointer;
         transition: 0.15s;
-        font-family: 'Bai Jamjuree', sans-serif;
+        font-family: 'Kanit', sans-serif;
       }
       .btn-setbal:hover { background: #38bdf8; color: #000; }
 
@@ -237,7 +237,7 @@ app.get('/', (req, res) => {
         color: #fff;
         font-size: 1rem;
         outline: none;
-        font-family: 'Bai Jamjuree', sans-serif;
+        font-family: 'Kanit', sans-serif;
         font-weight: 600;
       }
       input:focus { border-color: #f59e0b; }
@@ -253,16 +253,16 @@ app.get('/', (req, res) => {
         font-weight: 800;
         cursor: pointer;
         margin-top: 6px;
-        font-family: 'Bai Jamjuree', sans-serif;
+        font-family: 'Kanit', sans-serif;
         text-shadow: 2px 2px #000;
         box-shadow: 0 4px 0 #78350f;
       }
       .btn-pay:hover { filter: brightness(1.15); }
       .btn-pay:active { transform: translateY(2px); box-shadow: 0 2px 0 #78350f; }
 
-      /* 🎮 กล่องแชท MINECRAFT ตามภาพต้นฉบับ */
+      /* 🎮 กล่องแสดงผลแชทจำลองหน้าต่าง Minecraft */
       .chat-screen-container {
-        background: rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.85);
         border: 2px solid #374151;
         border-radius: 10px;
         padding: 16px;
@@ -281,53 +281,59 @@ app.get('/', (req, res) => {
       }
 
       .chat-scroll {
-        max-height: 380px;
+        max-height: 400px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
       }
 
-      .mc-chat-line {
-        background: rgba(0, 0, 0, 0.6);
-        padding: 8px 12px;
+      /* 🎨 แถบข้อความถอดแบบจาก Minecraft 100% */
+      .mc-chat-screen {
+        background: rgba(0, 0, 0, 0.72);
         border-radius: 4px;
-        line-height: 1.45;
-        font-family: 'VT323', 'Bai Jamjuree', monospace;
-        font-size: 1.35rem;
+        padding: 10px 14px;
+        font-family: 'Kanit', 'Silkscreen', sans-serif;
+        font-size: 19px;
         font-weight: 700;
+        line-height: 1.35;
         letter-spacing: 0.5px;
-        text-shadow: 2px 2px 0px #000000;
-        display: block;
-        border-left: 3px solid #e67e22;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       }
 
-      .mc-tag { color: #e67e22; font-weight: 900; }     /* [ECONOMY] สีส้มเข้ม */
-      .mc-white { color: #ffffff; }                     /* คุณโอนเงินจำนวน */
-      .mc-amount { color: #ffff55; }                    /* ตัวเลข สีเหลือง */
-      .mc-player { color: #e67e22; }                    /* ชื่อผู้เล่น สีส้ม */
-      .mc-time { font-size: 0.85rem; color: #64748b; margin-left: 8px; font-family: 'JetBrains Mono', monospace; }
+      .mc-row {
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+      }
 
-      .mc-coin-icon {
+      /* เงาคมกริบ 1-bit Pixel Offset สไตล์ Minecraft */
+      .mc-text {
+        text-shadow: 2px 2px 0px #000000, 
+                     2px 0px 0px #000000, 
+                     0px 2px 0px #000000;
         display: inline-block;
-        width: 16px;
-        height: 16px;
-        background: #ffff55;
-        border-radius: 50%;
-        border: 2px solid #000;
-        vertical-align: -2px;
-        margin-left: 3px;
-        position: relative;
-        box-shadow: 1px 1px 0px #000;
       }
-      .mc-coin-icon::after {
-        content: '';
-        position: absolute;
-        width: 4px;
-        height: 4px;
-        background: #000;
-        top: 4px;
-        left: 4px;
+
+      /* สีถอดแบบตามรูปต้นฉบับเป๊ะๆ */
+      .mc-tag     { color: #F7941D; font-family: 'Silkscreen', 'Kanit', sans-serif; margin-right: 6px; } /* [ECONOMY] */
+      .mc-white   { color: #FFFFFF; } 
+      .mc-yellow  { color: #FFFF55; font-family: 'Silkscreen', 'Kanit', sans-serif; margin: 0 4px; } 
+      .mc-target  { color: #F7941D; font-family: 'Silkscreen', 'Kanit', sans-serif; margin-left: 6px; } 
+
+      /* 🪙 Custom Coin Icon พิกเซลแท้จากในรูป */
+      .mc-pixel-coin {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        vertical-align: -2px;
+        margin-left: 4px;
+        image-rendering: pixelated;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'><rect x='2' y='1' width='12' height='14' fill='%23000'/><rect x='1' y='2' width='14' height='12' fill='%23000'/><rect x='3' y='2' width='10' height='12' fill='%23ffff55'/><rect x='2' y='3' width='12' height='10' fill='%23ffff55'/><rect x='4' y='3' width='8' height='10' fill='%23facc15'/><rect x='5' y='5' width='6' height='2' fill='%23000'/><rect x='4' y='7' width='8' height='1' fill='%23000'/><rect x='5' y='8' width='1' height='3' fill='%23000'/><rect x='7' y='8' width='2' height='3' fill='%23000'/><rect x='10' y='8' width='1' height='3' fill='%23000'/><rect x='5' y='11' width='6' height='1' fill='%23000'/><rect x='7' y='6' width='2' height='1' fill='%23facc15'/></svg>");
+        filter: drop-shadow(2px 2px 0px #000);
       }
     </style>
   </head>
@@ -362,7 +368,7 @@ app.get('/', (req, res) => {
       <!-- กล่องแชท Minecraft -->
       <div class="chat-screen-container">
         <div class="chat-header">
-          <span>📜 ประวัติการโอนเงิน (บันทึกถาวร)</span>
+          <span>📜 ประวัติการโอนเงิน (Live Log)</span>
           <span id="logCount" style="color: #ffff55;">0 รายการ</span>
         </div>
         <div class="chat-scroll" id="chatBox">
@@ -443,16 +449,25 @@ app.get('/', (req, res) => {
         const countSpan = document.getElementById('logCount');
         countSpan.innerText = logs.length + ' รายการ';
 
-        if (logs.length === 0) {
+        if (!logs || logs.length === 0) {
           box.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; text-align: center; padding: 20px;">ยังไม่มีประวัติการโอนเงิน</div>';
           return;
         }
 
         box.innerHTML = logs.map(item => \`
-          <div class="mc-chat-line">
-            <span class="mc-tag">[ECONOMY]</span> <span class="mc-white">คุณโอนเงินจำนวน</span> <span class="mc-amount">\${Number(item.amount).toLocaleString()}</span> <span class="mc-coin-icon"></span><br>
-            <span class="mc-white">ให้กับผู้เล่น</span> <span class="mc-player">\${item.player}</span>
-            <span class="mc-time">(\${item.time})</span>
+          <div class="mc-chat-screen">
+            <!-- บรรทัดที่ 1: [ECONOMY] คุณโอนเงินจำนวน 1 [เหรียญ] -->
+            <div class="mc-row">
+              <span class="mc-text mc-tag">[ECONOMY]</span> 
+              <span class="mc-text mc-white">คุณโอนเงินจำนวน</span> 
+              <span class="mc-text mc-yellow">\${Number(item.amount).toLocaleString()}</span>
+              <span class="mc-pixel-coin"></span>
+            </div>
+            <!-- บรรทัดที่ 2: ให้กับผู้เล่น <ชื่อ> -->
+            <div class="mc-row">
+              <span class="mc-text mc-white">ให้กับผู้เล่น</span> 
+              <span class="mc-text mc-target">\${item.player}</span>
+            </div>
           </div>
         \`).join('');
       }
