@@ -6,14 +6,18 @@ const app = express();
 const PORT = 3005;
 
 const PIPE = '/tmp/mcc_pipe_satang_cmd';
-const LOG_FILE = path.join(__dirname, 'satang_logs.txt');
-const BAL_FILE = path.join(__dirname, 'balance.txt');
+const CONSOLE_LOG = path.join(__dirname, 'satang_console.log');
+const HISTORY_FILE = path.join(__dirname, 'satang_pay_history.json');
 
 app.use(express.json());
 
+// 🛡️ ป้องกันแชทรั่วไหล: ส่งได้เฉพาะคำสั่งที่มี / เท่านั้น
 function sendCommand(cmd) {
   if (!fs.existsSync(PIPE)) return false;
-  if (!cmd.startsWith('/')) return false; // ป้องกันแชทรั่วไหล
+  if (!cmd.startsWith('/')) {
+    console.error(`[SECURITY BLOCKED]: '${cmd}' ถูกระงับเนื่องจากไม่มี / นำหน้า`);
+    return false;
+  }
   try {
     exec(`echo "${cmd}" > ${PIPE}`);
     return true;
@@ -22,37 +26,69 @@ function sendCommand(cmd) {
   }
 }
 
-// 📌 API สั่งเช็คยอดเงิน /money
-app.get('/api/check-balance', (req, res) => {
+// โหลดประวัติ Log จากไฟล์ JSON
+function getHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    }
+  } catch (e) {}
+  return [];
+}
+
+// เซฟประวัติ Log เพิ่มลงไฟล์ JSON
+function saveHistory(entry) {
+  try {
+    const list = getHistory();
+    list.unshift(entry); // เอาอันล่าสุดขึ้นก่อน
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Save history error:', e);
+  }
+}
+
+// 📌 API เช็คยอดเงิน (/money)
+app.get('/api/check-balance', async (req, res) => {
   if (!fs.existsSync(PIPE)) {
     return res.status(500).json({ success: false, message: 'บอท Satang13 ไม่ออนไลน์' });
   }
 
-  // 1. เคลียร์ค่าเดิมก่อนส่งคำสั่ง
-  if (fs.existsSync(BAL_FILE)) {
-    fs.writeFileSync(BAL_FILE, '', 'utf-8');
-  }
-
-  // 2. สั่งคำสั่ง /money ตรงไปยังบอท
+  const startSize = fs.existsSync(CONSOLE_LOG) ? fs.statSync(CONSOLE_LOG).size : 0;
   sendCommand('/money');
 
-  // 3. รอให้เซิร์ฟเวอร์ตอบกลับประมาณ 1 วินาที แล้วอ่านไฟล์แกะตัวเลข
-  setTimeout(() => {
-    try {
-      if (fs.existsSync(BAL_FILE)) {
-        const rawLine = fs.readFileSync(BAL_FILE, 'utf-8').trim();
-        if (rawLine) {
-          // แกะตัวเลขยอดเงิน เช่น 1,500,000 หรือ 250.50
-          const match = rawLine.match(/[\d,]+(\.\d+)?/);
-          const balance = match ? match[0] : '0';
-          return res.json({ success: true, balance: balance, raw: rawLine });
+  let foundBalance = null;
+  let rawText = '';
+
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+
+    if (fs.existsSync(CONSOLE_LOG)) {
+      const currentSize = fs.statSync(CONSOLE_LOG).size;
+      if (currentSize > startSize) {
+        const stream = fs.readFileSync(CONSOLE_LOG, 'utf-8');
+        const newLines = stream.slice(startSize).split('\n');
+
+        for (const line of newLines) {
+          const cleanLine = line.replace(/§[0-9a-fk-or]/gi, '').trim();
+          if (/economy|เงิน|balance|คงเหลือ|คอยน์|\$/i.test(cleanLine)) {
+            const match = cleanLine.match(/[\d,]+(?:\.\d+)?/);
+            if (match) {
+              foundBalance = match[0];
+              rawText = cleanLine;
+              break;
+            }
+          }
         }
       }
-      res.json({ success: false, message: 'ไม่พบข้อความตอบกลับจากเซิร์ฟเวอร์' });
-    } catch (e) {
-      res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการอ่านไฟล์ยอดเงิน' });
     }
-  }, 1200);
+    if (foundBalance) break;
+  }
+
+  if (foundBalance) {
+    return res.json({ success: true, balance: foundBalance, raw: rawText });
+  }
+
+  res.json({ success: false, message: 'ไม่พบข้อความตอบกลับ (ลองใหม่อีกครั้ง)' });
 });
 
 // 📌 API สั่งโอนเงิน
@@ -77,19 +113,23 @@ app.post('/api/pay', (req, res) => {
     sendCommand('/dialog click 1');
   }, 1200);
 
+  // บันทึก Log ประวัติ
+  const timeNow = new Date().toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' });
+  const dateNow = new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' });
+  saveHistory({
+    player: player,
+    amount: amount,
+    time: timeNow,
+    date: dateNow,
+    timestamp: Date.now()
+  });
+
   res.json({ success: true, message: `ส่งคำสั่ง /pay ${player} ${amount} เรียบร้อยแล้ว` });
 });
 
-// 📌 API ดึง Log
+// 📌 API ดึงประวัติ Log ทั้งหมด
 app.get('/api/logs', (req, res) => {
-  if (fs.existsSync(LOG_FILE)) {
-    try {
-      const raw = fs.readFileSync(LOG_FILE, 'utf-8');
-      const lines = raw.trim().split('\n').filter(Boolean).slice(-15);
-      return res.json({ logs: lines });
-    } catch (e) {}
-  }
-  res.json({ logs: [] });
+  res.json({ logs: getHistory() });
 });
 
 // 🌐 หน้า Web Dashboard
@@ -100,21 +140,23 @@ app.get('/', (req, res) => {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Satang13 Pay System</title>
+    <title>Minecraft Pay Controller</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=Noto+Sans+Thai:wght@500;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Bai+Jamjuree:wght@600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <style>
-      :root {
-        --bg: #0d1117;
-        --card: #161b22;
-        --border: rgba(255, 255, 255, 0.1);
-      }
-
       * { box-sizing: border-box; margin: 0; padding: 0; }
+
       body {
-        background: var(--bg);
+        /* พื้นหลัง Texture Stone Bricks จาก Minecraft */
+        background-color: #1a1a1a;
+        background-image: 
+          radial-gradient(circle, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.85) 100%),
+          url('https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/stone_bricks.png');
+        background-repeat: repeat;
+        background-size: auto, 64px 64px;
+        image-rendering: pixelated;
         color: #f0f6fc;
-        font-family: 'Plus Jakarta Sans', 'Noto Sans Thai', sans-serif;
+        font-family: 'Bai Jamjuree', sans-serif;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
@@ -122,122 +164,158 @@ app.get('/', (req, res) => {
         padding: 30px 16px;
       }
 
-      .container { width: 100%; max-width: 540px; }
+      .container { width: 100%; max-width: 580px; }
 
+      /* กรอบสไตล์ GUI Minecraft */
       .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 16px;
+        background: rgba(24, 26, 32, 0.92);
+        backdrop-filter: blur(8px);
+        border: 2px solid #4a5568;
+        border-radius: 12px;
         padding: 24px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        box-shadow: 0 16px 40px rgba(0,0,0,0.8), inset 0 0 2px rgba(255,255,255,0.2);
         margin-bottom: 20px;
       }
 
-      h1 { font-size: 1.4rem; color: #38bdf8; margin-bottom: 4px; font-weight: 800; text-align: center; }
-      .sub { color: #8b949e; font-size: 0.85rem; text-align: center; margin-bottom: 16px; }
+      h1 { 
+        font-size: 1.4rem; 
+        color: #f59e0b; 
+        margin-bottom: 4px; 
+        font-weight: 800; 
+        text-align: center;
+        text-shadow: 2px 2px #000;
+      }
+      .sub { color: #94a3b8; font-size: 0.85rem; text-align: center; margin-bottom: 16px; }
 
-      /* การ์ดยอดเงิน */
+      /* ส่วนยอดเงิน */
       .balance-box {
-        background: #090d13;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 16px;
+        background: rgba(10, 12, 16, 0.85);
+        border: 2px solid #2d3748;
+        border-radius: 8px;
+        padding: 14px 18px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 18px;
       }
-      .balance-info { text-align: left; }
       .balance-label { font-size: 0.8rem; color: #94a3b8; font-weight: 700; }
-      .balance-val { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; color: #facc15; font-weight: 800; }
-      .btn-balance {
-        background: #1e293b;
-        color: #38bdf8;
-        border: 1px solid #38bdf8;
-        padding: 10px 16px;
+      .balance-val { 
+        font-family: 'JetBrains Mono', monospace; 
+        font-size: 1.6rem; 
+        color: #ffff55; 
         font-weight: 800;
+        text-shadow: 2px 2px #000;
+      }
+      .btn-balance {
+        background: #2b3544;
+        color: #38bdf8;
+        border: 2px solid #38bdf8;
+        padding: 8px 14px;
+        font-weight: 700;
         font-size: 0.85rem;
-        border-radius: 8px;
+        border-radius: 6px;
         cursor: pointer;
         transition: 0.15s;
+        font-family: 'Bai Jamjuree', sans-serif;
       }
       .btn-balance:hover { background: #38bdf8; color: #000; }
 
       .form-group { margin-bottom: 14px; text-align: left; }
-      label { display: block; font-size: 0.8rem; font-weight: 700; color: #cbd5e1; margin-bottom: 6px; }
+      label { display: block; font-size: 0.85rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; text-shadow: 1px 1px #000; }
       input {
         width: 100%;
         padding: 12px 14px;
-        background: #090d13;
-        border: 1px solid #30363d;
-        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.7);
+        border: 2px solid #4b5563;
+        border-radius: 6px;
         color: #fff;
         font-size: 1rem;
         outline: none;
-        transition: border-color 0.2s;
+        font-family: 'Bai Jamjuree', sans-serif;
+        font-weight: 600;
       }
-      input:focus { border-color: #38bdf8; }
+      input:focus { border-color: #f59e0b; }
 
       .btn-pay {
         width: 100%;
         padding: 14px;
-        background: linear-gradient(135deg, #f59e0b, #d97706);
-        border: none;
-        border-radius: 8px;
-        color: #000;
-        font-size: 1.05rem;
+        background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+        border: 2px solid #f59e0b;
+        border-radius: 6px;
+        color: #fff;
+        font-size: 1.1rem;
         font-weight: 800;
         cursor: pointer;
         margin-top: 6px;
-        transition: transform 0.1s, filter 0.2s;
+        font-family: 'Bai Jamjuree', sans-serif;
+        text-shadow: 2px 2px #000;
+        box-shadow: 0 4px 0 #78350f;
       }
-      .btn-pay:hover { filter: brightness(1.1); }
-      .btn-pay:active { transform: scale(0.98); }
+      .btn-pay:hover { filter: brightness(1.15); }
+      .btn-pay:active { transform: translateY(2px); box-shadow: 0 2px 0 #78350f; }
 
-      /* 🎮 กล่องแชทเลียนแบบเกม */
+      /* 🎮 กล่องแชท MINECRAFT ตามภาพต้นฉบับ */
       .chat-screen-container {
-        background: rgba(10, 10, 10, 0.85);
-        border: 1px solid #30363d;
-        border-radius: 14px;
-        padding: 18px;
-        box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        background: rgba(0, 0, 0, 0.75);
+        border: 2px solid #374151;
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
       }
       .chat-header {
         font-size: 0.85rem;
         color: #94a3b8;
         margin-bottom: 12px;
         font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-bottom: 8px;
+      }
+
+      .chat-scroll {
+        max-height: 380px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       .mc-chat-line {
-        background: rgba(0, 0, 0, 0.5);
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        line-height: 1.5;
-        font-family: 'Noto Sans Thai', sans-serif;
-        font-size: 1.02rem;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 8px 12px;
+        border-radius: 4px;
+        line-height: 1.45;
+        font-family: 'VT323', 'Bai Jamjuree', monospace;
+        font-size: 1.35rem;
         font-weight: 700;
+        letter-spacing: 0.5px;
+        /* เงาข้อความแบบคมกริบสไตล์ Minecraft */
         text-shadow: 2px 2px 0px #000000;
         display: block;
+        border-left: 3px solid #e67e22;
       }
 
-      .mc-tag { color: #e67e22; font-weight: 900; }
-      .mc-white { color: #ffffff; }
-      .mc-amount { color: #ffff55; }
-      .mc-player { color: #e67e22; }
+      /* ถอดแบบสีตามรูปต้นฉบับเป๊ะๆ */
+      .mc-tag { color: #e67e22; font-weight: 900; }     /* [ECONOMY] สีส้มเข้ม */
+      .mc-white { color: #ffffff; }                     /* คุณโอนเงินจำนวน */
+      .mc-amount { color: #ffff55; }                    /* ตัวเลข สีเหลือง */
+      .mc-player { color: #e67e22; }                    /* ชื่อผู้เล่น สีส้ม */
+      .mc-time { font-size: 0.85rem; color: #64748b; margin-left: 8px; font-family: 'JetBrains Mono', monospace; }
+
+      /* เหรียญทอง Coin icon ในเกม */
       .mc-coin-icon {
         display: inline-block;
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
         background: #ffff55;
         border-radius: 50%;
         border: 2px solid #000;
-        vertical-align: middle;
-        margin-left: 2px;
+        vertical-align: -2px;
+        margin-left: 3px;
         position: relative;
+        box-shadow: 1px 1px 0px #000;
       }
       .mc-coin-icon::after {
         content: '';
@@ -245,21 +323,21 @@ app.get('/', (req, res) => {
         width: 4px;
         height: 4px;
         background: #000;
-        top: 3px;
-        left: 3px;
+        top: 4px;
+        left: 4px;
       }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="card">
-        <h1>💸 ระบบจัดการเงิน Satang13</h1>
-        <div class="sub">ส่งคำสั่งโดยตรงผ่าน Named Pipe ปลอดภัย 100%</div>
+        <h1>💸 SATANG13 PAY CONTROLLER</h1>
+        <div class="sub">ระบบโอนเงินสั่งการตรงผ่าน Named Pipe</div>
 
-        <!-- 💰 ส่วนแสดงผลยอดเงินปัจจุบัน -->
+        <!-- ยอดเงิน -->
         <div class="balance-box">
-          <div class="balance-info">
-            <div class="balance-label">ยอดเงินคงเหลือในตัว</div>
+          <div>
+            <div class="balance-label">ยอดเงินคงเหลือในกระเป๋า</div>
             <div class="balance-val" id="displayBalance">---</div>
           </div>
           <button class="btn-balance" onclick="checkBalance()">🔄 เช็คยอดเงิน</button>
@@ -267,7 +345,7 @@ app.get('/', (req, res) => {
 
         <div class="form-group">
           <label>ชื่อผู้เล่นปลายทาง</label>
-          <input type="text" id="targetPlayer" placeholder="เช่น Kaitom_4" autocomplete="off" />
+          <input type="text" id="targetPlayer" placeholder="เช่น Satang13" autocomplete="off" />
         </div>
 
         <div class="form-group">
@@ -278,10 +356,14 @@ app.get('/', (req, res) => {
         <button class="btn-pay" onclick="sendPay()">โอนเงินทันที</button>
       </div>
 
+      <!-- กล่องแชท Minecraft -->
       <div class="chat-screen-container">
-        <div class="chat-header">📡 ประวัติการโอนเงิน (Live Log)</div>
-        <div id="chatBox">
-          <div class="mc-chat-line" style="color: #64748b;">รอคำสั่งโอนเงิน...</div>
+        <div class="chat-header">
+          <span>📜 ประวัติการโอนเงิน (บันทึกถาวร)</span>
+          <span id="logCount" style="color: #ffff55;">0 รายการ</span>
+        </div>
+        <div class="chat-scroll" id="chatBox">
+          <div style="color: #64748b; font-size: 0.9rem; text-align: center; padding: 20px;">กำลังโหลดประวัติ...</div>
         </div>
       </div>
     </div>
@@ -328,9 +410,8 @@ app.get('/', (req, res) => {
           });
           const data = await res.json();
           if (data.success) {
-            appendLogUI(player, amount);
             amountInput.value = '';
-            // อัปเดตยอดเงินใหม่หลังโอนเสร็จ
+            fetchLogs();
             setTimeout(checkBalance, 2000);
           } else {
             alert(data.message);
@@ -340,36 +421,38 @@ app.get('/', (req, res) => {
         }
       }
 
-      function appendLogUI(player, amount) {
+      function renderLogs(logs) {
         const box = document.getElementById('chatBox');
-        if (box.innerText.includes('รอคำสั่งโอนเงิน...')) {
-          box.innerHTML = '';
+        const countSpan = document.getElementById('logCount');
+        countSpan.innerText = logs.length + ' รายการ';
+
+        if (logs.length === 0) {
+          box.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; text-align: center; padding: 20px;">ยังไม่มีประวัติการโอนเงิน</div>';
+          return;
         }
-        const line = document.createElement('div');
-        line.className = 'mc-chat-line';
-        line.innerHTML = \`
-          <span class="mc-tag">[ECONOMY]</span> <span class="mc-white">คุณโอนเงินจำนวน</span> <span class="mc-amount">\${amount}</span> <span class="mc-coin-icon"></span><br>
-          <span class="mc-white">ให้กับผู้เล่น</span> <span class="mc-player">\${player}</span>
-        \`;
-        box.prepend(line);
+
+        box.innerHTML = logs.map(item => \`
+          <div class="mc-chat-line">
+            <span class="mc-tag">[ECONOMY]</span> <span class="mc-white">คุณโอนเงินจำนวน</span> <span class="mc-amount">\${item.amount}</span> <span class="mc-coin-icon"></span><br>
+            <span class="mc-white">ให้กับผู้เล่น</span> <span class="mc-player">\${item.player}</span>
+            <span class="mc-time">(\${item.time})</span>
+          </div>
+        \`).join('');
       }
 
       async function fetchLogs() {
         try {
           const res = await fetch('/api/logs');
           const data = await res.json();
-          if (data.logs && data.logs.length > 0) {
-            const box = document.getElementById('chatBox');
-            box.innerHTML = data.logs.map(log => {
-              return \`<div class="mc-chat-line">\${log}</div>\`;
-            }).reverse().join('');
+          if (data.logs) {
+            renderLogs(data.logs);
           }
         } catch (e) {}
       }
 
-      // โหลดเช็คยอดเงินครั้งแรกตอนเปิดหน้าเว็บ
       checkBalance();
-      setInterval(fetchLogs, 3000);
+      fetchLogs();
+      setInterval(fetchLogs, 4000);
     </script>
   </body>
   </html>
