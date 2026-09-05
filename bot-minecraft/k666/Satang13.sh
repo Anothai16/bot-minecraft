@@ -19,27 +19,23 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT EXIT
 
-# รัน MCC และส่ง output ออกทั้งหน้าจอและบันทึกลง satang_console.log
-./MinecraftClient Satang13 - play.amorycraft.com < "$PIPE" 2>&1 | tee -a "$CONSOLE_LOG" &
+# รัน MCC และบังคับ Flush เขียนลงไฟล์ทันทีทุกบรรทัด
+stdbuf -oL -eL ./MinecraftClient Satang13 - play.amorycraft.com < "$PIPE" > "$CONSOLE_LOG" 2>&1 &
 
 # ==========================================
 # 🔑 ล็อกอิน & เดินทางเข้า Survival
 # ==========================================
-echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
 sleep 10
 echo "/dialog input pass 112233" >&3
 sleep 3
 echo "/dialog click 1" >&3
-echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
 
-echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
 sleep 10
 echo "/useitem mainhand" >&3
 sleep 2
 echo "/inventory container click 10 Left" >&3
-echo "[LOBBY] เลือก Survival เรียบร้อย..." >&2
 
-# Keep-alive loop ป้องกันหลุด
+# Keep-alive loop
 while true; do
   sleep 25
   echo "" >&3
