@@ -17,7 +17,7 @@
     "express": "^4.19.2",
     "form-data": "^4.0.6",
     "minecraft-data": "^3.113.0",
-    "minecraft-protocol": "^1.66.2",
+    "minecraft-protocol": "^1.68.0",
     "mineflayer": "^4.37.1",
     "mineflayer-pathfinder": "^2.4.5",
     "multer": "^2.3.0",

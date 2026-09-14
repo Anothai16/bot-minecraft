@@ -26,7 +26,6 @@ function cleanColorCodes(str) {
     return str.replace(/§[0-9a-fk-orx]/gi, '').trim();
 }
 
-// 📧 สุ่มอีเมลเนียนๆ สไตล์ชื่อ-นามสกุลฝรั่งผสมตัวเลข
 function generateHumanLikeEmail() {
     const firstNames = ['james', 'alex', 'oliver', 'noah', 'lucas', 'leo', 'jack', 'ethan', 'daniel', 'marcus', 'ryan', 'nathan', 'samuel', 'david', 'chris', 'kevin', 'jason', 'eric', 'brian', 'justin'];
     const lastNames = ['miller', 'taylor', 'smith', 'brown', 'wilson', 'moore', 'clark', 'white', 'walker', 'hall', 'allen', 'young', 'king', 'wright', 'scott', 'green', 'baker', 'adams', 'nelson', 'hill'];
@@ -37,14 +36,11 @@ function generateHumanLikeEmail() {
     return `${fn}${sep}${ln}${num}@gmail.com`;
 }
 
-// 📌 รายชื่อบอท 50 ตัวละครสไตล์ผู้เล่นเกม
+// รายชื่อบอท 80 ตัว
 const BOT_CONFIGS = [
-    // 3 ตัวหลักตามที่ระบุ
     { name: 'Skyz_Frost', pass: '112233' },
     { name: 'KuroNeko_99', pass: '112233' },
     { name: 'ChocoLatte_z', pass: '112233' },
-
-    // ผสมคละสไตล์ ไม่จัดหมวด (4 - 50)
     { name: 'KaiJiewGrob', pass: '112233' },
     { name: 'AeroStrike', pass: '112233' },
     { name: 'NongBeam2005', pass: '112233' },
@@ -92,8 +88,6 @@ const BOT_CONFIGS = [
     { name: 'LekKrubPom', pass: '112233' },
     { name: 'MatchaLattez', pass: '112233' },
     { name: 'PixelPippiw', pass: '112233' },
-
-    // ชุด 51 - 60
     { name: 'KrapaoMooGrob', pass: '112233' },
     { name: 'ToeyPanuwat', pass: '112233' },
     { name: 'StormBreaker', pass: '112233' },
@@ -104,8 +98,6 @@ const BOT_CONFIGS = [
     { name: 'ChaiYoKubPom', pass: '112233' },
     { name: 'AquaSplash9', pass: '112233' },
     { name: 'ManowManaoZa', pass: '112233' },
-
-    // ➕ ชุด 61 - 80 ใหม่
     { name: 'KhaoNiewMamuang', pass: '112233' },
     { name: 'NongFirstZa', pass: '112233' },
     { name: 'ThunderClap', pass: '112233' },
@@ -154,11 +146,15 @@ function updateStatus(name, status, step, bits = null, errorReason = null) {
 
 function stopBotInstance(username) {
     if (activeBots[username]) {
-        if (activeBots[username].compassTimer) clearTimeout(activeBots[username].compassTimer);
-        if (activeBots[username].anvilCheckTimer) clearTimeout(activeBots[username].anvilCheckTimer);
-        if (activeBots[username].afkInterval) clearInterval(activeBots[username].afkInterval);
-        if (activeBots[username].scanBitsInterval) clearInterval(activeBots[username].scanBitsInterval);
-        try { activeBots[username].quit(); } catch (e) {}
+        const b = activeBots[username];
+        if (b.compassTimer) clearTimeout(b.compassTimer);
+        if (b.anvilCheckTimer) clearTimeout(b.anvilCheckTimer);
+        if (b.afkInterval) clearInterval(b.afkInterval);
+        if (b.scanBitsInterval) clearInterval(b.scanBitsInterval);
+        try { 
+            b.removeAllListeners();
+            b.quit(); 
+        } catch (e) {}
         delete activeBots[username];
     }
 }
@@ -178,16 +174,11 @@ function extractAllStrings(obj, collector = []) {
 function parseBitsFromString(rawString) {
     if (!rawString) return null;
     const text = cleanColorCodes(rawString);
-
     if (/บิท|bit/i.test(text)) {
         const hexMatch = text.match(/#12DBF6\s*([0-9,]+)/i);
-        if (hexMatch) {
-            return parseInt(hexMatch[1].replace(/,/g, ''), 10);
-        }
+        if (hexMatch) return parseInt(hexMatch[1].replace(/,/g, ''), 10);
         const normalMatch = text.match(/(?:บิท|bit)\s*[:：]?\s*([0-9,]+)/i);
-        if (normalMatch) {
-            return parseInt(normalMatch[1].replace(/,/g, ''), 10);
-        }
+        if (normalMatch) return parseInt(normalMatch[1].replace(/,/g, ''), 10);
     }
     return null;
 }
@@ -195,28 +186,23 @@ function parseBitsFromString(rawString) {
 function scanScoreboardDirectly(bot, username) {
     if (!bot) return;
     const collectedLines = [];
-
     if (bot.teams) {
         for (const team of Object.values(bot.teams)) {
-            const teamStrings = extractAllStrings(team);
-            const combined = teamStrings.join(' ');
+            const combined = extractAllStrings(team).join(' ');
             if (combined) collectedLines.push(combined);
         }
     }
-
     if (bot.scoreboard) {
         for (const slotKey of Object.keys(bot.scoreboard)) {
             const objective = bot.scoreboard[slotKey];
             if (objective && objective.items) {
                 for (const item of Object.values(objective.items)) {
-                    const itemStrings = extractAllStrings(item);
-                    const combined = itemStrings.join(' ');
+                    const combined = extractAllStrings(item).join(' ');
                     if (combined) collectedLines.push(combined);
                 }
             }
         }
     }
-
     for (const line of collectedLines) {
         const val = parseBitsFromString(line);
         if (val !== null && val > 0) {
@@ -233,12 +219,12 @@ function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
     if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
     bot.authStage = 'IN_LOBBY';
-    log(`[🏠] [${username}] เข้าสู่ Lobby แล้ว -> รอ 12s ก่อนหาเข็มทิศ...`);
-    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 12s)');
+    log(`[🏠] [${username}] เข้าสู่ Lobby แล้ว -> รอ 10s ก่อนหาเข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 10s)');
 
     bot.compassTimer = setTimeout(() => {
         useCompass(bot, username);
-    }, 12000);
+    }, 10000);
 }
 
 async function useCompass(bot, username) {
@@ -249,7 +235,7 @@ async function useCompass(bot, username) {
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            await bot.sleep(2500);
+            await bot.sleep(1500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
             log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย!`);
@@ -259,7 +245,7 @@ async function useCompass(bot, username) {
         }
     } else {
         try {
-            await bot.sleep(2500);
+            await bot.sleep(1500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         } catch (e) {}
@@ -270,11 +256,7 @@ function createBotInstance(username, delayMs = 0) {
     const currentStatus = botStatusMap[username]?.status || 'Stopped';
     const isAlreadyRunning = activeBots[username] && (currentStatus.includes('Online') || currentStatus === 'Connecting' || currentStatus === 'Logging in' || currentStatus === 'In Lobby' || currentStatus.includes('Registering'));
 
-    if (isAlreadyRunning) {
-        log(`[i] [${username}] กำลังทำงานอยู่แล้ว -> ข้ามการรันซ้ำ`);
-        return;
-    }
-
+    if (isAlreadyRunning) return;
     if (!botStatusMap[username]?.enabled) {
         updateStatus(username, 'Stopped', 'ระงับการทำงาน (User Disabled)');
         return;
@@ -282,7 +264,6 @@ function createBotInstance(username, delayMs = 0) {
 
     setTimeout(() => {
         if (!botStatusMap[username]?.enabled) return;
-
         stopBotInstance(username);
 
         log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์...`);
@@ -292,18 +273,38 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const randomEmail = generateHumanLikeEmail();
 
+        // -----------------------------------------------------------------
+        // ULTRA-OPTIMIZED BOT INSTANCE (ตัดการโหลด Chunk / แสง / Entity รอบตัว)
+        // -----------------------------------------------------------------
         const bot = mineflayer.createBot({
             host: SERVER_HOST,
             port: SERVER_PORT,
             username: username,
             version: MC_VERSION,
             data: sharedData,
-            physicsEnabled: false,
-            checkTimeoutInterval: 60000
+            physicsEnabled: false,         // ปิด Physics 100% (ลด CPU)
+            checkTimeoutInterval: 60000,
+            viewDistance: 'tiny'           // ลดระยะมองเห็นในฝั่ง client
         });
 
+        // 1. ดักจับและยกเลิกการประมวลผล Packets กราฟิก/สิ่งแวดล้อมที่กิน CPU
         if (bot._client) {
             bot._client.on('packet', (data, metadata) => {
+                // ตัด Particles, แสง, เสียง, แอนิเมชัน
+                if (
+                    metadata.name.includes('particle') ||
+                    metadata.name.includes('sound') ||
+                    metadata.name.includes('light') ||
+                    metadata.name === 'entity_animation' ||
+                    metadata.name === 'entity_head_rotation' ||
+                    metadata.name === 'entity_velocity' ||
+                    metadata.name === 'rel_entity_move' ||
+                    metadata.name === 'entity_look'
+                ) {
+                    return false;
+                }
+
+                // สแกน Scoreboard / Bit อย่างรวดเร็วจากแพ็กเก็ตดิบ
                 if (metadata.name === 'teams' || metadata.name === 'scoreboard_team' || metadata.name === 'scoreboard_score') {
                     try {
                         const rawStrings = extractAllStrings(data).join(' ');
@@ -316,13 +317,20 @@ function createBotInstance(username, delayMs = 0) {
                         }
                     } catch (e) {}
                 }
-
-                if (metadata.name === 'world_particles' || metadata.name === 'packet_world_particles') {
-                    metadata.size = 0;
-                    return false;
-                }
             });
         }
+
+        // 2. ป้องกันไม่ให้ Mineflayer บันทึก World Chunks และ Entities ใน RAM
+        bot.on('inject_allowed', () => {
+            if (bot.world) {
+                // คืนค่าคอลัมน์ว่างเพื่อไม่ให้เซฟข้อมูลบล็อกลงแรม
+                bot.world.getChunk = () => null;
+                bot.world.getBlock = () => null;
+                bot.world.setBlockStateId = () => {};
+            }
+            // ไม่เก็บรายการ Entity ผู้เล่นอื่น
+            bot.entities = {};
+        });
 
         activeBots[username] = bot;
         bot.authStage = 'START';
@@ -350,6 +358,11 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('spawn', () => {
+            // เคลียร์ memory ของ chunk ทุกครั้งที่ spawn
+            if (bot.world && bot.world.columns) {
+                bot.world.columns = {};
+            }
+
             if (bot.authStage === 'TYPING_PASSWORD' && !isRegisterMode) {
                 log(`[⚡ BYPASS] [${username}] โหลดเข้า Lobby สำเร็จ`);
                 triggerLobbyCompass(bot, username);
@@ -375,14 +388,26 @@ function createBotInstance(username, delayMs = 0) {
                                 log(`[✓] [${username}] ประจำการใน Survival และพิมพ์ /afk เรียบร้อย!`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
 
+                                // ล้าง world cache ทันทีหลังเข้าประจำที่
+                                if (bot.world && bot.world.columns) bot.world.columns = {};
+
                                 if (bot.scanBitsInterval) clearInterval(bot.scanBitsInterval);
                                 bot.scanBitsInterval = setInterval(() => {
                                     scanScoreboardDirectly(bot, username);
-                                }, 3000);
+                                }, 5000);
 
+                                // AFK Keep-alive ใช้แค่ส่ง packet หมุนมุมมองเบาๆ โดยไม่ใช้ physics
                                 if (bot.afkInterval) clearInterval(bot.afkInterval);
                                 bot.afkInterval = setInterval(() => {
-                                    try { bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true); } catch (e) {}
+                                    try { 
+                                        if (bot._client) {
+                                            bot._client.write('look', {
+                                                yaw: 0,
+                                                pitch: 0,
+                                                onGround: true
+                                            });
+                                        }
+                                    } catch (e) {}
                                 }, 60000);
 
                             }, 12000);
@@ -510,9 +535,7 @@ function createBotInstance(username, delayMs = 0) {
     }, delayMs);
 }
 
-// ==========================================
 // Web Server + REST API
-// ==========================================
 const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     const path = parsedUrl.pathname;
@@ -545,7 +568,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 12000);
+                    createBotInstance(bName, launchIndex * 6000); // ดีเลย์เปิดตัวละ 6 วิ
                     launchIndex++;
                 }
             });
@@ -558,7 +581,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 12000);
+                    createBotInstance(bName, launchIndex * 6000);
                     launchIndex++;
                 }
             });
@@ -594,7 +617,7 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft 50-Bot Control Panel</title>
+    <title>Minecraft 80-Bot Ultra-Lite Dashboard</title>
     <style>
         body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
         h2 { color: #4caf50; margin: 0 0 10px 0; }
@@ -622,7 +645,7 @@ const server = http.createServer((req, res) => {
 </head>
 <body>
     <div class="toolbar">
-        <h2>🤖 Multi-Bot Dashboard (50 Accounts)</h2>
+        <h2>⚡ 80-Bot Ultra-Headless Controller</h2>
         <div class="btn-group">
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 1-10</button>
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20</button>
@@ -633,8 +656,8 @@ const server = http.createServer((req, res) => {
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=60&end=70')">▶ 61-70</button>
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=70&end=80')">▶ 71-80</button>
             <div class="custom-range">
-                <span>จาก:</span><input type="number" id="rStart" min="1" max="50" value="1">
-                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="50" value="15">
+                <span>จาก:</span><input type="number" id="rStart" min="1" max="80" value="1">
+                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="80" value="20">
                 <button class="btn-custom" onclick="launchCustomRange()">▶ เปิดช่วงนี้</button>
             </div>
             <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
@@ -717,7 +740,7 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | อัปเดตอัตโนมัติทุก 3 วินาที\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (โหมดประหยัด RAM/CPU ขั้นสูงสุด)\`;
             } catch (e) {}
         }
 
@@ -743,7 +766,7 @@ function getLocalIP() {
 
 server.listen(WEB_PORT, () => {
     log(`==================================================`);
-    log(`🚀 50-BOT SERVER RUNNING ON PORT ${WEB_PORT}`);
+    log(`🚀 80-BOT ULTRA-LITE SERVER RUNNING ON PORT ${WEB_PORT}`);
     log(`🌐 Dashboard URL: http://${getLocalIP()}:${WEB_PORT}`);
     log(`==================================================`);
 });
