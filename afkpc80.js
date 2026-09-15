@@ -37,60 +37,105 @@ function generateHumanLikeEmail() {
     return `${fn}${sep}${ln}${num}@gmail.com`;
 }
 
-// รายชื่อบอท 40 ตัว
+// รายชื่อบอท 80 ตัว
 const BOT_CONFIGS = [
-    { name: 'obs1', pass: '112233' },
-    { name: 'Morgan05', pass: '112233' },
-    { name: 'Domertown', pass: '112233' },
-    { name: 'Nattanon09', pass: '112233' },
-    { name: 'Nanepez', pass: '112233' },
-    { name: 'Sudlorkayeejai', pass: '112233' },
-    { name: 'Wood_Skel', pass: '112233' },
-    { name: 'sindirt', pass: '112233' },
-    { name: 'Pompamz', pass: '112233' },
-    { name: 'Netherboy', pass: '112233' },
-    { name: 'quast', pass: '112233' },
-    { name: 'Geyman', pass: '112233' },
-    { name: 'Jolibee', pass: '112233' },
-    { name: 'Posma2', pass: '112233' },
-    { name: 'Rxzy3', pass: '112233' },
-    { name: 'mecular', pass: '112233' },
-    { name: 'Iron34', pass: '112233' },
-    { name: 'd456', pass: '112233' },
-    { name: 'llMasterll', pass: '112233' },
-    { name: 'Ixcw2534', pass: '112233' },
-    { name: 'ShadowEmpress', pass: '112233' },
-    { name: 'gulnwza007', pass: '112233' },
-    { name: 'Monosox', pass: '112233' },
-    { name: 'twenty29', pass: '112233' },
-    { name: '0zow29', pass: '112233' },
-    { name: '0zow30', pass: '112233' },
-    { name: '0zow31', pass: '112233' },
-    { name: 'guguy555', pass: '112233' },
-    { name: 'ginggong', pass: '112233' },
-    { name: 'JoinServer', pass: '112233' },
-    { name: 'Nigga58', pass: '112233' },
-    { name: 'Effe2', pass: '112233' },
-    { name: 'Yihai', pass: '112233' },
-    { name: 'Huyteelai', pass: '112233' },
-    { name: 'Amasterpeach', pass: '112233' },
-    { name: 'Water762', pass: '112233' },
-    { name: 'JumPBaa', pass: '112233' },
-    { name: 'd123', pass: '112233' },
-    { name: 'Yukina', pass: '112233' },
-    { name: 'shabu555', pass: '112233' }
+    { name: 'Skyz_Frost', pass: '112233' },
+    { name: 'KuroNeko_99', pass: '112233' },
+    { name: 'ChocoLatte_z', pass: '112233' },
+    { name: 'KaiJiewGrob', pass: '112233' },
+    { name: 'AeroStrike', pass: '112233' },
+    { name: 'NongBeam2005', pass: '112233' },
+    { name: 'BobaPanda', pass: '112233' },
+    { name: 'KinKaoYang', pass: '112233' },
+    { name: 'PixelDrift', pass: '112233' },
+    { name: 'PeeSeuaNoy', pass: '112233' },
+    { name: 'BasTanwa', pass: '112233' },
+    { name: 'NightRaven', pass: '112233' },
+    { name: 'MooKrobLover', pass: '112233' },
+    { name: 'MintyChoc', pass: '112233' },
+    { name: 'DekWatZa', pass: '112233' },
+    { name: 'ZenithBlade', pass: '112233' },
+    { name: 'FernNapatsara', pass: '112233' },
+    { name: 'MaiRooReung', pass: '112233' },
+    { name: 'CoffeeFirst', pass: '112233' },
+    { name: 'VortexRider', pass: '112233' },
+    { name: 'NongIceZa', pass: '112233' },
+    { name: 'KhorThodKrub', pass: '112233' },
+    { name: 'CyberPulse', pass: '112233' },
+    { name: 'TaroMilkTea', pass: '112233' },
+    { name: 'AraiKorDai', pass: '112233' },
+    { name: 'GhostWalker', pass: '112233' },
+    { name: 'ArmThanakorn', pass: '112233' },
+    { name: 'PlaDookTod', pass: '112233' },
+    { name: 'ShadowNova', pass: '112233' },
+    { name: 'GolfSuraphol', pass: '112233' },
+    { name: 'SunnyToast', pass: '112233' },
+    { name: 'NuengNangNoy', pass: '112233' },
+    { name: 'CloudyDay', pass: '112233' },
+    { name: 'PondSupakit', pass: '112233' },
+    { name: 'SabaiSabai', pass: '112233' },
+    { name: 'HyperNova', pass: '112233' },
+    { name: 'KlaKritin', pass: '112233' },
+    { name: 'SweetMango', pass: '112233' },
+    { name: 'SomTumbaPoo', pass: '112233' },
+    { name: 'BlazeCore', pass: '112233' },
+    { name: 'PloySasiwimon', pass: '112233' },
+    { name: 'KaiTodHatYai', pass: '112233' },
+    { name: 'SleepyCat99', pass: '112233' },
+    { name: 'PhuPhaSiam', pass: '112233' },
+    { name: 'NonStopPlayer', pass: '112233' },
+    { name: 'ChocoCookie', pass: '112233' },
+    { name: 'MaeKlongZa', pass: '112233' },
+    { name: 'LekKrubPom', pass: '112233' },
+    { name: 'MatchaLattez', pass: '112233' },
+    { name: 'PixelPippiw', pass: '112233' },
+    { name: 'KrapaoMooGrob', pass: '112233' },
+    { name: 'ToeyPanuwat', pass: '112233' },
+    { name: 'StormBreaker', pass: '112233' },
+    { name: 'NongPangHom', pass: '112233' },
+    { name: 'YumWoonSen', pass: '112233' },
+    { name: 'MekhaSiam', pass: '112233' },
+    { name: 'CrispyWaffle', pass: '112233' },
+    { name: 'ChaiYoKubPom', pass: '112233' },
+    { name: 'AquaSplash9', pass: '112233' },
+    { name: 'ManowManaoZa', pass: '112233' },
+    { name: 'KhaoNiewMamuang', pass: '112233' },
+    { name: 'NongFirstZa', pass: '112233' },
+    { name: 'ThunderClap', pass: '112233' },
+    { name: 'TomYumGoongZa', pass: '112233' },
+    { name: 'NutthaChai', pass: '112233' },
+    { name: 'ShadowHunterX', pass: '112233' },
+    { name: 'RotiSaiMai', pass: '112233' },
+    { name: 'PhuKhaoFai', pass: '112233' },
+    { name: 'FrostBite99', pass: '112233' },
+    { name: 'NongPreawZa', pass: '112233' },
+    { name: 'PadKrapaoPed', pass: '112233' },
+    { name: 'ChaiYoSiam', pass: '112233' },
+    { name: 'CosmicRider', pass: '112233' },
+    { name: 'BuaLoyKaiWan', pass: '112233' },
+    { name: 'TeeLekKrub', pass: '112233' },
+    { name: 'SolarFlareX', pass: '112233' },
+    { name: 'LookChinPing', pass: '112233' },
+    { name: 'KornPattara', pass: '112233' },
+    { name: 'NeonSpecter', pass: '112233' },
+    { name: 'KinKaoReuYang', pass: '112233' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 
+// ฟังก์ชันระบุพอร์ต Proxy ครบ 80 ตัว แบ่ง 8 กลุ่ม กลุ่มละ 10 ตัว
 function getProxyPortForBot(botName) {
     const index = BOT_NAMES.indexOf(botName);
-    if (index >= 0 && index < 10) return 1080;
-    if (index >= 10 && index < 20) return 1081;
-    if (index >= 20 && index < 30) return 1082;
-    if (index >= 30 && index < 40) return 1083;
-    return 1080;
+    if (index >= 0 && index < 10) return null; // 01-10: ออกเน็ตตรง
+    if (index >= 10 && index < 20) return 1080; // 11-20: Tor 1
+    if (index >= 20 && index < 30) return 1081; // 21-30: Tor 2
+    if (index >= 30 && index < 40) return 1082; // 31-40: Tor 3
+    if (index >= 40 && index < 50) return 1083; // 41-50: Tor 4
+    if (index >= 50 && index < 60) return 1084; // 51-60: Tor 5
+    if (index >= 60 && index < 70) return 1085; // 61-70: Tor 6
+    if (index >= 70 && index < 80) return 1086; // 71-80: Tor 7
+    return null;
 }
 
 const botStatusMap = {};
@@ -129,7 +174,7 @@ function stopBotInstance(username) {
     }
 }
 
-// แปลง K/M และดึงตัวเลขแบบไม่กิน CPU
+// ฟังก์ชันแปลงตัวเลข/ทศนิยม/หน่วย K, M แบบเบาเครื่อง ไม่กิน CPU
 function parseBitsFromText(text) {
     if (!text) return null;
     const clean = cleanColorCodes(text);
@@ -145,11 +190,10 @@ function parseBitsFromText(text) {
     return Math.round(num);
 }
 
-// สแกน Scoreboard แบบ Low Overhead (ไม่ recursion)
+// สแกน Scoreboard แบบ Low Overhead โดยตรงจาก bot.scoreboard และ bot.teamMap
 function scanScoreboardLightweight(bot, username) {
     if (!bot) return;
 
-    // 1. อ่านจาก Sidebar Scoreboard Items
     if (bot.scoreboard) {
         for (const slot of Object.keys(bot.scoreboard)) {
             const obj = bot.scoreboard[slot];
@@ -168,7 +212,6 @@ function scanScoreboardLightweight(bot, username) {
         }
     }
 
-    // 2. อ่านจาก Teams (Prefix/Suffix)
     if (bot.teamMap) {
         for (const team of Object.values(bot.teamMap)) {
             const str = `${team.prefix?.toString() || ''} ${team.suffix?.toString() || ''}`;
@@ -236,8 +279,9 @@ function createBotInstance(username, delayMs = 0) {
         stopBotInstance(username);
 
         const proxyPort = getProxyPortForBot(username);
-        log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์... (SOCKS5 :${proxyPort})`);
-        updateStatus(username, 'Connecting', `กำลังเชื่อมต่อ (SOCKS5 :${proxyPort})...`);
+        const routeMsg = proxyPort ? `(SOCKS5 :${proxyPort})` : `(Direct IP)`;
+        log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์... ${routeMsg}`);
+        updateStatus(username, 'Connecting', `กำลังเชื่อมต่อ ${routeMsg}...`);
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
@@ -254,31 +298,33 @@ function createBotInstance(username, delayMs = 0) {
             viewDistance: 'tiny'
         };
 
-        botOptions.connect = (client) => {
-            SocksClient.createConnection({
-                proxy: {
-                    host: '127.0.0.1',
-                    port: proxyPort,
-                    type: 5
-                },
-                command: 'connect',
-                destination: {
-                    host: SERVER_HOST,
-                    port: SERVER_PORT
-                }
-            }, (err, info) => {
-                if (err) {
-                    logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
-                    return client.emit('error', err);
-                }
-                client.setSocket(info.socket);
-                client.emit('connect');
-            });
-        };
+        if (proxyPort) {
+            botOptions.connect = (client) => {
+                SocksClient.createConnection({
+                    proxy: {
+                        host: '127.0.0.1',
+                        port: proxyPort,
+                        type: 5
+                    },
+                    command: 'connect',
+                    destination: {
+                        host: SERVER_HOST,
+                        port: SERVER_PORT
+                    }
+                }, (err, info) => {
+                    if (err) {
+                        logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
+                        return client.emit('error', err);
+                    }
+                    client.setSocket(info.socket);
+                    client.emit('connect');
+                });
+            };
+        }
 
         const bot = mineflayer.createBot(botOptions);
 
-        // ตัด chunk/world/entities ทิ้งแบบสิ้นเชิงเพื่อประหยัด RAM/GC
+        // ปิดระบบ World, Chunk และ Entities ทั้งหมดเพื่อไม่ให้เปลือง RAM
         bot.on('inject_allowed', () => {
             if (bot.world) {
                 bot.world.getChunk = () => null;
@@ -570,7 +616,7 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft 40-Bot Headless Dashboard (Node 2)</title>
+    <title>Minecraft 80-Bot Ultra-Lite Dashboard</title>
     <style>
         body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
         h2 { color: #4caf50; margin: 0 0 10px 0; }
@@ -594,20 +640,25 @@ const server = http.createServer((req, res) => {
         .Stopped { color: #757575; }
         .bits-val { color: #12dbf6; font-weight: bold; font-size: 14px; text-shadow: 0 0 5px rgba(18,219,246,0.3); }
         .err-log { color: #ff9800; font-size: 11px; max-width: 200px; word-break: break-all; }
-        .badge-proxy { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #004d40; color: #80cbc4; border: 1px solid #00796b; }
+        .badge-proxy { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #004d40; color: #80cbc4; margin-left: 5px; border: 1px solid #00796b; }
+        .badge-direct { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #263238; color: #b0bec5; margin-left: 5px; }
     </style>
 </head>
 <body>
     <div class="toolbar">
-        <h2>⚡ 40-Bot Headless Controller (Node 2)</h2>
+        <h2>⚡ 80-Bot Ultra-Headless Controller</h2>
         <div class="btn-group">
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (:1080)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1081)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=30')">▶ 21-30 (:1082)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=30&end=40')">▶ 31-40 (:1083)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (Direct)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1080)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=30')">▶ 21-30 (:1081)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=30&end=40')">▶ 31-40 (:1082)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=40&end=50')">▶ 41-50 (:1083)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=50&end=60')">▶ 51-60 (:1084)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=60&end=70')">▶ 61-70 (:1085)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=70&end=80')">▶ 71-80 (:1086)</button>
             <div class="custom-range">
-                <span>จาก:</span><input type="number" id="rStart" min="1" max="40" value="1">
-                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="40" value="40">
+                <span>จาก:</span><input type="number" id="rStart" min="1" max="80" value="1">
+                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="80" value="80">
                 <button class="btn-custom" onclick="launchCustomRange()">▶ เปิดช่วงนี้</button>
             </div>
             <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
@@ -649,7 +700,8 @@ const server = http.createServer((req, res) => {
         }
 
         function getPortByIndex(index) {
-            return 1080 + Math.floor(index / 10);
+            if (index >= 0 && index < 10) return null;
+            return 1079 + Math.floor(index / 10);
         }
 
         async function fetchStatus() {
@@ -682,11 +734,14 @@ const server = http.createServer((req, res) => {
                         \`<button class="btn-start" onclick="controlBot('\${name}', 'start')">Start</button>\`;
 
                     const pPort = getPortByIndex(index);
+                    const routeTag = pPort ? 
+                        \`<span class="badge-proxy">SOCKS:\${pPort}</span>\` : 
+                        \`<span class="badge-direct">Direct</span>\`;
 
                     html += \`<tr>
                         <td>\${index + 1}</td>
                         <td><b>\${name}</b></td>
-                        <td><span class="badge-proxy">SOCKS:\${pPort}</span></td>
+                        <td>\${routeTag}</td>
                         <td class="\${statusClass}">\${bot.status}</td>
                         <td>\${bot.step}</td>
                         <td class="bits-val">💎 \${bitVal.toLocaleString()} บิท</td>
@@ -698,7 +753,7 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Tor 4-Port Active)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Ultra-Low Spec Optimization)\`;
             } catch (e) {}
         }
 
@@ -724,7 +779,7 @@ function getLocalIP() {
 
 server.listen(WEB_PORT, () => {
     log(`==================================================`);
-    log(`🚀 40-BOT ULTRA-LITE SERVER RUNNING ON PORT ${WEB_PORT}`);
+    log(`🚀 80-BOT ULTRA-LITE SERVER RUNNING ON PORT ${WEB_PORT}`);
     log(`🌐 Dashboard URL: http://${getLocalIP()}:${WEB_PORT}`);
     log(`==================================================`);
 });
