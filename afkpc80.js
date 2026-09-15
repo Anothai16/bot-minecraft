@@ -124,17 +124,16 @@ const BOT_CONFIGS = [
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 
-// ฟังก์ชันระบุพอร์ต Proxy ครบ 80 ตัว แบ่ง 8 กลุ่ม กลุ่มละ 10 ตัว
 function getProxyPortForBot(botName) {
     const index = BOT_NAMES.indexOf(botName);
-    if (index >= 0 && index < 10) return null; // 01-10: ออกเน็ตตรง
-    if (index >= 10 && index < 20) return 1080; // 11-20: Tor 1
-    if (index >= 20 && index < 30) return 1081; // 21-30: Tor 2
-    if (index >= 30 && index < 40) return 1082; // 31-40: Tor 3
-    if (index >= 40 && index < 50) return 1083; // 41-50: Tor 4
-    if (index >= 50 && index < 60) return 1084; // 51-60: Tor 5
-    if (index >= 60 && index < 70) return 1085; // 61-70: Tor 6
-    if (index >= 70 && index < 80) return 1086; // 71-80: Tor 7
+    if (index >= 0 && index < 10) return null;
+    if (index >= 10 && index < 20) return 1080;
+    if (index >= 20 && index < 30) return 1081;
+    if (index >= 30 && index < 40) return 1082;
+    if (index >= 40 && index < 50) return 1083;
+    if (index >= 50 && index < 60) return 1084;
+    if (index >= 60 && index < 70) return 1085;
+    if (index >= 70 && index < 80) return 1086;
     return null;
 }
 
@@ -165,7 +164,6 @@ function stopBotInstance(username) {
         if (b.compassTimer) clearTimeout(b.compassTimer);
         if (b.anvilCheckTimer) clearTimeout(b.anvilCheckTimer);
         if (b.afkInterval) clearInterval(b.afkInterval);
-        if (b.scanBitsInterval) clearInterval(b.scanBitsInterval);
         try { 
             b.removeAllListeners();
             b.quit(); 
@@ -174,7 +172,6 @@ function stopBotInstance(username) {
     }
 }
 
-// ฟังก์ชันแปลงตัวเลข/ทศนิยม/หน่วย K, M แบบเบาเครื่อง ไม่กิน CPU
 function parseBitsFromText(text) {
     if (!text) return null;
     const clean = cleanColorCodes(text);
@@ -190,7 +187,6 @@ function parseBitsFromText(text) {
     return Math.round(num);
 }
 
-// สแกน Scoreboard แบบ Low Overhead โดยตรงจาก bot.scoreboard และ bot.teamMap
 function scanScoreboardLightweight(bot, username) {
     if (!bot) return;
 
@@ -226,6 +222,25 @@ function scanScoreboardLightweight(bot, username) {
         }
     }
 }
+
+// -------------------------------------------------------------
+// ระบบ Round-Robin Queue สแกนทีละ 1 ตัว ทุกๆ 7.5 วินาที (ครบ 80 ตัวใน 10 นาทีพอดี)
+// -------------------------------------------------------------
+let currentQueueIndex = 0;
+setInterval(() => {
+    if (BOT_NAMES.length === 0) return;
+    
+    const targetUsername = BOT_NAMES[currentQueueIndex];
+    currentQueueIndex = (currentQueueIndex + 1) % BOT_NAMES.length;
+
+    const bot = activeBots[targetUsername];
+    const status = botStatusMap[targetUsername]?.status || '';
+
+    // สแกนเฉพาะตัวที่เข้าสู่ Survival แล้วเท่านั้น
+    if (bot && status.includes('Online')) {
+        scanScoreboardLightweight(bot, targetUsername);
+    }
+}, 7500);
 
 function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
@@ -324,7 +339,6 @@ function createBotInstance(username, delayMs = 0) {
 
         const bot = mineflayer.createBot(botOptions);
 
-        // ปิดระบบ World, Chunk และ Entities ทั้งหมดเพื่อไม่ให้เปลือง RAM
         bot.on('inject_allowed', () => {
             if (bot.world) {
                 bot.world.getChunk = () => null;
@@ -392,13 +406,7 @@ function createBotInstance(username, delayMs = 0) {
                                 if (bot.world) bot.world.columns = {};
                                 bot.entities = {};
 
-                                // สแกนบิทเบาๆ ทุก 30 วินาที
-                                if (bot.scanBitsInterval) clearInterval(bot.scanBitsInterval);
-                                bot.scanBitsInterval = setInterval(() => {
-                                    scanScoreboardLightweight(bot, username);
-                                }, 30000);
-
-                                // รักษาสถานะเชื่อมต่อ ส่ง packet ขยับมุมมองทุก 90 วินาที
+                                // ส่ง packet ขยับมุมมองเบาๆ ทุก 90 วินาที เพื่อรักษาสถานะเชื่อมต่อ
                                 if (bot.afkInterval) clearInterval(bot.afkInterval);
                                 bot.afkInterval = setInterval(() => {
                                     try { 
@@ -518,7 +526,6 @@ function createBotInstance(username, delayMs = 0) {
             if (bot.compassTimer) clearTimeout(bot.compassTimer);
             if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
             if (bot.afkInterval) clearInterval(bot.afkInterval);
-            if (bot.scanBitsInterval) clearInterval(bot.scanBitsInterval);
             delete activeBots[username];
             log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
             
@@ -753,12 +760,13 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Ultra-Low Spec Optimization)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Round-Robin Queue: 10m/Cycle)\`;
             } catch (e) {}
         }
 
         fetchStatus();
-        setInterval(fetchStatus, 3000);
+        // ลดความถี่ Polling หน้าเว็บเป็น 10 วินาที เพื่อไม่กวน CPU Node.js
+        setInterval(fetchStatus, 10000);
     </script>
 </body>
 </html>
