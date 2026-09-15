@@ -37,6 +37,29 @@ function generateHumanLikeEmail() {
     return `${fn}${sep}${ln}${num}@gmail.com`;
 }
 
+// -------------------------------------------------------------
+// [PROFILER] ระบบวัดค่า CPU & Memory Usage แบบ Real-Time
+// -------------------------------------------------------------
+let lastCpuUsage = process.cpuUsage();
+let lastHrTime = process.hrtime();
+
+function getProcessCpuPercent() {
+    const currentCpu = process.cpuUsage(lastCpuUsage);
+    const currentHr = process.hrtime(lastHrTime);
+
+    lastCpuUsage = process.cpuUsage();
+    lastHrTime = process.hrtime();
+
+    const elapsedTimeMs = currentHr[0] * 1000 + currentHr[1] / 1000000;
+    const cpuTimeMs = (currentCpu.user + currentCpu.system) / 1000;
+
+    if (elapsedTimeMs <= 0) return 0;
+    const numCpus = os.cpus().length || 1;
+    // คิดเป็น % เทียบกับทุก Core ในเครื่อง
+    const percent = (cpuTimeMs / (elapsedTimeMs * numCpus)) * 100;
+    return parseFloat(percent.toFixed(1));
+}
+
 // รายชื่อบอท 80 ตัว
 const BOT_CONFIGS = [
     { name: 'Skyz_Frost', pass: '112233' },
@@ -224,7 +247,7 @@ function scanScoreboardLightweight(bot, username) {
 }
 
 // -------------------------------------------------------------
-// ระบบ Round-Robin Queue สแกนทีละ 1 ตัว ทุกๆ 7.5 วินาที (ครบ 80 ตัวใน 10 นาทีพอดี)
+// คิว Round-Robin สแกนบิททีละตัว + วัด Benchmark เวลาทำงาน
 // -------------------------------------------------------------
 let currentQueueIndex = 0;
 setInterval(() => {
@@ -236,11 +259,44 @@ setInterval(() => {
     const bot = activeBots[targetUsername];
     const status = botStatusMap[targetUsername]?.status || '';
 
-    // สแกนเฉพาะตัวที่เข้าสู่ Survival แล้วเท่านั้น
     if (bot && status.includes('Online')) {
+        const startTime = process.hrtime();
         scanScoreboardLightweight(bot, targetUsername);
+        const diff = process.hrtime(startTime);
+        const timeTakenMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(2);
+        
+        // ถ้าตัวไหนสแกนแล้วกินเวลาเกิน 20ms ให้ Log เตือน
+        if (parseFloat(timeTakenMs) > 20) {
+            log(`[⏱️ PROFILER SLOW] สแกนบิท [${targetUsername}] ใช้เวลา: ${timeTakenMs} ms`);
+        }
     }
 }, 7500);
+
+// -------------------------------------------------------------
+// [PROFILER LOOP] พิมพ์สถิติ CPU / RAM ทุก 15 วินาที
+// -------------------------------------------------------------
+setInterval(() => {
+    const cpu = getProcessCpuPercent();
+    const memUsage = process.memoryUsage();
+    const nodeRamMB = (memUsage.rss / 1024 / 1024).toFixed(1);
+    const heapUsedMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
+    const freeSystemMemMB = (os.freemem() / 1024 / 1024).toFixed(0);
+
+    let onlineCount = 0;
+    let connectingCount = 0;
+    Object.values(botStatusMap).forEach(b => {
+        if (b.status.includes('Online')) onlineCount++;
+        else if (b.status === 'Connecting' || b.status === 'In Lobby' || b.status === 'Registering' || b.status === 'Logging in') connectingCount++;
+    });
+
+    // แสดง Telemetry สม่ำเสมอ
+    log(`[📊 SYSTEM] CPU: ${cpu}% | Node RAM: ${nodeRamMB}MB (Heap: ${heapUsedMB}MB) | System Free RAM: ${freeSystemMemMB}MB | [Online: ${onlineCount}, Connecting: ${connectingCount}]`);
+
+    // ตรวจจับ CPU Spike ผิดปกติ
+    if (cpu >= 70.0) {
+        log(`[🔥 CPU SPIKE ALERT] พุ่งสูงถึง ${cpu}%! (มีบอทกำลังเชื่อมต่อ/ประมวลผลอยู่ ${connectingCount} ตัว)`);
+    }
+}, 15000);
 
 function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
@@ -406,7 +462,6 @@ function createBotInstance(username, delayMs = 0) {
                                 if (bot.world) bot.world.columns = {};
                                 bot.entities = {};
 
-                                // ส่ง packet ขยับมุมมองเบาๆ ทุก 90 วินาที เพื่อรักษาสถานะเชื่อมต่อ
                                 if (bot.afkInterval) clearInterval(bot.afkInterval);
                                 bot.afkInterval = setInterval(() => {
                                     try { 
@@ -760,12 +815,11 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Round-Robin Queue: 10m/Cycle)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Profiler Active)\`;
             } catch (e) {}
         }
 
         fetchStatus();
-        // ลดความถี่ Polling หน้าเว็บเป็น 10 วินาที เพื่อไม่กวน CPU Node.js
         setInterval(fetchStatus, 10000);
     </script>
 </body>
