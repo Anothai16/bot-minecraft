@@ -37,88 +37,48 @@ function generateHumanLikeEmail() {
     return `${fn}${sep}${ln}${num}@gmail.com`;
 }
 
-// รายชื่อบอท 80 ตัว
+// รายชื่อบอท 40 ตัว
 const BOT_CONFIGS = [
-    { name: 'Skyz_Frost', pass: '112233' },
-    { name: 'KuroNeko_99', pass: '112233' },
-    { name: 'ChocoLatte_z', pass: '112233' },
-    { name: 'KaiJiewGrob', pass: '112233' },
-    { name: 'AeroStrike', pass: '112233' },
-    { name: 'NongBeam2005', pass: '112233' },
-    { name: 'BobaPanda', pass: '112233' },
-    { name: 'KinKaoYang', pass: '112233' },
-    { name: 'PixelDrift', pass: '112233' },
-    { name: 'PeeSeuaNoy', pass: '112233' },
-    { name: 'BasTanwa', pass: '112233' },
-    { name: 'NightRaven', pass: '112233' },
-    { name: 'MooKrobLover', pass: '112233' },
-    { name: 'MintyChoc', pass: '112233' },
-    { name: 'DekWatZa', pass: '112233' },
-    { name: 'ZenithBlade', pass: '112233' },
-    { name: 'FernNapatsara', pass: '112233' },
-    { name: 'MaiRooReung', pass: '112233' },
-    { name: 'CoffeeFirst', pass: '112233' },
-    { name: 'VortexRider', pass: '112233' },
-    { name: 'NongIceZa', pass: '112233' },
-    { name: 'KhorThodKrub', pass: '112233' },
-    { name: 'CyberPulse', pass: '112233' },
-    { name: 'TaroMilkTea', pass: '112233' },
-    { name: 'AraiKorDai', pass: '112233' },
-    { name: 'GhostWalker', pass: '112233' },
-    { name: 'ArmThanakorn', pass: '112233' },
-    { name: 'PlaDookTod', pass: '112233' },
-    { name: 'ShadowNova', pass: '112233' },
-    { name: 'GolfSuraphol', pass: '112233' },
-    { name: 'SunnyToast', pass: '112233' },
-    { name: 'NuengNangNoy', pass: '112233' },
-    { name: 'CloudyDay', pass: '112233' },
-    { name: 'PondSupakit', pass: '112233' },
-    { name: 'SabaiSabai', pass: '112233' },
-    { name: 'HyperNova', pass: '112233' },
-    { name: 'KlaKritin', pass: '112233' },
-    { name: 'SweetMango', pass: '112233' },
-    { name: 'SomTumbaPoo', pass: '112233' },
-    { name: 'BlazeCore', pass: '112233' },
-    { name: 'PloySasiwimon', pass: '112233' },
-    { name: 'KaiTodHatYai', pass: '112233' },
-    { name: 'SleepyCat99', pass: '112233' },
-    { name: 'PhuPhaSiam', pass: '112233' },
-    { name: 'NonStopPlayer', pass: '112233' },
-    { name: 'ChocoCookie', pass: '112233' },
-    { name: 'MaeKlongZa', pass: '112233' },
-    { name: 'LekKrubPom', pass: '112233' },
-    { name: 'MatchaLattez', pass: '112233' },
-    { name: 'PixelPippiw', pass: '112233' },
-    { name: 'KrapaoMooGrob', pass: '112233' },
-    { name: 'ToeyPanuwat', pass: '112233' },
-    { name: 'StormBreaker', pass: '112233' },
-    { name: 'NongPangHom', pass: '112233' },
-    { name: 'YumWoonSen', pass: '112233' },
-    { name: 'MekhaSiam', pass: '112233' },
-    { name: 'CrispyWaffle', pass: '112233' },
-    { name: 'ChaiYoKubPom', pass: '112233' },
-    { name: 'AquaSplash9', pass: '112233' },
-    { name: 'ManowManaoZa', pass: '112233' },
-    { name: 'KhaoNiewMamuang', pass: '112233' },
-    { name: 'NongFirstZa', pass: '112233' },
-    { name: 'ThunderClap', pass: '112233' },
-    { name: 'TomYumGoongZa', pass: '112233' },
-    { name: 'NutthaChai', pass: '112233' },
-    { name: 'ShadowHunterX', pass: '112233' },
-    { name: 'RotiSaiMai', pass: '112233' },
-    { name: 'PhuKhaoFai', pass: '112233' },
-    { name: 'FrostBite99', pass: '112233' },
-    { name: 'NongPreawZa', pass: '112233' },
-    { name: 'PadKrapaoPed', pass: '112233' },
-    { name: 'ChaiYoSiam', pass: '112233' },
-    { name: 'CosmicRider', pass: '112233' },
-    { name: 'BuaLoyKaiWan', pass: '112233' },
-    { name: 'TeeLekKrub', pass: '112233' },
-    { name: 'SolarFlareX', pass: '112233' },
-    { name: 'LookChinPing', pass: '112233' },
-    { name: 'KornPattara', pass: '112233' },
-    { name: 'NeonSpecter', pass: '112233' },
-    { name: 'KinKaoReuYang', pass: '112233' }
+    { name: 'obs1', pass: '112233' },
+    { name: 'Morgan05', pass: '112233' },
+    { name: 'Domertown', pass: '112233' },
+    { name: 'Nattanon09', pass: '112233' },
+    { name: 'Nanepez', pass: '112233' },
+    { name: 'Sudlorkayeejai', pass: '112233' },
+    { name: 'Wood_Skel', pass: '112233' },
+    { name: 'sindirt', pass: '112233' },
+    { name: 'Pompamz', pass: '112233' },
+    { name: 'Netherboy', pass: '112233' },
+    { name: 'quast', pass: '112233' },
+    { name: 'Geyman', pass: '112233' },
+    { name: 'Jolibee', pass: '112233' },
+    { name: 'Posma2', pass: '112233' },
+    { name: 'Rxzy3', pass: '112233' },
+    { name: 'mecular', pass: '112233' },
+    { name: 'Iron34', pass: '112233' },
+    { name: 'd456', pass: '112233' },
+    { name: 'llMasterll', pass: '112233' },
+    { name: 'Ixcw2534', pass: '112233' },
+    { name: 'ShadowEmpress', pass: '112233' },
+    { name: 'gulnwza007', pass: '112233' },
+    { name: 'Monosox', pass: '112233' },
+    { name: 'twenty29', pass: '112233' },
+    { name: '0zow29', pass: '112233' },
+    { name: '0zow30', pass: '112233' },
+    { name: '0zow31', pass: '112233' },
+    { name: 'guguy555', pass: '112233' },
+    { name: 'ginggong', pass: '112233' },
+    { name: 'JoinServer', pass: '112233' },
+    { name: 'Nigga58', pass: '112233' },
+    { name: 'Effe2', pass: '112233' },
+    { name: 'Yihai', pass: '112233' },
+    { name: 'Huyteelai', pass: '112233' },
+    { name: 'Amasterpeach', pass: '112233' },
+    { name: 'Water762', pass: '112233' },
+    { name: 'JumPBaa', pass: '112233' },
+    { name: 'd123', pass: '112233' },
+    { name: 'Yukina', pass: '112233' },
+    { name: 'shabu555', pass: '112233' }
 ];
 
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
@@ -126,15 +86,11 @@ const activeBots = {};
 
 function getProxyPortForBot(botName) {
     const index = BOT_NAMES.indexOf(botName);
-    if (index >= 0 && index < 10) return null;
-    if (index >= 10 && index < 20) return 1080;
-    if (index >= 20 && index < 30) return 1081;
-    if (index >= 30 && index < 40) return 1082;
-    if (index >= 40 && index < 50) return 1083;
-    if (index >= 50 && index < 60) return 1084;
-    if (index >= 60 && index < 70) return 1085;
-    if (index >= 70 && index < 80) return 1086;
-    return null;
+    if (index >= 0 && index < 10) return 1080;
+    if (index >= 10 && index < 20) return 1081;
+    if (index >= 20 && index < 30) return 1082;
+    if (index >= 30 && index < 40) return 1083;
+    return 1080;
 }
 
 const botStatusMap = {};
@@ -173,81 +129,57 @@ function stopBotInstance(username) {
     }
 }
 
-function extractAllStrings(obj, collector = []) {
-    if (!obj) return collector;
-    if (typeof obj === 'string') {
-        collector.push(obj);
-    } else if (typeof obj === 'object') {
-        for (const key of Object.keys(obj)) {
-            extractAllStrings(obj[key], collector);
-        }
-    }
-    return collector;
-}
+// แปลง K/M และดึงตัวเลขแบบไม่กิน CPU
+function parseBitsFromText(text) {
+    if (!text) return null;
+    const clean = cleanColorCodes(text);
+    if (!/บิท|bit/i.test(clean)) return null;
 
-function parseFormattedNumber(valStr) {
-    if (!valStr) return null;
-    const cleanStr = valStr.replace(/,/g, '').trim();
-    const match = cleanStr.match(/^([0-9]+(?:\.[0-9]+)?)\s*([kmb])?$/i);
+    const match = clean.match(/([0-9]+(?:\.[0-9]+)?)\s*([kmb])?/i);
     if (!match) return null;
 
     let num = parseFloat(match[1]);
-    const unit = match[2] ? match[2].toUpperCase() : '';
-
+    const unit = (match[2] || '').toUpperCase();
     if (unit === 'K') num *= 1000;
     else if (unit === 'M') num *= 1000000;
-    else if (unit === 'B') num *= 1000000000;
-
     return Math.round(num);
 }
 
-function parseBitsFromString(rawString) {
-    if (!rawString) return null;
-    const text = cleanColorCodes(rawString);
-    if (/บิท|bit/i.test(text)) {
-        const hexMatch = text.match(/#12DBF6\s*([0-9,]+(?:\.[0-9]+)?\s*[kmb]?)/i);
-        if (hexMatch) {
-            const parsed = parseFormattedNumber(hexMatch[1]);
-            if (parsed !== null) return parsed;
-        }
-        
-        const normalMatch = text.match(/(?:บิท|bit)\s*[:：]?\s*([0-9,]+(?:\.[0-9]+)?\s*[kmb]?)/i);
-        if (normalMatch) {
-            const parsed = parseFormattedNumber(normalMatch[1]);
-            if (parsed !== null) return parsed;
-        }
-    }
-    return null;
-}
-
-function scanScoreboardDirectly(bot, username) {
+// สแกน Scoreboard แบบ Low Overhead (ไม่ recursion)
+function scanScoreboardLightweight(bot, username) {
     if (!bot) return;
-    const collectedLines = [];
-    if (bot.teams) {
-        for (const team of Object.values(bot.teams)) {
-            const combined = extractAllStrings(team).join(' ');
-            if (combined) collectedLines.push(combined);
-        }
-    }
+
+    // 1. อ่านจาก Sidebar Scoreboard Items
     if (bot.scoreboard) {
-        for (const slotKey of Object.keys(bot.scoreboard)) {
-            const objective = bot.scoreboard[slotKey];
-            if (objective && objective.items) {
-                for (const item of Object.values(objective.items)) {
-                    const combined = extractAllStrings(item).join(' ');
-                    if (combined) collectedLines.push(combined);
+        for (const slot of Object.keys(bot.scoreboard)) {
+            const obj = bot.scoreboard[slot];
+            if (obj && obj.itemsMap) {
+                for (const item of Object.values(obj.itemsMap)) {
+                    const val = parseBitsFromText(item.displayName?.toString() || item.name);
+                    if (val !== null && val > 0) {
+                        if (botStatusMap[username].bits !== val) {
+                            log(`🪙 [${username}] อัปเดตบิท: ${val.toLocaleString()} บิท`);
+                            updateStatus(username, null, null, val);
+                        }
+                        return;
+                    }
                 }
             }
         }
     }
-    for (const line of collectedLines) {
-        const val = parseBitsFromString(line);
-        if (val !== null && val > 0) {
-            if (botStatusMap[username].bits !== val) {
-                log(`🪙 [${username}] อัปเดตบิท: ${val.toLocaleString()} บิท`);
-                updateStatus(username, null, null, val);
+
+    // 2. อ่านจาก Teams (Prefix/Suffix)
+    if (bot.teamMap) {
+        for (const team of Object.values(bot.teamMap)) {
+            const str = `${team.prefix?.toString() || ''} ${team.suffix?.toString() || ''}`;
+            const val = parseBitsFromText(str);
+            if (val !== null && val > 0) {
+                if (botStatusMap[username].bits !== val) {
+                    log(`🪙 [${username}] อัปเดตบิท: ${val.toLocaleString()} บิท`);
+                    updateStatus(username, null, null, val);
+                }
+                return;
             }
-            return;
         }
     }
 }
@@ -256,13 +188,12 @@ function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
     if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
     bot.authStage = 'IN_LOBBY';
-    log(`[🏠] [${username}] เข้าสู่ Lobby แล้ว -> รอโหลด 24s ให้พร้อม...`);
-    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 24s)');
+    log(`[🏠] [${username}] เข้าสู่ Lobby แล้ว -> รอโหลด 11s ก่อนใช้เข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 11s)');
 
-    // ขยายเวลารอใน Lobby เป็น 24s
     bot.compassTimer = setTimeout(() => {
         useCompass(bot, username);
-    }, 24000);
+    }, 11000);
 }
 
 async function useCompass(bot, username) {
@@ -273,7 +204,7 @@ async function useCompass(bot, username) {
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            await bot.sleep(4000); // หน่วง 4s ให้ถือของนิ่ง
+            await bot.sleep(2500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
             log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย!`);
@@ -283,7 +214,7 @@ async function useCompass(bot, username) {
         }
     } else {
         try {
-            await bot.sleep(4000);
+            await bot.sleep(2500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         } catch (e) {}
@@ -305,9 +236,8 @@ function createBotInstance(username, delayMs = 0) {
         stopBotInstance(username);
 
         const proxyPort = getProxyPortForBot(username);
-        const routeMsg = proxyPort ? `(SOCKS5 :${proxyPort})` : `(Direct IP)`;
-        log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์... ${routeMsg}`);
-        updateStatus(username, 'Connecting', `กำลังเชื่อมต่อ ${routeMsg}...`);
+        log(`[+] [${username}] กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์... (SOCKS5 :${proxyPort})`);
+        updateStatus(username, 'Connecting', `กำลังเชื่อมต่อ (SOCKS5 :${proxyPort})...`);
 
         const botConfig = BOT_CONFIGS.find(b => b.name === username);
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
@@ -320,71 +250,41 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            checkTimeoutInterval: 120000, // ขยายเวลารอ timeout เป็น 120s
+            checkTimeoutInterval: 120000,
             viewDistance: 'tiny'
         };
 
-        if (proxyPort) {
-            botOptions.connect = (client) => {
-                SocksClient.createConnection({
-                    proxy: {
-                        host: '127.0.0.1',
-                        port: proxyPort,
-                        type: 5
-                    },
-                    command: 'connect',
-                    destination: {
-                        host: SERVER_HOST,
-                        port: SERVER_PORT
-                    }
-                }, (err, info) => {
-                    if (err) {
-                        logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
-                        return client.emit('error', err);
-                    }
-                    client.setSocket(info.socket);
-                    client.emit('connect');
-                });
-            };
-        }
+        botOptions.connect = (client) => {
+            SocksClient.createConnection({
+                proxy: {
+                    host: '127.0.0.1',
+                    port: proxyPort,
+                    type: 5
+                },
+                command: 'connect',
+                destination: {
+                    host: SERVER_HOST,
+                    port: SERVER_PORT
+                }
+            }, (err, info) => {
+                if (err) {
+                    logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
+                    return client.emit('error', err);
+                }
+                client.setSocket(info.socket);
+                client.emit('connect');
+            });
+        };
 
         const bot = mineflayer.createBot(botOptions);
 
-        if (bot._client) {
-            bot._client.on('packet', (data, metadata) => {
-                if (
-                    metadata.name.includes('particle') ||
-                    metadata.name.includes('sound') ||
-                    metadata.name.includes('light') ||
-                    metadata.name === 'entity_animation' ||
-                    metadata.name === 'entity_head_rotation' ||
-                    metadata.name === 'entity_velocity' ||
-                    metadata.name === 'rel_entity_move' ||
-                    metadata.name === 'entity_look'
-                ) {
-                    return false;
-                }
-
-                if (metadata.name === 'teams' || metadata.name === 'scoreboard_team' || metadata.name === 'scoreboard_score') {
-                    try {
-                        const rawStrings = extractAllStrings(data).join(' ');
-                        const parsed = parseBitsFromString(rawStrings);
-                        if (parsed !== null && parsed > 0) {
-                            if (botStatusMap[username].bits !== parsed) {
-                                log(`🪙 [${username}] อัปเดตบิท: ${parsed.toLocaleString()} บิท`);
-                                updateStatus(username, null, null, parsed);
-                            }
-                        }
-                    } catch (e) {}
-                }
-            });
-        }
-
+        // ตัด chunk/world/entities ทิ้งแบบสิ้นเชิงเพื่อประหยัด RAM/GC
         bot.on('inject_allowed', () => {
             if (bot.world) {
                 bot.world.getChunk = () => null;
                 bot.world.getBlock = () => null;
                 bot.world.setBlockStateId = () => {};
+                bot.world.columns = {};
             }
             bot.entities = {};
         });
@@ -415,9 +315,8 @@ function createBotInstance(username, delayMs = 0) {
         });
 
         bot.on('spawn', () => {
-            if (bot.world && bot.world.columns) {
-                bot.world.columns = {};
-            }
+            if (bot.world) bot.world.columns = {};
+            bot.entities = {};
 
             if (bot.authStage === 'TYPING_PASSWORD' && !isRegisterMode) {
                 log(`[⚡ BYPASS] [${username}] โหลดเข้า Lobby สำเร็จ`);
@@ -430,7 +329,7 @@ function createBotInstance(username, delayMs = 0) {
 
                 if (bot.authStage === 'WAIT_COMPASS_MENU') {
                     bot.authStage = 'SURVIVAL_DONE';
-                    log(`[4/4] [${username}] เมนูเซิร์ฟเวอร์เปิดแล้ว -> รอ 6s ก่อนเลือก Survival (Slot 10)...`);
+                    log(`[4/4] [${username}] เมนูเซิร์ฟเวอร์เปิดแล้ว -> รอ 3.5s ก่อนเลือก Survival (Slot 10)...`);
                     updateStatus(username, 'Selecting Mode', 'รอเลือก Survival (Slot 10)');
 
                     setTimeout(async () => {
@@ -439,37 +338,35 @@ function createBotInstance(username, delayMs = 0) {
                             log(`[🚀] [${username}] วาร์ปเข้า Survival (รอโหลด 25s)...`);
                             updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival');
 
-                            // ให้เวลาโหลดแมพเต็มที่ 25 วินาที
                             setTimeout(() => {
                                 bot.chat('/afk');
                                 log(`[✓] [${username}] ประจำการใน Survival และพิมพ์ /afk เรียบร้อย!`);
                                 updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
 
-                                if (bot.world && bot.world.columns) bot.world.columns = {};
+                                if (bot.world) bot.world.columns = {};
+                                bot.entities = {};
 
+                                // สแกนบิทเบาๆ ทุก 30 วินาที
                                 if (bot.scanBitsInterval) clearInterval(bot.scanBitsInterval);
                                 bot.scanBitsInterval = setInterval(() => {
-                                    scanScoreboardDirectly(bot, username);
-                                }, 5000);
+                                    scanScoreboardLightweight(bot, username);
+                                }, 30000);
 
+                                // รักษาสถานะเชื่อมต่อ ส่ง packet ขยับมุมมองทุก 90 วินาที
                                 if (bot.afkInterval) clearInterval(bot.afkInterval);
                                 bot.afkInterval = setInterval(() => {
                                     try { 
                                         if (bot._client) {
-                                            bot._client.write('look', {
-                                                yaw: 0,
-                                                pitch: 0,
-                                                onGround: true
-                                            });
+                                            bot._client.write('look', { yaw: 0, pitch: 0, onGround: true });
                                         }
                                     } catch (e) {}
-                                }, 60000);
+                                }, 90000);
 
                             }, 25000);
                         } catch (err) {
                             logError(`[-] กดเลือก Survival ล้มเหลว: ${err.message}`);
                         }
-                    }, 6000);
+                    }, 3500);
                     return;
                 }
 
@@ -480,7 +377,7 @@ function createBotInstance(username, delayMs = 0) {
 
                 if (bot.authStage === 'START') {
                     bot.authStage = 'TYPING_PASSWORD';
-                    log(`[1] [${username}] เปิดหน้าต่าง ${isRegisterMode ? 'REGISTER' : 'LOGIN'} -> รอ 3.5s ก่อนกด Slot 1...`);
+                    log(`[1] [${username}] เปิดหน้าต่าง ${isRegisterMode ? 'REGISTER' : 'LOGIN'} -> รอ 3s ก่อนกด Slot 1...`);
                     updateStatus(username, isRegisterMode ? 'Registering' : 'Logging in', 'รอกรอกรหัสผ่าน (Slot 1)');
 
                     setTimeout(async () => {
@@ -490,9 +387,9 @@ function createBotInstance(username, delayMs = 0) {
                                 if (bot.authStage === 'TYPING_PASSWORD') {
                                     triggerLobbyCompass(bot, username);
                                 }
-                            }, 6000);
+                            }, 5000);
                         } catch (e) {}
-                    }, 3500);
+                    }, 3000);
                 }
                 else if (bot.authStage === 'PASSWORD_DONE' && isRegisterMode) {
                     bot.authStage = 'TYPING_EMAIL';
@@ -503,7 +400,7 @@ function createBotInstance(username, delayMs = 0) {
                         try {
                             await bot.clickWindow(2, 0, 0);
                         } catch (e) {}
-                    }, 3500);
+                    }, 2500);
                 }
                 else if (bot.authStage === 'EMAIL_DONE' && isRegisterMode) {
                     bot.authStage = 'SUBMITTING_REGISTER';
@@ -519,9 +416,9 @@ function createBotInstance(username, delayMs = 0) {
                                     log(`[✓] [${username}] สมัครสมาชิกสำเร็จ!`);
                                     triggerLobbyCompass(bot, username);
                                 } catch (errSubmit) {}
-                            }, 3000);
+                            }, 2000);
                         } catch (e) {}
-                    }, 3500);
+                    }, 2500);
                 }
                 else if (bot.authStage === 'PASSWORD_DONE' && !isRegisterMode) {
                     bot.authStage = 'SUBMITTED';
@@ -534,7 +431,7 @@ function createBotInstance(username, delayMs = 0) {
                             log(`[✓] [${username}] ล็อกอินสำเร็จ`);
                             triggerLobbyCompass(bot, username);
                         } catch (e) {}
-                    }, 3500);
+                    }, 2500);
                 }
             }
             else if (window.type === 'minecraft:anvil') {
@@ -547,9 +444,9 @@ function createBotInstance(username, delayMs = 0) {
                             setTimeout(async () => {
                                 await bot.clickWindow(2, 0, 0);
                                 bot.authStage = 'PASSWORD_DONE';
-                            }, 3000);
+                            }, 2000);
                         } catch (e) {}
-                    }, 3500);
+                    }, 2500);
                 }
                 else if (bot.authStage === 'TYPING_EMAIL') {
                     setTimeout(() => {
@@ -558,14 +455,15 @@ function createBotInstance(username, delayMs = 0) {
                             setTimeout(async () => {
                                 await bot.clickWindow(2, 0, 0);
                                 bot.authStage = 'EMAIL_DONE';
-                            }, 3000);
+                            }, 2000);
                         } catch (e) {}
-                    }, 3500);
+                    }, 2500);
                 }
             }
         });
 
         bot.on('error', (err) => {
+            if (err.code === 'EPIPE' || err.code === 'ECONNRESET') return;
             logError(`[❌ Error] [${username}]: ${err.message}`);
             updateStatus(username, 'Error', err.message, null, err.message);
         });
@@ -623,7 +521,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 25000); // ขยายช่องว่างเป็น 25 วินาทีต่อตัว
+                    createBotInstance(bName, launchIndex * 22000);
                     launchIndex++;
                 }
             });
@@ -636,7 +534,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 25000);
+                    createBotInstance(bName, launchIndex * 22000);
                     launchIndex++;
                 }
             });
@@ -672,7 +570,7 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft 80-Bot Ultra-Lite Dashboard</title>
+    <title>Minecraft 40-Bot Headless Dashboard (Node 2)</title>
     <style>
         body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
         h2 { color: #4caf50; margin: 0 0 10px 0; }
@@ -696,25 +594,20 @@ const server = http.createServer((req, res) => {
         .Stopped { color: #757575; }
         .bits-val { color: #12dbf6; font-weight: bold; font-size: 14px; text-shadow: 0 0 5px rgba(18,219,246,0.3); }
         .err-log { color: #ff9800; font-size: 11px; max-width: 200px; word-break: break-all; }
-        .badge-proxy { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #004d40; color: #80cbc4; margin-left: 5px; border: 1px solid #00796b; }
-        .badge-direct { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #263238; color: #b0bec5; margin-left: 5px; }
+        .badge-proxy { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: #004d40; color: #80cbc4; border: 1px solid #00796b; }
     </style>
 </head>
 <body>
     <div class="toolbar">
-        <h2>⚡ 80-Bot Ultra-Headless Controller</h2>
+        <h2>⚡ 40-Bot Headless Controller (Node 2)</h2>
         <div class="btn-group">
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (Direct)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1080)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=30')">▶ 21-30 (:1081)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=30&end=40')">▶ 31-40 (:1082)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=40&end=50')">▶ 41-50 (:1083)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=50&end=60')">▶ 51-60 (:1084)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=60&end=70')">▶ 61-70 (:1085)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=70&end=80')">▶ 71-80 (:1086)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (:1080)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1081)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=30')">▶ 21-30 (:1082)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=30&end=40')">▶ 31-40 (:1083)</button>
             <div class="custom-range">
-                <span>จาก:</span><input type="number" id="rStart" min="1" max="80" value="1">
-                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="80" value="80">
+                <span>จาก:</span><input type="number" id="rStart" min="1" max="40" value="1">
+                <span>ถึง:</span><input type="number" id="rEnd" min="1" max="40" value="40">
                 <button class="btn-custom" onclick="launchCustomRange()">▶ เปิดช่วงนี้</button>
             </div>
             <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
@@ -756,8 +649,7 @@ const server = http.createServer((req, res) => {
         }
 
         function getPortByIndex(index) {
-            if (index >= 0 && index < 10) return null;
-            return 1079 + Math.floor(index / 10);
+            return 1080 + Math.floor(index / 10);
         }
 
         async function fetchStatus() {
@@ -790,14 +682,11 @@ const server = http.createServer((req, res) => {
                         \`<button class="btn-start" onclick="controlBot('\${name}', 'start')">Start</button>\`;
 
                     const pPort = getPortByIndex(index);
-                    const routeTag = pPort ? 
-                        \`<span class="badge-proxy">SOCKS:\${pPort}</span>\` : 
-                        \`<span class="badge-direct">Direct</span>\`;
 
                     html += \`<tr>
                         <td>\${index + 1}</td>
                         <td><b>\${name}</b></td>
-                        <td>\${routeTag}</td>
+                        <td><span class="badge-proxy">SOCKS:\${pPort}</span></td>
                         <td class="\${statusClass}">\${bot.status}</td>
                         <td>\${bot.step}</td>
                         <td class="bits-val">💎 \${bitVal.toLocaleString()} บิท</td>
@@ -809,7 +698,7 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (โหมด Ultra-High Latency + Multi-Proxy Ready)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Tor 4-Port Active)\`;
             } catch (e) {}
         }
 
@@ -835,7 +724,7 @@ function getLocalIP() {
 
 server.listen(WEB_PORT, () => {
     log(`==================================================`);
-    log(`🚀 80-BOT ULTRA-LITE SERVER RUNNING ON PORT ${WEB_PORT}`);
+    log(`🚀 40-BOT ULTRA-LITE SERVER RUNNING ON PORT ${WEB_PORT}`);
     log(`🌐 Dashboard URL: http://${getLocalIP()}:${WEB_PORT}`);
     log(`==================================================`);
 });
