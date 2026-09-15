@@ -55,7 +55,6 @@ function getProcessCpuPercent() {
 
     if (elapsedTimeMs <= 0) return 0;
     const numCpus = os.cpus().length || 1;
-    // คิดเป็น % เทียบกับทุก Core ในเครื่อง
     const percent = (cpuTimeMs / (elapsedTimeMs * numCpus)) * 100;
     return parseFloat(percent.toFixed(1));
 }
@@ -247,7 +246,7 @@ function scanScoreboardLightweight(bot, username) {
 }
 
 // -------------------------------------------------------------
-// คิว Round-Robin สแกนบิททีละตัว + วัด Benchmark เวลาทำงาน
+// คิว Round-Robin สแกนทีละตัว ทุกๆ 7.5 วินาที (วนครบ 80 ตัวใน 10 นาที)
 // -------------------------------------------------------------
 let currentQueueIndex = 0;
 setInterval(() => {
@@ -260,20 +259,12 @@ setInterval(() => {
     const status = botStatusMap[targetUsername]?.status || '';
 
     if (bot && status.includes('Online')) {
-        const startTime = process.hrtime();
         scanScoreboardLightweight(bot, targetUsername);
-        const diff = process.hrtime(startTime);
-        const timeTakenMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(2);
-        
-        // ถ้าตัวไหนสแกนแล้วกินเวลาเกิน 20ms ให้ Log เตือน
-        if (parseFloat(timeTakenMs) > 20) {
-            log(`[⏱️ PROFILER SLOW] สแกนบิท [${targetUsername}] ใช้เวลา: ${timeTakenMs} ms`);
-        }
     }
 }, 7500);
 
 // -------------------------------------------------------------
-// [PROFILER LOOP] พิมพ์สถิติ CPU / RAM ทุก 15 วินาที
+// [PROFILER LOOP] แสดงสถานะ CPU และ RAM ทุก 15 วินาที
 // -------------------------------------------------------------
 setInterval(() => {
     const cpu = getProcessCpuPercent();
@@ -289,10 +280,8 @@ setInterval(() => {
         else if (b.status === 'Connecting' || b.status === 'In Lobby' || b.status === 'Registering' || b.status === 'Logging in') connectingCount++;
     });
 
-    // แสดง Telemetry สม่ำเสมอ
     log(`[📊 SYSTEM] CPU: ${cpu}% | Node RAM: ${nodeRamMB}MB (Heap: ${heapUsedMB}MB) | System Free RAM: ${freeSystemMemMB}MB | [Online: ${onlineCount}, Connecting: ${connectingCount}]`);
 
-    // ตรวจจับ CPU Spike ผิดปกติ
     if (cpu >= 70.0) {
         log(`[🔥 CPU SPIKE ALERT] พุ่งสูงถึง ${cpu}%! (มีบอทกำลังเชื่อมต่อ/ประมวลผลอยู่ ${connectingCount} ตัว)`);
     }
@@ -358,6 +347,9 @@ function createBotInstance(username, delayMs = 0) {
         const botPassword = botConfig ? botConfig.pass : DEFAULT_PASSWORD;
         const randomEmail = generateHumanLikeEmail();
 
+        // -------------------------------------------------------------
+        // ปิด Plugins ภายในที่ไม่จำเป็น เพื่อตัดการกิน CPU/RAM ตั้งแต่เริ่ม
+        // -------------------------------------------------------------
         const botOptions = {
             host: SERVER_HOST,
             port: SERVER_PORT,
@@ -366,7 +358,18 @@ function createBotInstance(username, delayMs = 0) {
             data: sharedData,
             physicsEnabled: false,
             checkTimeoutInterval: 120000,
-            viewDistance: 'tiny'
+            viewDistance: 'tiny',
+            plugins: {
+                conversions: false,
+                furnace: false,
+                craft: false,
+                anvil: true, // เก็บ anvil สำหรับพิมพ์รหัสผ่าน
+                enchantment_table: false,
+                chest: false,
+                dispenser: false,
+                tablist: false,
+                physics: false
+            }
         };
 
         if (proxyPort) {
@@ -395,7 +398,19 @@ function createBotInstance(username, delayMs = 0) {
 
         const bot = mineflayer.createBot(botOptions);
 
+        // -------------------------------------------------------------
+        // สั่งทิ้ง Packet ข้อมูล World/Chunks/Light เพื่อตัดการถอดรหัส Zlib
+        // -------------------------------------------------------------
+        if (bot._client) {
+            bot._client.on('map_chunk', () => false);
+            bot._client.on('update_light', () => false);
+            bot._client.on('unload_chunk', () => false);
+        }
+
         bot.on('inject_allowed', () => {
+            if (bot.physics) {
+                bot.physics.simulate = false;
+            }
             if (bot.world) {
                 bot.world.getChunk = () => null;
                 bot.world.getBlock = () => null;
@@ -815,7 +830,7 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Profiler Active)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | บิทรวมทั้งหมด: <b style="color:#12dbf6">💎 \${totalBits.toLocaleString()} บิท</b> | (Round-Robin Queue: 10m/Cycle)\`;
             } catch (e) {}
         }
 
