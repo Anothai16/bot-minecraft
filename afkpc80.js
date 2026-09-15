@@ -109,18 +109,12 @@ const BOT_CONFIGS = [
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 
-// ฟังก์ชันแบ่ง 8 กลุ่ม กลุ่มละ 10 ตัว
+// 01-10: เน็ตตรง | 11-80: กระจายพอร์ตละ 5 ตัว (1080 - 1093)
 function getProxyPortForBot(botName) {
     const index = BOT_NAMES.indexOf(botName);
-    if (index >= 0 && index < 10) return null; // 01-10: ออกเน็ตตรง
-    if (index >= 10 && index < 20) return 1080; // 11-20: Tor 1
-    if (index >= 20 && index < 30) return 1081; // 21-30: Tor 2
-    if (index >= 30 && index < 40) return 1082; // 31-40: Tor 3
-    if (index >= 40 && index < 50) return 1083; // 41-50: Tor 4
-    if (index >= 50 && index < 60) return 1084; // 51-60: Tor 5
-    if (index >= 60 && index < 70) return 1085; // 61-70: Tor 6
-    if (index >= 70 && index < 80) return 1086; // 71-80: Tor 7
-    return null;
+    if (index >= 0 && index < 10) return null;
+    const torGroupIndex = Math.floor((index - 10) / 5);
+    return 1080 + torGroupIndex;
 }
 
 const botStatusMap = {};
@@ -152,7 +146,6 @@ function stopBotInstance(username) {
     }
 }
 
-// ฟังก์ชันเริ่มกระบวนการกดเข็มทิศเมื่อเข้า Lobby
 function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
     bot.authStage = 'IN_LOBBY';
@@ -164,7 +157,7 @@ function triggerLobbyCompass(bot, username) {
     }, 13000);
 }
 
-// ฟังก์ชันสแกนถือและคลิกขวาเข็มทิศ
+// สแกนถือเข็มทิศด้วย equip() ตามโครงสร้างเดิม
 async function useCompass(bot, username) {
     if (!bot || !bot.inventory) return;
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
@@ -243,7 +236,7 @@ function createBotInstance(username, delayMs = 0) {
                         host: SERVER_HOST,
                         port: SERVER_PORT
                     },
-                    timeout: 60000 // ขยาย Timeout เป็น 60s ป้องกัน Proxy connection timed out
+                    timeout: 60000
                 }, (err, info) => {
                     if (err) {
                         logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
@@ -270,10 +263,10 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('windowOpen', async (window) => {
             
-            // STAGE 1: พบหน้าต่างล็อกอินหลัก -> กด Slot 1 (สมุด)
+            // STAGE 1: เปิดหน้าต่างหลัก -> กด Slot 1 (สมุด)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'START') {
                 bot.authStage = 'OPENING_ANVIL';
-                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
+                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> รอ 3.5s แล้วกด Slot 1 (สมุด)...`);
                 updateStatus(username, 'Logging in', 'รอเปิด Anvil (Slot 1)');
 
                 setTimeout(async () => {
@@ -282,7 +275,7 @@ function createBotInstance(username, delayMs = 0) {
 
                         bot.anvilCheckTimer = setTimeout(() => {
                             if (bot.authStage === 'OPENING_ANVIL') {
-                                log(`[⚡] [${username}] ไม่พบหน้าต่าง Anvil (เคยล็อกอินแล้ว) -> ข้ามไปเข้า Lobby ทันที`);
+                                log(`[⚡] [${username}] ข้ามไปเข้า Lobby ทันที`);
                                 triggerLobbyCompass(bot, username);
                             }
                         }, 4000);
@@ -291,11 +284,11 @@ function createBotInstance(username, delayMs = 0) {
                 }, 3500);
             }
 
-            // STAGE 2: หน้าต่าง Anvil เด้งเปิดจริง -> พิมพ์รหัส
+            // STAGE 2: Anvil เปิด -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && (bot.authStage === 'OPENING_ANVIL' || bot.authStage === 'START')) {
                 if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
                 bot.authStage = 'PASS_TYPED';
-                log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
+                log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน...`);
                 updateStatus(username, 'Logging in', 'กำลังพิมพ์รหัสผ่าน');
 
                 setTimeout(() => {
@@ -308,9 +301,9 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2) หลังพิมพ์รหัสเสร็จ
+            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'PASS_TYPED') {
-                log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
+                log(`[3/4] [${username}] กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
@@ -321,7 +314,7 @@ function createBotInstance(username, delayMs = 0) {
                 }, 2500);
             }
 
-            // STAGE 4: GUI เมนูเข็มทิศเปิดขึ้นมา -> กด Slot 10 (Survival)
+            // STAGE 4: GUI เข็มทิศเปิด -> เลือก Survival (Slot 10)
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'WAIT_COMPASS_MENU') {
                 bot.authStage = 'SURVIVAL_DONE';
                 log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
@@ -382,9 +375,7 @@ function createBotInstance(username, delayMs = 0) {
     }, delayMs);
 }
 
-// ==========================================
 // Web Server + REST API
-// ==========================================
 const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     const path = parsedUrl.pathname;
@@ -406,7 +397,7 @@ const server = http.createServer((req, res) => {
             const start = isNaN(startVal) ? 0 : startVal;
             const end = isNaN(endVal) ? BOT_NAMES.length : endVal;
 
-            log(`[Batch Command] สั่งรันช่วงดรรชนี ${start} ถึง ${end}`);
+            log(`[Batch Command] สั่งรันช่วง ${start + 1} ถึง ${end}`);
 
             const targetBots = BOT_NAMES.slice(start, end);
             let launchIndex = 0;
@@ -417,7 +408,8 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 16000); // ดีเลย์ 16 วิ เพื่อป้องกัน Tor Timeout
+                    // ปล่อยบอทห่างกันตัวละ 15 วินาทีเพื่อไม่ให้ชนเพดาน Tor Handshake
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 } else {
                     log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
@@ -432,7 +424,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 16000);
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 }
             });
@@ -493,16 +485,13 @@ const server = http.createServer((req, res) => {
 </head>
 <body>
     <div>
-        <h2>🤖 Minecraft Multi-Bot Dashboard (80 Bots)</h2>
+        <h2>🤖 Minecraft Multi-Bot Dashboard (80 Bots - 14 Proxies)</h2>
         <div class="btn-group">
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (Direct)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1080)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=30')">▶ 21-30 (:1081)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=30&end=40')">▶ 31-40 (:1082)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=40&end=50')">▶ 41-50 (:1083)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=50&end=60')">▶ 51-60 (:1084)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=60&end=70')">▶ 61-70 (:1085)</button>
-            <button class="btn-batch" onclick="controlBot('', 'start-range&start=70&end=80')">▶ 71-80 (:1086)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1080-:1081)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=20&end=40')">▶ 21-40 (:1082-:1085)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=40&end=60')">▶ 41-60 (:1086-:1089)</button>
+            <button class="btn-batch" onclick="controlBot('', 'start-range&start=60&end=80')">▶ 61-80 (:1090-:1093)</button>
             <button class="btn-start" onclick="controlBot('', 'start-all')">▶ Start All</button>
             <button class="btn-stop" onclick="controlBot('', 'stop-all')">⏹ Stop All</button>
         </div>
@@ -532,7 +521,7 @@ const server = http.createServer((req, res) => {
 
         function getPortByIndex(index) {
             if (index >= 0 && index < 10) return null;
-            return 1079 + Math.floor(index / 10);
+            return 1080 + Math.floor((index - 10) / 5);
         }
 
         async function fetchStatus() {
@@ -579,7 +568,7 @@ const server = http.createServer((req, res) => {
 
                 tbody.innerHTML = html;
                 document.getElementById('summary').innerHTML = 
-                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | โหมดความเร็วสูง (CPU ต่ำสุด)\`;
+                    \`ออนไลน์ทั้งหมด: <b>\${onlineCount}/\${total}</b> ตัว | อัปเดตอัตโนมัติทุก 3 วินาที\`;
             } catch (e) {}
         }
 
@@ -608,7 +597,7 @@ function printStartupLogs(ipAddress) {
     log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (80 BOTS)`);
     log('==================================================');
     log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
+    log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (14 Tor Circuits)`);
     log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
     log('==================================================');
 }
