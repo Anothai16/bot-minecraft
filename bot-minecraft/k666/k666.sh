@@ -16,7 +16,7 @@ trap cleanup SIGTERM SIGINT EXIT
   sleep 10
 
   echo "[LOBBY] กำลังเดินไปหา NPC Survival..." >&2
-  echo "/move 102 4 -632"
+  echo "/move 102 4 -632 -f"
   
   # รอให้บอทเดินถึงพิกัดเป้าหมาย
   sleep 4
