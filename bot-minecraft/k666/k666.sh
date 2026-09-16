@@ -12,25 +12,19 @@ cleanup() {
 trap cleanup SIGTERM SIGINT EXIT
 
 (
-  echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
-  sleep 16
-  echo "/dialog input pass 112233"
+  echo "[LOGIN] เข้าเซิร์ฟเวอร์แล้ว กำลังรอโหลดแมป/หน้าล็อบบี้ (10 วินาที)..." >&2
+  sleep 10
+
+  echo "[LOBBY] กำลังเดินไปหา NPC Survival..." >&2
+  echo "/move 102 4 -632"
   
-  sleep 3
-  echo "/dialog click 1"
-  echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
-  
-  # เพิ่มจาก 12s เป็น 18s เพื่อรอให้ฉาก Lobby และเข็มทิศ Sync สมบูรณ์
-  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (18 วินาที)..." >&2
-  sleep 18
-  echo "/useitem mainhand"
-  
-  # เพิ่มจาก 3s เป็น 5s ให้หน้าต่าง GUI เมนูของเซิร์ฟเวอร์เด้งเปิดชัวร์ๆ
-  sleep 5
-  echo "/inventory container click 10 Left"
-  echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
-  
-  sleep 12
+  # รอให้บอทเดินถึงพิกัดเป้าหมาย
+  sleep 4
+  echo "[LOBBY] คุยกับ NPC เพื่อย้ายเข้าห้อง Survival..." >&2
+  echo "/entity 9 use"
+
+  echo "[WORLD] กำลังโหลดข้ามโลกเข้า Survival (10 วินาที)..." >&2
+  sleep 10
   echo "/home home"
   
   # ✅ เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
