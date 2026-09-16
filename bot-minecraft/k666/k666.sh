@@ -20,36 +20,24 @@ trap cleanup SIGTERM SIGINT EXIT
   echo "/dialog click 1"
   echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
   
-  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (15 วินาที)..." >&2
-  sleep 15
-
-  # ดักดูว่าตอนนี้ถือไอเทมอะไรอยู่ และกระเป๋ามีอะไรบ้าง
-  echo "[DEBUG] ตรวจสอบไอเทมในตัว..." >&2
-  echo "/inventory"
-  sleep 2
-
-  # ส่งคำสั่งคลิกขวาใช้งานไอเทม
-  echo "[LOBBY] สั่งคลิกขวาใช้งานเข็มทิศ..." >&2
+  # เพิ่มจาก 12s เป็น 18s เพื่อรอให้ฉาก Lobby และเข็มทิศ Sync สมบูรณ์
+  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (18 วินาที)..." >&2
+  sleep 18
   echo "/useitem mainhand"
-  sleep 4
-
-  # ตรวจสอบว่า Container GUI ของเซิร์ฟเวอร์เปิดขึ้นมาหรือยัง
-  echo "[DEBUG] ตรวจสอบสถานะ GUI Menu..." >&2
-  echo "/inventory container"
-  sleep 2
-
-  echo "[LOBBY] คลิกเลือก Survival (Slot 10)..." >&2
+  
+  # เพิ่มจาก 3s เป็น 5s ให้หน้าต่าง GUI เมนูของเซิร์ฟเวอร์เด้งเปิดชัวร์ๆ
+  sleep 5
   echo "/inventory container click 10 Left"
   echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
   
   sleep 12
   echo "/home home"
   
-  # เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
+  # ✅ เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
   echo "online" > "$READY_FILE"
   echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
 
-  # วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา ป้องกัน subshell หลุด
+  # 🛑 วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา ป้องกัน subshell หลุด
   while true; do
     sleep 30
     echo ""
