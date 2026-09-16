@@ -68,7 +68,7 @@ const BOT_CONFIGS = [
 const BOT_NAMES = BOT_CONFIGS.map(b => b.name);
 const activeBots = {};
 
-// ฟังก์ชันแจกจ่าย Proxy 4 ชุด ชุดละ 10 ตัว
+// แบ่ง 4 กลุ่ม (กลุ่มละ 10 ตัว) ใช้พอร์ต 1080 - 1083
 function getProxyPortForBot(botName) {
     const index = BOT_NAMES.indexOf(botName);
     if (index >= 0 && index < 10) return 1080;
@@ -91,7 +91,7 @@ BOT_NAMES.forEach(name => {
 
 function updateStatus(name, status, step, errorReason = null) {
     if (!botStatusMap[name]) return;
-    botStatusMap[name].status = status;
+    if (status) botStatusMap[name].status = status;
     if (step) botStatusMap[name].step = step;
     if (errorReason) botStatusMap[name].lastError = errorReason;
     botStatusMap[name].lastUpdate = new Date().toLocaleTimeString('th-TH', { hour12: false });
@@ -99,49 +99,79 @@ function updateStatus(name, status, step, errorReason = null) {
 
 function stopBotInstance(username) {
     if (activeBots[username]) {
-        if (activeBots[username].compassTimer) clearTimeout(activeBots[username].compassTimer);
-        if (activeBots[username].anvilCheckTimer) clearTimeout(activeBots[username].anvilCheckTimer);
-        if (activeBots[username].afkInterval) clearInterval(activeBots[username].afkInterval);
-        try { activeBots[username].quit(); } catch (e) {}
+        const b = activeBots[username];
+        if (b.compassTimer) clearTimeout(b.compassTimer);
+        if (b.anvilCheckTimer) clearTimeout(b.anvilCheckTimer);
+        if (b.afkInterval) clearInterval(b.afkInterval);
+        if (b.watchdogTimer) clearTimeout(b.watchdogTimer);
+        if (b.connectionTimeout) clearTimeout(b.connectionTimeout);
+        try { 
+            b.removeAllListeners();
+            b.quit(); 
+        } catch (e) {}
         delete activeBots[username];
     }
 }
 
-// ฟังก์ชันเริ่มกระบวนการกดเข็มทิศเมื่อเข้า Lobby
+// ตัวจัดการ Reconnect กลาง: แก้ปัญหา Proxy Error แล้วค้างไม่ยอมต่อใหม่
+function triggerSafeReconnect(username, delayMs = 30000, reason = '') {
+    if (!botStatusMap[username]?.enabled) return;
+
+    stopBotInstance(username);
+    updateStatus(username, 'Offline', `รอต่อใหม่ (${reason || 'หลุด'})`, reason);
+    log(`[i] [${username}] เตรียมเชื่อมต่อใหม่ใน ${Math.round(delayMs / 1000)} วินาที... (${reason})`);
+
+    setTimeout(() => {
+        if (botStatusMap[username]?.enabled) {
+            createBotInstance(username, 0);
+        }
+    }, delayMs);
+}
+
 function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
     bot.authStage = 'IN_LOBBY';
-    log(`[🏠] [${username}] อยู่ใน Lobby แล้ว -> รอ 13s ให้ฉากโหลดสมบูรณ์ก่อนหาเข็มทิศ...`);
-    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 13s)');
+    log(`[🏠] [${username}] อยู่ใน Lobby แล้ว -> รอ 8s ให้ฉากโหลดสมบูรณ์ก่อนหาเข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 8s)');
 
     bot.compassTimer = setTimeout(() => {
         useCompass(bot, username);
-    }, 13000);
+    }, 8000);
 }
 
-// ฟังก์ชันสแกนถือและคลิกขวาเข็มทิศ
 async function useCompass(bot, username) {
     if (!bot || !bot.inventory) return;
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
     log(`[🧭] [${username}] กำลังค้นหาและเตรียมถือเข็มทิศ...`);
-    
+
+    // Watchdog: ป้องกันค้างที่สถานะ In Lobby สแกนถือเข็มทิศ
+    if (bot.watchdogTimer) clearTimeout(bot.watchdogTimer);
+    bot.watchdogTimer = setTimeout(() => {
+        if (bot.authStage === 'IN_LOBBY' || bot.authStage === 'WAIT_COMPASS_MENU') {
+            log(`[⚠️ Watchdog] [${username}] เมนูไม่เปิดตามเวลา -> บังคับกดเข็มทิศซ้ำ`);
+            try { bot.activateItem(); } catch (e) {}
+        }
+    }, 12000);
+
     const compass = bot.inventory.items().find(i => i.name.includes('compass'));
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 3s ให้เซิร์ฟเวอร์ Sync ก่อนคลิกขวา...`);
-            await bot.sleep(3000);
+            log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 2s ก่อนคลิกขวา...`);
+            await bot.sleep(2000);
             
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
             log(`[🧭] [${username}] คลิกขวาใช้งานเข็มทิศเรียบร้อย! (รอ GUI เมนูเปิด)`);
         } catch (e) {
             bot.authStage = 'WAIT_COMPASS_MENU';
-            bot.activateItem();
+            try { bot.activateItem(); } catch (err) {}
         }
     } else {
+        // Fallback: หากหาในกระเป๋าไม่เจอ ให้สลับ Hotbar ช่องแรกแล้วกดใช้ทันที
         try {
-            await bot.sleep(3000);
+            bot.setQuickBarSlot(0);
+            await bot.sleep(1500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         } catch (e) {}
@@ -184,7 +214,6 @@ function createBotInstance(username, delayMs = 0) {
             checkTimeoutInterval: 90000
         };
 
-        // เชื่อมต่อผ่าน Tor SOCKS5 พร้อมขยาย Timeout 60s
         botOptions.connect = (client) => {
             SocksClient.createConnection({
                 proxy: {
@@ -197,11 +226,11 @@ function createBotInstance(username, delayMs = 0) {
                     host: SERVER_HOST,
                     port: SERVER_PORT
                 },
-                timeout: 60000
+                timeout: 45000
             }, (err, info) => {
                 if (err) {
                     logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
-                    updateStatus(username, 'Error', 'Proxy Error', err.message);
+                    triggerSafeReconnect(username, 25000, `Proxy Timeout :${proxyPort}`);
                     return client.emit('error', err);
                 }
                 client.setSocket(info.socket);
@@ -210,23 +239,34 @@ function createBotInstance(username, delayMs = 0) {
         };
 
         const bot = mineflayer.createBot(botOptions);
-
         activeBots[username] = bot;
         bot.authStage = 'START';
 
+        // ป้องกันค้างหน้า Connecting เกิน 60 วินาที
+        bot.connectionTimeout = setTimeout(() => {
+            if (bot.authStage === 'START' && botStatusMap[username]?.status === 'Connecting') {
+                log(`[⚠️ Timeout] [${username}] ค้างหน้า Connecting เกิน 60s -> บังคับต่อใหม่`);
+                triggerSafeReconnect(username, 15000, 'Connecting Timeout');
+            }
+        }, 60000);
+
+        bot.on('spawn', () => {
+            if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
+            log(`[✓] [${username}] โหลดฉากสำเร็จ`);
+        });
+
         bot.on('kicked', (reason) => {
+            if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
             let kickReasonStr = reason;
             try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
             logError(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
-            updateStatus(username, 'Kicked', `โดนเตะ: ${kickReasonStr}`, kickReasonStr);
+            triggerSafeReconnect(username, 35000, `โดนเตะ: ${kickReasonStr}`);
         });
 
         bot.on('windowOpen', async (window) => {
-            
-            // STAGE 1: พบหน้าต่างล็อกอินหลัก -> กด Slot 1 (สมุด)
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'START') {
                 bot.authStage = 'OPENING_ANVIL';
-                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> กำลังรอ 3.5s แล้วกด Slot 1 (สมุด)...`);
+                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> รอ 3.5s แล้วกด Slot 1 (สมุด)...`);
                 updateStatus(username, 'Logging in', 'รอเปิด Anvil (Slot 1)');
 
                 setTimeout(async () => {
@@ -235,20 +275,17 @@ function createBotInstance(username, delayMs = 0) {
 
                         bot.anvilCheckTimer = setTimeout(() => {
                             if (bot.authStage === 'OPENING_ANVIL') {
-                                log(`[⚡] [${username}] ไม่พบหน้าต่าง Anvil (เคยล็อกอินแล้ว) -> ข้ามไปเข้า Lobby ทันที`);
+                                log(`[⚡] [${username}] ข้ามไปเข้า Lobby ทันที`);
                                 triggerLobbyCompass(bot, username);
                             }
                         }, 4000);
-
                     } catch (e) {}
                 }, 3500);
             }
-
-            // STAGE 2: หน้าต่าง Anvil เด้งเปิดจริง -> พิมพ์รหัส
             else if (window.type === 'minecraft:anvil' && (bot.authStage === 'OPENING_ANVIL' || bot.authStage === 'START')) {
                 if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
                 bot.authStage = 'PASS_TYPED';
-                log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน ${botPassword}...`);
+                log(`[2/4] [${username}] Anvil เปิดสำเร็จ! -> รอพิมพ์รหัสผ่าน...`);
                 updateStatus(username, 'Logging in', 'กำลังพิมพ์รหัสผ่าน');
 
                 setTimeout(() => {
@@ -260,10 +297,8 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 2500);
             }
-
-            // STAGE 3: ยืนยันรหัสผ่าน (Slot 2) หลังพิมพ์รหัสเสร็จ
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'PASS_TYPED') {
-                log(`[3/4] [${username}] พิมพ์รหัสแล้ว -> กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
+                log(`[3/4] [${username}] กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
@@ -273,17 +308,16 @@ function createBotInstance(username, delayMs = 0) {
                     } catch (e) {}
                 }, 2500);
             }
-
-            // STAGE 4: GUI เมนูเข็มทิศเปิดขึ้นมาหลังจากคลิกขวาใช้งานจริงเท่านั้น -> กด Slot 10 (Survival)
-            else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'WAIT_COMPASS_MENU') {
+            else if (window.type === 'minecraft:generic_9x3' && (bot.authStage === 'WAIT_COMPASS_MENU' || bot.authStage === 'IN_LOBBY')) {
+                if (bot.watchdogTimer) clearTimeout(bot.watchdogTimer);
                 bot.authStage = 'SURVIVAL_DONE';
-                log(`[4/4] [${username}] GUI เข็มทิศเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
+                log(`[4/4] [${username}] GUI เมนูเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
                 updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (กำลังรอวาร์ปเข้าโลก 14 วินาที...)`);
+                        log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (รอวาร์ปเข้าโลก 14 วินาที...)`);
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 14s)');
 
                         setTimeout(() => {
@@ -299,7 +333,6 @@ function createBotInstance(username, delayMs = 0) {
                             }, 60000);
 
                         }, 14000);
-
                     } catch (err) {
                         logError(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
                     }
@@ -307,37 +340,26 @@ function createBotInstance(username, delayMs = 0) {
             }
         });
 
-        bot.on('spawn', () => {
-            log(`[✓] [${username}] โหลดฉากสำเร็จ`);
-        });
-
         bot.on('error', (err) => {
+            if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
+            if (err.message && (err.message.includes('Proxy') || err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT'))) {
+                logError(`[❌ Connection Error] [${username}]: ${err.message}`);
+                triggerSafeReconnect(username, 25000, err.message);
+                return;
+            }
             logError(`[❌ Error] [${username}]: ${err.message}`);
-            updateStatus(username, 'Error', err.message, err.message);
         });
 
         bot.on('end', (reason) => {
-            if (bot.compassTimer) clearTimeout(bot.compassTimer);
-            if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
-            if (bot.afkInterval) clearInterval(bot.afkInterval);
-            delete activeBots[username];
+            if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
             log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
-            
-            if (botStatusMap[username]?.enabled) {
-                updateStatus(username, 'Offline', `หลุด (${reason})`, botStatusMap[username]?.lastError || reason);
-                log(`[i] [${username}] จะต่อใหม่ใน 35 วินาที...`);
-                createBotInstance(username, 35000);
-            } else {
-                updateStatus(username, 'Stopped', 'ระงับการทำงาน');
-            }
+            triggerSafeReconnect(username, 30000, reason);
         });
 
     }, delayMs);
 }
 
-// ==========================================
 // Web Server + REST API
-// ==========================================
 const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     const path = parsedUrl.pathname;
@@ -353,8 +375,8 @@ const server = http.createServer((req, res) => {
         const name = parsedUrl.searchParams.get('name');
 
         if (action === 'start-range') {
-            const startVal = parseInt(parsedUrl.searchParams.get('start'));
-            const endVal = parseInt(parsedUrl.searchParams.get('end'));
+            const startVal = parseInt(parsedUrl.searchParams.get('start'), 10);
+            const endVal = parseInt(parsedUrl.searchParams.get('end'), 10);
             
             const start = isNaN(startVal) ? 0 : startVal;
             const end = isNaN(endVal) ? BOT_NAMES.length : endVal;
@@ -370,8 +392,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    // ปล่อยบอทห่างกันตัวละ 16 วินาที เพื่อไม่ให้ชนเพดาน Tor Handshake
-                    createBotInstance(bName, launchIndex * 16000);
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 } else {
                     log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
@@ -386,7 +407,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    createBotInstance(bName, launchIndex * 16000);
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 }
             });
@@ -422,7 +443,7 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Multi-Bot Control Panel (40 Bots)</title>
+    <title>Minecraft Multi-Bot Dashboard (40 Bots - Tor)</title>
     <style>
         body { font-family: monospace, sans-serif; background: #121212; color: #e0e0e0; margin: 15px; }
         h2 { color: #4caf50; margin-bottom: 10px; display: inline-block; }
@@ -446,7 +467,7 @@ const server = http.createServer((req, res) => {
 </head>
 <body>
     <div>
-        <h2>🤖 Minecraft Multi-Bot Dashboard (40 Bots)</h2>
+        <h2>🤖 Minecraft Multi-Bot Dashboard (40 Bots - Auto-Recovery)</h2>
         <div class="btn-group">
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=0&end=10')">▶ 01-10 (:1080)</button>
             <button class="btn-batch" onclick="controlBot('', 'start-range&start=10&end=20')">▶ 11-20 (:1081)</button>
@@ -553,7 +574,7 @@ function printStartupLogs(ipAddress) {
     log(`🚀 STARTING MINEFLAYER MULTI-BOT SERVER (40 BOTS)`);
     log('==================================================');
     log(` [+] Target Server   : ${SERVER_HOST}:${SERVER_PORT}`);
-    log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว`);
+    log(` [+] Total Bots      : ${BOT_NAMES.length} ตัว (4 Tor Ports)`);
     log(` [🌐] Web Dashboard  : http://${ipAddress}:${WEB_PORT}`);
     log('==================================================');
 }
