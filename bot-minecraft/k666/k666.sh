@@ -15,21 +15,23 @@ trap cleanup SIGTERM SIGINT EXIT
   echo "[LOGIN] กำลังรอโหลดหน้า Lobby (12 วินาที)..." >&2
   sleep 12
 
+  # 1. ล้างหน้าต่าง Inventory # null ที่ระบบเปิดค้างไว้ทิ้ง
+  echo "[LOBBY] ปิดหน้าต่าง GUI ที่ค้างอยู่..." >&2
+  echo "/inventory close"
+  sleep 2
+
+  # 2. เดินไปแท่นหน้า NPC
   echo "[LOBBY] กำลังเดินไปหาแท่นหน้า NPC Survival..." >&2
   echo "/move 102 4 -632 -f"
-  
-  # รอให้ตัวละครเดินถึงจุดและหยุดนิ่งหน้าแท่นชัวร์ๆ
-  sleep 10
+  sleep 9
 
-  echo "[LOBBY] สลับมือเปล่าและหันหน้าตรง..." >&2
-  echo "/slot 9"
-  sleep 1
+  # 3. หันหน้ามองเป้าหมาย
+  echo "[LOBBY] หันหน้าตรงไปที่ NPC..." >&2
   echo "/look 102.5 5 -630.5"
   sleep 2
 
+  # 4. คลิกคุยกับ NPC
   echo "[LOBBY] คลิกคุยกับ NPC เพื่อข้ามเซิร์ฟเวอร์..." >&2
-  echo "/entity near Player use"
-  sleep 2
   echo "/entity near Player use"
 
   echo "[WORLD] กำลังโหลดข้ามห้องเข้า Survival (15 วินาที)..." >&2
@@ -38,9 +40,9 @@ trap cleanup SIGTERM SIGINT EXIT
   
   # ✅ เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
   echo "online" > "$READY_FILE"
-  echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
+  echo "[READY] บอท K666 เข้า Survival และวาร์ปเรียบร้อย!" >&2
 
-  # 🛑 วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา ป้องกัน subshell หลุด
+  # 🛑 วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา
   while true; do
     sleep 30
     echo ""
