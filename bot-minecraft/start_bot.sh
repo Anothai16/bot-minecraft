@@ -22,6 +22,9 @@ cleanup() {
   echo "🛑 [STOP] ปิดโปรเซส Lervy_Lever..." >&2
   echo "offline" > "$READY_FILE"
   exec 3>&-
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
   pkill -9 -f "MinecraftClient.*Lervy_Lever" 2>/dev/null
   rm -f "$PIPE"
   exit 0
@@ -33,6 +36,9 @@ trigger_restart() {
   echo "offline" > "$READY_FILE"
   exec 3>&-
   rm -f "$PIPE"
+  if [ -n "$MCC_PID" ]; then
+    kill -9 "$MCC_PID" 2>/dev/null
+  fi
   pkill -9 -f "MinecraftClient.*Lervy_Lever" 2>/dev/null
   echo "🚨 [FAIL-SAFE] หลุดการเชื่อมต่อ! สั่ง PM2 Restart '$PM2_NAME' ทันที..." >&2
   pm2 restart "$PM2_NAME" --update-env
@@ -40,9 +46,9 @@ trigger_restart() {
 }
 
 # ==========================================
-# 👂 1. Background Reader: ดักฟัง Log
+# 👂 1. Background Reader: ดักฟัง Log (ล็อก 1.20.1)
 # ==========================================
-./MinecraftClient Lervy_Lever - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
+./MinecraftClient Lervy_Lever - play.amorycraft.com 1.20.1 < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
   if [[ "$line" == *"Not connected to any server"* ]] || \
@@ -70,6 +76,8 @@ trigger_restart() {
     fi
   fi
 done &
+
+MCC_PID=$!
 
 # ==========================================
 # 🔑 2. ล็อกอิน & เดินทาง
@@ -103,7 +111,7 @@ TRIGGERED_0540=false
 LAST_HEARTBEAT=0
 
 while true; do
-  if ! pgrep -fa "MinecraftClient.*Lervy_Lever" >/dev/null 2>&1; then
+  if ! kill -0 "$MCC_PID" 2>/dev/null; then
     echo "offline" > "$READY_FILE"
     echo "🚨 [EXIT] ตรวจไม่พบโปรเซส MinecraftClient ออกจากสคริปต์..." >&2
     break

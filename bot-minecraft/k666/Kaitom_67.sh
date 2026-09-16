@@ -66,7 +66,7 @@ trap cleanup SIGTERM SIGINT EXIT
     echo ""
     sleep 30
   done
-) | ./MinecraftClient Kaitom_67 - play.amorycraft.com
+) | ./MinecraftClient Kaitom_67 - play.amorycraft.com 1.20.1
 
 EXIT_CODE=$?
 echo "offline" > "$READY_FILE"

@@ -44,7 +44,8 @@ trigger_restart() {
   exit 1
 }
 
-./MinecraftClient Kaitom_4 - play.amorycraft.com < "$PIPE" 2>&1 | while IFS= read -r line; do
+# ล็อกเวอร์ชัน 1.20.1 ป้องกันติด Protocol 777
+./MinecraftClient Kaitom_4 - play.amorycraft.com 1.20.1 < "$PIPE" 2>&1 | while IFS= read -r line; do
   echo "$line"
 
   if [[ "$line" == *"Not connected to any server"* ]] || \
@@ -106,7 +107,7 @@ TRIGGERED_0540=false
 LAST_HEARTBEAT=0
 
 while true; do
-  if ! kill -0 $MCC_PID 2>/dev/null; then
+  if ! kill -0 "$MCC_PID" 2>/dev/null; then
     echo "offline" > "$READY_FILE"
     break
   fi
