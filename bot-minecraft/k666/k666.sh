@@ -22,9 +22,23 @@ trap cleanup SIGTERM SIGINT EXIT
   
   echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn (15 วินาที)..." >&2
   sleep 15
+
+  # ดักดูว่าตอนนี้ถือไอเทมอะไรอยู่ และกระเป๋ามีอะไรบ้าง
+  echo "[DEBUG] ตรวจสอบไอเทมในตัว..." >&2
+  echo "/inventory"
+  sleep 2
+
+  # ส่งคำสั่งคลิกขวาใช้งานไอเทม
+  echo "[LOBBY] สั่งคลิกขวาใช้งานเข็มทิศ..." >&2
   echo "/useitem mainhand"
-  
-  sleep 5
+  sleep 4
+
+  # ตรวจสอบว่า Container GUI ของเซิร์ฟเวอร์เปิดขึ้นมาหรือยัง
+  echo "[DEBUG] ตรวจสอบสถานะ GUI Menu..." >&2
+  echo "/inventory container"
+  sleep 2
+
+  echo "[LOBBY] คลิกเลือก Survival (Slot 10)..." >&2
   echo "/inventory container click 10 Left"
   echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
   
