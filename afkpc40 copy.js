@@ -11,10 +11,10 @@ const MC_VERSION = '1.20.1';
 const WEB_PORT = 3000;
 
 // ==========================================
-// 🛡️ Global Exception Handlers: ป้องกัน Node.js แครช
+// 🛡️ Global Exception Handlers: ดักจับ EPIPE ไม่ให้ Node.js แครช
 // ==========================================
 process.on('uncaughtException', (err) => {
-    if (err.code === 'EPIPE' || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+    if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
         return;
     }
     logError(`[🚨 Uncaught Exception] ${err.stack || err.message}`);
@@ -126,7 +126,7 @@ function stopBotInstance(username) {
     }
 }
 
-function triggerSafeReconnect(username, delayMs = 35000, reason = '') {
+function triggerSafeReconnect(username, delayMs = 30000, reason = '') {
     if (!botStatusMap[username]?.enabled) return;
 
     stopBotInstance(username);
@@ -143,12 +143,12 @@ function triggerSafeReconnect(username, delayMs = 35000, reason = '') {
 function triggerLobbyCompass(bot, username) {
     if (bot.compassTimer) clearTimeout(bot.compassTimer);
     bot.authStage = 'IN_LOBBY';
-    log(`[🏠] [${username}] อยู่ใน Lobby แล้ว -> หน่วงเวลา 10s ให้เน็ต Tor เสถียรก่อนหาเข็มทิศ...`);
-    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 10s)');
+    log(`[🏠] [${username}] อยู่ใน Lobby แล้ว -> รอ 8s ให้ฉากโหลดสมบูรณ์ก่อนหาเข็มทิศ...`);
+    updateStatus(username, 'In Lobby', 'วาร์ปเข้า Lobby (รอ 8s)');
 
     bot.compassTimer = setTimeout(() => {
         useCompass(bot, username);
-    }, 10000);
+    }, 8000);
 }
 
 async function useCompass(bot, username) {
@@ -162,14 +162,14 @@ async function useCompass(bot, username) {
             log(`[⚠️ Watchdog] [${username}] เมนูไม่เปิดตามเวลา -> บังคับกดเข็มทิศซ้ำ`);
             try { bot.activateItem(); } catch (e) {}
         }
-    }, 15000);
+    }, 12000);
 
     const compass = bot.inventory.items().find(i => i.name.includes('compass'));
     if (compass) {
         try {
             await bot.equip(compass, 'hand');
-            log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 2.5s ก่อนคลิกขวา...`);
-            await bot.sleep(2500);
+            log(`[🧭] [${username}] ถือเข็มทิศแล้ว -> รอ 2s ก่อนคลิกขวา...`);
+            await bot.sleep(2000);
             
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
@@ -181,7 +181,7 @@ async function useCompass(bot, username) {
     } else {
         try {
             bot.setQuickBarSlot(0);
-            await bot.sleep(2000);
+            await bot.sleep(1500);
             bot.authStage = 'WAIT_COMPASS_MENU';
             bot.activateItem();
         } catch (e) {}
@@ -221,8 +221,7 @@ function createBotInstance(username, delayMs = 0) {
             version: MC_VERSION,
             data: sharedData,
             physicsEnabled: false,
-            viewDistance: 'tiny',          // ลดการดาวน์โหลดชังก์เพื่อประหยัดแบนด์วิดท์ Tor
-            checkTimeoutInterval: 120000   // ทนต่ออาการ Ping แกว่งได้สูงสุด 2 นาที
+            checkTimeoutInterval: 90000
         };
 
         botOptions.connect = (client) => {
@@ -237,17 +236,14 @@ function createBotInstance(username, delayMs = 0) {
                     host: SERVER_HOST,
                     port: SERVER_PORT
                 },
-                timeout: 60000
+                timeout: 45000
             }, (err, info) => {
                 if (err) {
                     logError(`[Proxy Error] [${username}] พอร์ต ${proxyPort} ต่อไม่ติด: ${err.message}`);
-                    triggerSafeReconnect(username, 30000, `Proxy Timeout :${proxyPort}`);
+                    triggerSafeReconnect(username, 25000, `Proxy Timeout :${proxyPort}`);
                     return client.emit('error', err);
                 }
 
-                // ปรับแต่ง Socket สำหรับ High Latency
-                info.socket.setKeepAlive(true, 10000);
-                info.socket.setNoDelay(true);
                 info.socket.on('error', () => {});
 
                 client.setSocket(info.socket);
@@ -261,11 +257,12 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.connectionTimeout = setTimeout(() => {
             if (bot.authStage === 'START' && botStatusMap[username]?.status === 'Connecting') {
-                log(`[⚠️ Timeout] [${username}] ค้างหน้า Connecting เกิน 75s -> บังคับต่อใหม่`);
-                triggerSafeReconnect(username, 20000, 'Connecting Timeout');
+                log(`[⚠️ Timeout] [${username}] ค้างหน้า Connecting เกิน 60s -> บังคับต่อใหม่`);
+                triggerSafeReconnect(username, 15000, 'Connecting Timeout');
             }
-        }, 75000);
+        }, 60000);
 
+        // ดักจับการ Spawn เข้าโลก หรือการโดนวาร์ปเด้งกลับ Lobby
         bot.on('spawn', () => {
             if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
             log(`[✓] [${username}] โหลดฉากสำเร็จ (Stage: ${bot.authStage})`);
@@ -303,13 +300,13 @@ function createBotInstance(username, delayMs = 0) {
             let kickReasonStr = reason;
             try { kickReasonStr = JSON.parse(reason).text || reason; } catch (e) {}
             logError(`[🚨 KICKED] [${username}] โดนเตะ! เหตุผล: ${kickReasonStr}`);
-            triggerSafeReconnect(username, 40000, `โดนเตะ: ${kickReasonStr}`);
+            triggerSafeReconnect(username, 35000, `โดนเตะ: ${kickReasonStr}`);
         });
 
         bot.on('windowOpen', async (window) => {
             if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'START') {
                 bot.authStage = 'OPENING_ANVIL';
-                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> รอ 4s แล้วกด Slot 1 (สมุด)...`);
+                log(`[1/4] [${username}] พบ GUI ล็อกอินหลัก -> รอ 3.5s แล้วกด Slot 1 (สมุด)...`);
                 updateStatus(username, 'Logging in', 'รอเปิด Anvil (Slot 1)');
 
                 setTimeout(async () => {
@@ -321,9 +318,9 @@ function createBotInstance(username, delayMs = 0) {
                                 log(`[⚡] [${username}] ข้ามไปเข้า Lobby ทันที`);
                                 triggerLobbyCompass(bot, username);
                             }
-                        }, 5000);
+                        }, 4000);
                     } catch (e) {}
-                }, 4000);
+                }, 3500);
             }
             else if (window.type === 'minecraft:anvil' && (bot.authStage === 'OPENING_ANVIL' || bot.authStage === 'START')) {
                 if (bot.anvilCheckTimer) clearTimeout(bot.anvilCheckTimer);
@@ -336,12 +333,12 @@ function createBotInstance(username, delayMs = 0) {
                         bot._client.write('name_item', { name: botPassword });
                         setTimeout(async () => {
                             await bot.clickWindow(2, 0, 0);
-                        }, 2000);
+                        }, 1500);
                     } catch (e) {}
-                }, 3000);
+                }, 2500);
             }
             else if (window.type === 'minecraft:generic_9x3' && bot.authStage === 'PASS_TYPED') {
-                log(`[3/4] [${username}] กำลังรอ 3s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
+                log(`[3/4] [${username}] กำลังรอ 2.5s เพื่อกด Slot 2 (เข้าสู่ระบบ)...`);
                 updateStatus(username, 'Logging in', 'กด Slot 2 ยืนยัน');
 
                 setTimeout(async () => {
@@ -349,19 +346,19 @@ function createBotInstance(username, delayMs = 0) {
                         await bot.clickWindow(2, 0, 0);
                         triggerLobbyCompass(bot, username);
                     } catch (e) {}
-                }, 3000);
+                }, 2500);
             }
             else if (window.type === 'minecraft:generic_9x3' && (bot.authStage === 'WAIT_COMPASS_MENU' || bot.authStage === 'IN_LOBBY')) {
                 if (bot.watchdogTimer) clearTimeout(bot.watchdogTimer);
                 bot.authStage = 'SURVIVAL_DONE';
-                log(`[4/4] [${username}] GUI เมนูเปิดเรียบร้อย! -> รอ 3.5s แล้วเลือก Survival (Slot 10)...`);
+                log(`[4/4] [${username}] GUI เมนูเปิดเรียบร้อย! -> รอ 3s แล้วเลือก Survival (Slot 10)...`);
                 updateStatus(username, 'Selecting Mode', 'เลือก Survival (Slot 10)');
 
                 setTimeout(async () => {
                     try {
                         await bot.clickWindow(10, 0, 0);
-                        log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (รอวาร์ปเข้าโลก 16 วินาที...)`);
-                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 16s)');
+                        log(`[🚀] [${username}] คลิกเลือก Survival สำเร็จ! (รอวาร์ปเข้าโลก 14 วินาที...)`);
+                        updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 14s)');
 
                         setTimeout(() => {
                             try {
@@ -379,11 +376,11 @@ function createBotInstance(username, delayMs = 0) {
                                 } catch (e) {}
                             }, 60000);
 
-                        }, 16000);
+                        }, 14000);
                     } catch (err) {
                         logError(`[-] [${username}] กดเลือก Survival พลาด: ${err.message}`);
                     }
-                }, 3500);
+                }, 3000);
             }
         });
 
@@ -391,7 +388,7 @@ function createBotInstance(username, delayMs = 0) {
             if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
             if (err.message && (err.message.includes('Proxy') || err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT') || err.message.includes('EPIPE'))) {
                 logError(`[❌ Connection Error] [${username}]: ${err.message}`);
-                triggerSafeReconnect(username, 30000, err.message);
+                triggerSafeReconnect(username, 25000, err.message);
                 return;
             }
             logError(`[❌ Error] [${username}]: ${err.message}`);
@@ -400,7 +397,7 @@ function createBotInstance(username, delayMs = 0) {
         bot.on('end', (reason) => {
             if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
             log(`[!] [${username}] หลุดการเชื่อมต่อ (${reason})`);
-            triggerSafeReconnect(username, 35000, reason);
+            triggerSafeReconnect(username, 30000, reason);
         });
 
     }, delayMs);
@@ -439,8 +436,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    // เว้นช่วงปล่อยตัวละ 25 วินาที เพื่อไม่ให้เน็ต Tor ค้าง
-                    createBotInstance(bName, launchIndex * 25000);
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 } else {
                     log(`[i] [${bName}] ทำงานอยู่แล้วในกลุ่ม (${currStatus}) -> ไม่รันซ้ำ`);
@@ -455,8 +451,7 @@ const server = http.createServer((req, res) => {
 
                 if (!isRunning) {
                     botStatusMap[bName].enabled = true;
-                    // ปล่อยทีละตัวเว้นห่าง 25 วินาที
-                    createBotInstance(bName, launchIndex * 25000);
+                    createBotInstance(bName, launchIndex * 15000);
                     launchIndex++;
                 }
             });
