@@ -80,23 +80,24 @@ done &
 MCC_PID=$!
 
 # ==========================================
-# 🔑 2. ล็อกอิน & เดินทาง
+# 🔑 2. ล็อกอิน & เดินทาง (เข้าเซิร์ฟเวอร์แบบใหม่)
 # ==========================================
-echo "[LOGIN] กำลังรอหน้า Dialog โหลด (16 วินาที)..." >&2
-sleep 16
-echo "/dialog input pass 112233" >&3
-sleep 3
-echo "/dialog click 1" >&3
-echo "[LOGIN] ปลดล็อก Dialog เรียบร้อย" >&2
-
-echo "[LOBBY] กำลังรอวาร์ปเข้า Spawn (12 วินาที)..." >&2
+echo "[LOGIN] กำลังรอโหลดหน้า Lobby (12 วินาที)..." >&2
 sleep 12
-echo "/useitem mainhand" >&3
-sleep 3
-echo "/inventory container click 10 Left" >&3
-echo "[LOBBY] เลือก Survival เรียบร้อย..." >&2
 
-sleep 10
+echo "[LOBBY] เดินไปยืนหน้า NPC Survival..." >&2
+echo "/move 102 5 -630 -f" >&3
+sleep 9
+
+echo "[LOBBY] หันหน้าไปหา NPC..." >&2
+echo "/look 102.5 5.8 -630.5" >&3
+sleep 2
+
+echo "[LOBBY] คลิกขวาคุยกับ NPC..." >&2
+echo "/entity 9 use" >&3
+
+echo "[WORLD] กำลังรอโหลดข้ามห้องเข้า Survival (15 วินาที)..." >&2
+sleep 15
 echo "/home home" >&3
 sleep 2
 
