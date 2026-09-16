@@ -16,7 +16,7 @@ trap cleanup SIGTERM SIGINT
   sleep 12
 
   echo "[LOBBY] กำลังเดินไปหา NPC Survival..." >&2
-  echo "/move 102 4 -632"
+  echo "/move 102 4 -632 -f"
   
   # เพิ่มเวลารอเดินเป็น 6 วินาที เพื่อให้ตัวละครหยุดนิ่งหน้า NPC ชัวร์ๆ
   sleep 6
