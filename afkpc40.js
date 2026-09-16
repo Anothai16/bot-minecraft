@@ -10,6 +10,21 @@ const DEFAULT_PASSWORD = '112233';
 const MC_VERSION = '1.20.1';
 const WEB_PORT = 3000;
 
+// ==========================================
+// 🛡️ Global Exception Handlers: ดักจับ EPIPE ไม่ให้ Node.js แครช
+// ==========================================
+process.on('uncaughtException', (err) => {
+    if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
+        // Socket ถูกปิดกะทันหันขณะส่งแพ็กเก็ต ข้ามเพื่อไม่ให้โปรเซสดับ
+        return;
+    }
+    logError(`[🚨 Uncaught Exception] ${err.stack || err.message}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+    logError(`[🚨 Unhandled Rejection]: ${reason}`);
+});
+
 const sharedData = minecraftData(MC_VERSION);
 
 function log(msg) {
@@ -144,7 +159,6 @@ async function useCompass(bot, username) {
     updateStatus(username, 'In Lobby', 'สแกนถือเข็มทิศ');
     log(`[🧭] [${username}] กำลังค้นหาและเตรียมถือเข็มทิศ...`);
 
-    // Watchdog: ป้องกันค้างที่สถานะ In Lobby สแกนถือเข็มทิศ
     if (bot.watchdogTimer) clearTimeout(bot.watchdogTimer);
     bot.watchdogTimer = setTimeout(() => {
         if (bot.authStage === 'IN_LOBBY' || bot.authStage === 'WAIT_COMPASS_MENU') {
@@ -168,7 +182,6 @@ async function useCompass(bot, username) {
             try { bot.activateItem(); } catch (err) {}
         }
     } else {
-        // Fallback: หากหาในกระเป๋าไม่เจอ ให้สลับ Hotbar ช่องแรกแล้วกดใช้ทันที
         try {
             bot.setQuickBarSlot(0);
             await bot.sleep(1500);
@@ -233,6 +246,12 @@ function createBotInstance(username, delayMs = 0) {
                     triggerSafeReconnect(username, 25000, `Proxy Timeout :${proxyPort}`);
                     return client.emit('error', err);
                 }
+
+                // ดักจับ Error ที่ Raw Socket โดยตรง ป้องกัน EPIPE หลุดไปแครช Node.js
+                info.socket.on('error', (sockErr) => {
+                    // ปล่อยให้ bot.on('end') หรือ bot.on('error') จัดการ Reconnect ต่อไป
+                });
+
                 client.setSocket(info.socket);
                 client.emit('connect');
             });
@@ -242,7 +261,6 @@ function createBotInstance(username, delayMs = 0) {
         activeBots[username] = bot;
         bot.authStage = 'START';
 
-        // ป้องกันค้างหน้า Connecting เกิน 60 วินาที
         bot.connectionTimeout = setTimeout(() => {
             if (bot.authStage === 'START' && botStatusMap[username]?.status === 'Connecting') {
                 log(`[⚠️ Timeout] [${username}] ค้างหน้า Connecting เกิน 60s -> บังคับต่อใหม่`);
@@ -321,14 +339,19 @@ function createBotInstance(username, delayMs = 0) {
                         updateStatus(username, 'Entering Survival', 'กำลังวาร์ปเข้า Survival (รอ 14s)');
 
                         setTimeout(() => {
-                            bot.chat('/afk');
-                            log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
-                            updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
+                            try {
+                                bot.chat('/afk');
+                                log(`[✓] [✓] [${username}] พิมพ์คำสั่ง /afk เรียบร้อย! (ออนไลน์สมบูรณ์)`);
+                                updateStatus(username, 'Online (AFK)', 'ออนไลน์ปกติ (/afk)');
+                            } catch (e) {}
 
                             if (bot.afkInterval) clearInterval(bot.afkInterval);
                             bot.afkInterval = setInterval(() => {
                                 try {
-                                    bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    // ตรวจสอบความปลอดภัยของ bot.entity ป้องกัน null error
+                                    if (bot && bot.entity && typeof bot.entity.yaw === 'number') {
+                                        bot.look(bot.entity.yaw + 0.1, bot.entity.pitch, true);
+                                    }
                                 } catch (e) {}
                             }, 60000);
 
@@ -342,7 +365,7 @@ function createBotInstance(username, delayMs = 0) {
 
         bot.on('error', (err) => {
             if (bot.connectionTimeout) clearTimeout(bot.connectionTimeout);
-            if (err.message && (err.message.includes('Proxy') || err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT'))) {
+            if (err.message && (err.message.includes('Proxy') || err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT') || err.message.includes('EPIPE'))) {
                 logError(`[❌ Connection Error] [${username}]: ${err.message}`);
                 triggerSafeReconnect(username, 25000, err.message);
                 return;
