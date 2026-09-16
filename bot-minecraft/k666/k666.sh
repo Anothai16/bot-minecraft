@@ -3,7 +3,7 @@
   sleep 12
 
   echo "[LOBBY] กำลังเดินไปหาแท่นหน้า NPC Survival..." >&2
-  echo "/move 102 4 -632"
+  echo "/move 102 4 -632 -f"
   
   # ให้เวลาระบบ Pathfinding ก้าวเดิน 8 วินาทีจนตัวหยุดนิ่งหน้าแท่น
   sleep 8
