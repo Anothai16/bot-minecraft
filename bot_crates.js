@@ -59,7 +59,7 @@ function getContainerSlotCount(window) {
 }
 
 // -------------------------------------------------------------
-// คลาสจัดการบอทแต่ละตัว (ใช้ลอจิกเดียวกัน 100%)
+// คลาสจัดการบอทแต่ละตัว
 // -------------------------------------------------------------
 class CrateBotWorker {
     constructor(username, password, targetPos) {
@@ -216,6 +216,32 @@ class CrateBotWorker {
         }
     }
 
+    async checkAndEatFood() {
+        if (!this.bot) return;
+
+        const foodLevel = typeof this.bot.food === 'number' ? this.bot.food : 20;
+        if (foodLevel <= 6) {
+            log(this.username, `[🍖] หลอดอาหารเหลือ ${foodLevel}/20 (<= 3 หลอด) -> กำลังกินเนื้อหมูย่าง...`);
+            this.updateStatus('Eating', `กินเนื้อหมูย่าง (อาหาร: ${foodLevel}/20)`);
+
+            let porkItem = this.bot.inventory.items().find(i => i.name.includes('porkchop'));
+
+            while (this.bot && this.bot.food < 20 && porkItem) {
+                try {
+                    await this.bot.equip(porkItem, 'hand');
+                    await wait(200);
+                    await this.bot.consume();
+                    await wait(500);
+                } catch (err) {
+                    break;
+                }
+                porkItem = this.bot.inventory.items().find(i => i.name.includes('porkchop'));
+            }
+
+            log(this.username, `[✓] กินอาหารเรียบร้อย (หลอดอาหาร: ${this.bot.food}/20)`);
+        }
+    }
+
     async openShulkerDirectly() {
         if (!this.bot || !this.bot.entity) return;
 
@@ -283,6 +309,8 @@ class CrateBotWorker {
         this.bot.chat('/warp crates');
         await wait(10000);
 
+        await this.checkAndEatFood();
+
         const defaultMove = new Movements(this.bot, sharedData);
         defaultMove.canDig = false;
         this.bot.pathfinder.setMovements(defaultMove);
@@ -309,7 +337,7 @@ class CrateBotWorker {
         this.bot.chat('/home home');
 
         await wait(10000);
-        log(this.username, `[📍] วาร์ปถึง /home เรียบร้อย -> สแกนทิ้งไอเทมยกเว้นกรงสปาว...`);
+        log(this.username, `[📍] วาร์ปถึง /home เรียบร้อย -> สแกนทิ้งไอเทมยกเว้น Hotbar ช่อง 1, 2 และกรงสปาว...`);
         this.updateStatus('Clearing Items', 'กำลังโยนไอเทมออกจากตัว...');
 
         this.syncInventorySlots();
@@ -317,6 +345,10 @@ class CrateBotWorker {
         let tossedCount = 0;
 
         for (const item of items) {
+            if (item.slot === 36 || item.slot === 37) {
+                continue;
+            }
+
             const rawName = item.name ? item.name.toLowerCase() : '';
             const displayName = parseItemText(item.customName || item.displayName || '').toLowerCase();
             const isSpawner = rawName.includes('spawner') || displayName.includes('spawner') || displayName.includes('กรง');
@@ -336,6 +368,8 @@ class CrateBotWorker {
 
         this.bot.chat('/warp crates');
         await wait(10000);
+
+        await this.checkAndEatFood();
 
         log(this.username, `[🚶] วาร์ปมา Crates สำเร็จ -> เดินกลับพิกัด (${this.targetPos.x}, ${this.targetPos.y}, ${this.targetPos.z})...`);
         this.updateStatus('Returning', `เดินกลับพิกัด (${this.targetPos.x}, ${this.targetPos.y}, ${this.targetPos.z})`);
@@ -612,7 +646,7 @@ class CrateBotWorker {
             const compass = this.bot.inventory ? this.bot.inventory.items().find(i => i.name.includes('compass')) : null;
             if (compass) {
                 try {
-                    await bot.equip(compass, 'hand');
+                    await this.bot.equip(compass, 'hand');
                     await wait(3000);
                 } catch (e) {}
             }
@@ -639,11 +673,13 @@ class CrateBotWorker {
 }
 
 // -------------------------------------------------------------
-// สร้าง Instance บอททั้ง 2 ตัวที่พิกัดเดียวกัน (280, 88, 322)
+// สร้าง Instance บอททั้ง 4 ตัว
 // -------------------------------------------------------------
 const bots = {
     'Kureeman': new CrateBotWorker('Kureeman', '112233', new Vec3(280, 88, 322)),
-    'Juummeng': new CrateBotWorker('Juummeng', '112233', new Vec3(280, 88, 322))
+    'Juummeng': new CrateBotWorker('Juummeng', '112233', new Vec3(280, 88, 322)),
+    'Pudit': new CrateBotWorker('Pudit', '112233', new Vec3(280, 88, 322)),
+    'Opor2526': new CrateBotWorker('Opor2526', '112233', new Vec3(280, 88, 322))
 };
 
 // -------------------------------------------------------------
@@ -668,6 +704,7 @@ const server = http.createServer((req, res) => {
                 inventory: worker.inventoryState,
                 spawnerCount: worker.totalSpawnersCount,
                 rareKeyCount: worker.rareKeyCount,
+                foodLevel: worker.bot && typeof worker.bot.food === 'number' ? worker.bot.food : null,
                 isAutoRolling: worker.isAutoRolling,
                 isClearing: worker.isClearing,
                 isInventoryFull: worker.isInventoryFull()
@@ -735,15 +772,15 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Dual-Bot Crate & Shop Controller</title>
+    <title>Minecraft Quad-Bot Crate & Shop Controller</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { width: 700px; }
+        .container { width: 720px; }
         .card { background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         h2 { margin-top: 0; color: #4caf50; display: flex; justify-content: space-between; align-items: center; }
         
-        .tabs { display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 8px; }
-        .tab-btn { background: #2a2a2a; border: 1px solid #444; color: #bbb; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 8px; flex-wrap: wrap; }
+        .tab-btn { background: #2a2a2a; border: 1px solid #444; color: #bbb; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; }
         .tab-btn.active { background: #1565c0; color: #fff; border-color: #42a5f5; }
 
         .chest-container { background: #c6c6c6; border: 4px solid #373737; border-radius: 4px; padding: 12px; margin: 15px 0; color: #373737; }
@@ -771,8 +808,8 @@ const server = http.createServer((req, res) => {
         .item-count { position: absolute; bottom: 1px; right: 3px; font-weight: bold; color: #fff; text-shadow: 1px 1px #000; font-size: 11px; }
         .item-icon { font-size: 18px; }
         
-        .btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
-        button { flex: 1; padding: 10px; font-weight: bold; border-radius: 5px; cursor: pointer; border: none; font-size: 14px; transition: 0.2s; }
+        .btn-group { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        button { flex: 1; padding: 10px; font-weight: bold; border-radius: 5px; cursor: pointer; border: none; font-size: 14px; transition: 0.2s; min-width: 120px; }
         button:hover { filter: brightness(1.1); }
         button:disabled { background: #444 !important; color: #777 !important; cursor: not-allowed; }
         
@@ -783,11 +820,12 @@ const server = http.createServer((req, res) => {
         .btn-clear { background: #795548; color: #fff; }
         .btn-auto { background: #ff9800; color: #fff; }
         .btn-stop-auto { background: #d32f2f; color: #fff; }
-        .btn-close-gui { background: #455a64; color: #fff; padding: 3px 8px; font-size: 12px; border-radius: 3px; }
+        .btn-close-gui { background: #455a64; color: #fff; padding: 3px 8px; font-size: 12px; border-radius: 3px; min-width: unset; }
 
         .status-box { background: #2a2a2a; border-radius: 4px; padding: 12px; font-size: 13px; line-height: 1.8; }
         .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
         .badge-danger { background: #d32f2f; color: #fff; }
+        .badge-warning { background: #f57c00; color: #fff; }
         .badge-success { background: #388e3c; color: #fff; }
         .badge-purple { background: #8e24aa; color: #fff; box-shadow: 0 0 6px #ba68c8; }
         .badge-gold { background: #f57f17; color: #fff; box-shadow: 0 0 6px #fbc02d; font-size: 13px; }
@@ -804,8 +842,10 @@ const server = http.createServer((req, res) => {
             </h2>
 
             <div class="tabs">
-                <button id="tab-Kureeman" class="tab-btn active" onclick="switchBot('Kureeman')">👤 Kureeman (280, 88, 322)</button>
-                <button id="tab-Juummeng" class="tab-btn" onclick="switchBot('Juummeng')">👤 Juummeng (280, 88, 322)</button>
+                <button id="tab-Kureeman" class="tab-btn active" onclick="switchBot('Kureeman')">👤 Kureeman</button>
+                <button id="tab-Juummeng" class="tab-btn" onclick="switchBot('Juummeng')">👤 Juummeng</button>
+                <button id="tab-Pudit" class="tab-btn" onclick="switchBot('Pudit')">👤 Pudit</button>
+                <button id="tab-Opor2526" class="tab-btn" onclick="switchBot('Opor2526')">👤 Opor2526</button>
             </div>
 
             <div class="btn-group">
@@ -854,6 +894,7 @@ const server = http.createServer((req, res) => {
             <div class="status-box">
                 <div><b>ตัวละครปัจจุบัน:</b> <b id="currentBotLabel" style="color: #42a5f5;">Kureeman</b></div>
                 <div><b>ขั้นตอน:</b> <span id="txtStep">-</span></div>
+                <div><b>หลอดอาหาร (Food):</b> <span id="foodBadge" class="badge badge-success">-</span></div>
                 <div id="targetSlotRow"><b>เป้าหมาย Slot 13:</b> <span id="targetDetail" style="color: #ffd54f; font-weight: bold;">-</span></div>
                 <div><b>กุญแจ Rare คงเหลือ:</b> <span id="keyCountBadge" class="badge badge-gold">- กุญแจ</span></div>
                 <div><b>จำนวนกรงสปาวที่ได้:</b> <span id="spawnerCountBadge" class="badge badge-purple">0 กรง</span></div>
@@ -869,7 +910,8 @@ const server = http.createServer((req, res) => {
         function switchBot(name) {
             currentSelectedBot = name;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('tab-' + name).classList.add('active');
+            const activeTab = document.getElementById('tab-' + name);
+            if (activeTab) activeTab.classList.add('active');
             document.getElementById('currentBotLabel').innerText = name;
             fetchStatus();
         }
@@ -916,6 +958,23 @@ const server = http.createServer((req, res) => {
                 
                 document.getElementById('spawnerCountBadge').innerText = (data.spawnerCount || 0) + ' กรง';
                 document.getElementById('keyCountBadge').innerText = (data.rareKeyCount !== '-' ? data.rareKeyCount : '-') + ' กุญแจ';
+
+                // จัดการแสดงผลหลอดอาหาร
+                const foodBadge = document.getElementById('foodBadge');
+                if (data.foodLevel !== null && data.foodLevel !== undefined) {
+                    const shanks = Math.round((data.foodLevel / 2) * 10) / 10;
+                    foodBadge.innerText = '🍗 ' + shanks + ' หลอด (' + data.foodLevel + '/20)';
+                    if (data.foodLevel <= 6) {
+                        foodBadge.className = 'badge badge-danger';
+                    } else if (data.foodLevel <= 14) {
+                        foodBadge.className = 'badge badge-warning';
+                    } else {
+                        foodBadge.className = 'badge badge-success';
+                    }
+                } else {
+                    foodBadge.innerText = '-';
+                    foodBadge.className = 'badge';
+                }
 
                 const invStatus = document.getElementById('invStatus');
                 if (data.isInventoryFull) {
@@ -1059,9 +1118,11 @@ function getLocalIP() {
 
 server.listen(WEB_PORT, () => {
     log('SYSTEM', '==================================================');
-    log('SYSTEM', `🚀 DUAL CRATE BOT READY (Same Target Position)`);
+    log('SYSTEM', `🚀 QUAD CRATE BOT READY (Same Target Position)`);
     log('SYSTEM', ` [+] Bot 1: Kureeman -> Coords: (280, 88, 322)`);
     log('SYSTEM', ` [+] Bot 2: Juummeng -> Coords: (280, 88, 322)`);
+    log('SYSTEM', ` [+] Bot 3: Pudit    -> Coords: (280, 88, 322)`);
+    log('SYSTEM', ` [+] Bot 4: Opor2526 -> Coords: (280, 88, 322)`);
     log('SYSTEM', ` [🌐] Web Dashboard : http://${getLocalIP()}:${WEB_PORT}`);
     log('SYSTEM', '==================================================');
 });

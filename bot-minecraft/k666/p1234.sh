@@ -1,40 +1,35 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-
 chmod +x ./MinecraftClient
 
 (
-  # ==========================================
-  # 🔑 1. รอให้หน้า Dialog โหลดขึ้นมา แล้วล็อกอิน
-  # ==========================================
-  echo "[LOGIN] กำลังรอหน้า Dialog โหลด..." >&2
-  sleep 10
-  echo "/dialog input pass 112233"
-  
-  sleep 3
-  echo "/dialog click 1"
-  echo "[LOGIN] ปลดล็อกหน้าต่าง Dialog เรียบร้อย" >&2
-  
-  # ==========================================
-  # 🧭 2. รอปลดล็อกล็อกอิน แล้วสั่งกดใช้เข็มทิศ
-  # ==========================================
-  echo "[LOBBY] กำลังรอวาร์ปเข้าจุด Spawn..." >&2
-  sleep 10
-  echo "/useitem mainhand"
-  
-  # ==========================================
-  # 📦 3. จิ้มเลือกสล็อต 10 (Survival)
-  # ==========================================
-  sleep 1
-  echo "/inventory container click 10 Left"
-  echo "[LOBBY] เลือก Survival เรียบร้อย กำลังสลับโลก..." >&2
-  
+  echo "[LOGIN] กำลังรอโหลดหน้า Lobby (12 วินาที)..." >&2
+  sleep 12
 
-  # ==========================================
-  # 🔄 5. ลูป Keep-Alive ส่งสัญญาณป้องกันหลุด
-  # ==========================================
+  echo "[LOBBY] เดินไปยืนหน้า NPC Survival..." >&2
+  echo "/move 102 5 -630 -f"
+  sleep 9
+
+  echo "[LOBBY] หันหน้าไปหา NPC..." >&2
+  echo "/look 102.5 5.8 -630.5"
+  sleep 2
+
+  echo "[LOBBY] คลิกขวาคุยกับ NPC..." >&2
+  echo "/entity 9 use"
+
+  echo "[WORLD] กำลังรอโหลดข้ามห้องเข้า Survival (15 วินาที)..." >&2
+  sleep 15
+  echo "/home home"
+  echo "[READY] บอท p1234 ประจำจุด Survival เรียบร้อย!" >&2
+
+  # 🔄 ลูป Keep-Alive ส่งสัญญาณป้องกันหลุด
   while true; do
     echo ""
     sleep 30
   done
 ) | ./MinecraftClient p1234 - play.amorycraft.com
+
+EXIT_CODE=$?
+echo "[DISCONNECTED] บอท p1234 หลุดจากเซิร์ฟเวอร์ (Exit Code: $EXIT_CODE) -> รอ 5 วินาทีให้รันใหม่..." >&2
+sleep 5
+exit 1
