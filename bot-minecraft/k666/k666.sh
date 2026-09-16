@@ -9,29 +9,31 @@ cleanup() {
   echo "offline" > "$READY_FILE"
   exit 0
 }
-trap cleanup SIGTERM SIGINT EXIT
+trap cleanup SIGTERM SIGINT
 
 (
-  echo "[LOGIN] เข้าเซิร์ฟเวอร์แล้ว กำลังรอโหลดแมป/หน้าล็อบบี้ (10 วินาที)..." >&2
-  sleep 10
+  echo "[LOGIN] กำลังรอโหลดแมป Lobby (12 วินาที)..." >&2
+  sleep 12
 
   echo "[LOBBY] กำลังเดินไปหา NPC Survival..." >&2
-  echo "/move 102 4 -632 -f"
+  echo "/move 102 4 -632"
   
-  # รอให้บอทเดินถึงพิกัดเป้าหมาย
-  sleep 4
-  echo "[LOBBY] คุยกับ NPC เพื่อย้ายเข้าห้อง Survival..." >&2
+  # เพิ่มเวลารอเดินเป็น 6 วินาที เพื่อให้ตัวละครหยุดนิ่งหน้า NPC ชัวร์ๆ
+  sleep 6
+
+  echo "[LOBBY] หันหน้าและคลิกคุยกับ NPC..." >&2
+  echo "/look 102.5 5 -630.5"
+  sleep 1
   echo "/entity 9 use"
 
-  echo "[WORLD] กำลังโหลดข้ามโลกเข้า Survival (10 วินาที)..." >&2
-  sleep 10
+  echo "[WORLD] กำลังโหลดข้ามห้องเข้า Survival (15 วินาที)..." >&2
+  sleep 15
   echo "/home home"
   
-  # ✅ เข้าสู่โลกและยืนประจำจุดสำเร็จแล้ว
+  # ตรวจสอบสถานะและเข้าสู่โหมด AFK
   echo "online" > "$READY_FILE"
-  echo "[READY] บอท K666 ประจำจุดและเข้าสู่โหมด AFK เรียบร้อย!" >&2
+  echo "[READY] บอท K666 เข้า Survival และวาร์ปเรียบร้อย!" >&2
 
-  # 🛑 วนลูปให้อยู่ในเซิร์ฟเวอร์ตลอดเวลา ป้องกัน subshell หลุด
   while true; do
     sleep 30
     echo ""
@@ -40,5 +42,6 @@ trap cleanup SIGTERM SIGINT EXIT
 
 EXIT_CODE=$?
 echo "offline" > "$READY_FILE"
-echo "[ERROR] MCC หยุดทำงาน (Exit Code: $EXIT_CODE) สั่ง PM2 รีสตาร์ต..." >&2
+echo "[RECONNECT] บอทหลุดการเชื่อมต่อ (Exit Code: $EXIT_CODE) รอ 5 วินาทีก่อนให้ PM2 รีสตาร์ต..." >&2
+sleep 5
 exit 1
