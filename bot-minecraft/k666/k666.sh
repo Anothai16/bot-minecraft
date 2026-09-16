@@ -23,12 +23,8 @@ trap cleanup SIGTERM SIGINT EXIT
   echo "/look 102.5 5 -630.5"
   sleep 2
 
-  echo "[LOBBY] สแกนดู Entity รอบตัวที่ตรวจพบ..." >&2
-  echo "/entity near"
-  sleep 2
-
-  echo "[LOBBY] คลิกคุยกับ NPC เพื่อข้ามเซิร์ฟเวอร์..." >&2
-  echo "/entity near Player use"
+  echo "[LOBBY] ส่งคำสั่งคลิกซ้าย (Attack) ใส่ NPC..." >&2
+  echo "/entity 9 attack"
 
   echo "[WORLD] กำลังโหลดข้ามห้องเข้า Survival (15 วินาที)..." >&2
   sleep 15
